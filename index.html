@@ -3064,7 +3064,11 @@ function buildQtPdf3(pngMap){
 @page{size:A4 portrait;margin:10mm 10mm}
 *{box-sizing:border-box;margin:0;padding:0;
   -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important}
-html,body{background:#fff}
+html,body{background:#fff;
+  /* Mobile browsers may auto-resize text; force exact sizing for PDF consistency */
+  -webkit-text-size-adjust:100% !important;
+  text-size-adjust:100% !important;
+}
 .hdr{width:190mm;margin:0 0 2.8mm;padding:0;color:#111}
 .hdr-brand{display:flex;align-items:center;justify-content:space-between;gap:2.5mm;margin-bottom:1.4mm}
 .hdr-logo{display:flex;align-items:center;flex:0 0 auto}
@@ -3184,7 +3188,7 @@ thead{display:table-header-group}
 <div class="sign-line"><span>ĐẠI DIỆN BÊN MUA</span><span>ĐẠI DIỆN BÊN BÁN</span></div>
 </div>`;
 
-  return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8">
+  return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Báo giá – ${E(cus.name||'Khách hàng')}</title>${css}</head><body>
 
 <div class="hdr">
