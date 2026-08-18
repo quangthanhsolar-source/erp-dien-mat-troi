@@ -1,0 +1,14 @@
+.git
+.firebase
+**/.*
+**/node_modules/**
+supabase/**
+**/*.ps1
+**/.env
+**/.env.*
+**/*.bak*
+**/*.bak
+**/*.md
+firebase.json
+.firebaserc
+.firebaseignore

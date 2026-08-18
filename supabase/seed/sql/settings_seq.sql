@@ -1,0 +1,4 @@
+insert into public.erp_settings (id,data,updated_at) values ('main','{"company":"VP HCM – Quang Thanh Solar","brand":"QUANG THANH SOLAR","short":"VP HCM – NLMT","legal":"Quang Thanh Solar","address":"TP. Hồ Chí Minh","phone":"0935.456.456","website":"quangthanhsolar.com","email":"info@quangthanhsolar.com","price":3100,"eff":0.9,"vat":8,"sun":4,"area":2.6,"ratio":1.26,"laborPanel":450000,"comboPanel":320000,"comboCost":220000}'::jsonb,now())
+on conflict (id) do update set data=excluded.data, updated_at=now();
+insert into public.erp_seq (id,q,t,u,p,updated_at) values ('main',6,0,23,9017,now())
+on conflict (id) do update set q=excluded.q,t=excluded.t,u=excluded.u,p=excluded.p,updated_at=now();
