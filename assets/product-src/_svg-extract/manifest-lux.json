@@ -1,0 +1,71 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/GEN10_GEN_3-8K.svg.png",
+      "out": [
+        "assets/products/luxpower/12-GEN10.jpg",
+        "assets/products/luxpower/11-GEN8.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/L20_L12_GEN12_GEN14_L15_TR30.svg.png",
+      "out": [
+        "assets/products/luxpower/21-L20.jpg",
+        "assets/products/luxpower/19-L12.jpg",
+        "assets/products/luxpower/28-GEN12.jpg",
+        "assets/products/luxpower/29-GEN14.jpg",
+        "assets/products/luxpower/20-L15.jpg",
+        "assets/products/luxpower/18-TR30.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/LXP12.svg.png",
+      "out": [
+        "assets/products/luxpower/13-LXP12.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/LXP6.svg.png",
+      "out": [
+        "assets/products/luxpower/10-LXP6.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/SNA10_SNA14.svg.png",
+      "out": [
+        "assets/products/luxpower/30-sna10.jpg",
+        "assets/products/luxpower/31-sna14.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/SNA12.svg.png",
+      "out": [
+        "assets/products/luxpower/32-sna12.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/SNA6_SNA5.svg.png",
+      "out": [
+        "assets/products/luxpower/03-SNA6.jpg",
+        "assets/products/luxpower/02-SNA5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/SNApro.svg.png",
+      "out": [
+        "assets/products/luxpower/01-SNAPro.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-lux/TR25_TR10_TR15_TR20.svg.png",
+      "out": [
+        "assets/products/luxpower/17-tr25.jpg",
+        "assets/products/luxpower/14-TR10.jpg",
+        "assets/products/luxpower/15-TR15.jpg",
+        "assets/products/luxpower/16-TR20.jpg"
+      ]
+    }
+  ]
+}

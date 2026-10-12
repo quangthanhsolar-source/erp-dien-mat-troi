@@ -1,0 +1,42 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/BMSFLEX.svg.png",
+      "out": [
+        "assets/products/valley/07-BMSFLEX.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/bmslux.svg.png",
+      "out": [
+        "assets/products/luxpower/33-bmslux.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/BMSX.svg.png",
+      "out": [
+        "assets/products/solax/14-BMSX.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/FLEX16.svg.png",
+      "out": [
+        "assets/products/valley/03-FLEX16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/lux5.svg.png",
+      "out": [
+        "assets/products/luxpower/27-lux5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch7/X14.svg.png",
+      "out": [
+        "assets/products/solax/05-X14.jpg"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-solax/NEO10_NEO20_NEO15_X8_X10_X12.svg.png",
+      "out": [
+        "assets/products/solax/06-NEO10.jpg",
+        "assets/products/solax/07-NEO20.jpg",
+        "assets/products/solax/08-NEO15.jpg",
+        "assets/products/solax/09-X8.jpg",
+        "assets/products/solax/10-X10.jpg",
+        "assets/products/solax/11-X12.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-solax/X49_X60.svg.png",
+      "out": [
+        "assets/products/solax/12-X49.jpg",
+        "assets/products/solax/13-X60.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-solax/X6_X5.svg.png",
+      "out": [
+        "assets/products/solax/02-X6.jpg",
+        "assets/products/solax/01-X5.jpg"
+      ]
+    }
+  ]
+}

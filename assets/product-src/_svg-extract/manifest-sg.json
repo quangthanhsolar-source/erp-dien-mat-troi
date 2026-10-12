@@ -1,0 +1,41 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-sg/MG8_MG6_MG12_MG10_MG5.svg.png",
+      "out": [
+        "assets/products/sungrow/07-MG8.jpg",
+        "assets/products/sungrow/08-mg6.jpg",
+        "assets/products/sungrow/05-MG12.jpg",
+        "assets/products/sungrow/06-MG10.jpg",
+        "assets/products/sungrow/09-mg5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-sg/SG125_SG150.svg.png",
+      "out": [
+        "assets/products/sungrow/01-sg125.jpg",
+        "assets/products/sungrow/02-sg150.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-sg/SG33.svg.png",
+      "out": [
+        "assets/products/sungrow/03-sg33.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-sg/SG50.svg.png",
+      "out": [
+        "assets/products/sungrow/04-SG50.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-sg/SVE6.svg.png",
+      "out": [
+        "assets/products/sve/01-sve6.jpg"
+      ]
+    }
+  ]
+}

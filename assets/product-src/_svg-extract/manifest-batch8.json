@@ -1,0 +1,113 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/BZ_Z20.svg.png",
+      "out": [
+        "assets/products/viet-nam/01-BZ.jpg",
+        "assets/products/viet-nam/02-Z20.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/CL.svg.png",
+      "out": [
+        "assets/products/viet-nam/03-CL.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/CU.svg.png",
+      "out": [
+        "assets/products/viet-nam/04-CU.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KB35_KB30.svg.png",
+      "out": [
+        "assets/products/viet-nam/05-KB35.jpg",
+        "assets/products/viet-nam/06-KB30.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KD.svg.png",
+      "out": [
+        "assets/products/viet-nam/07-KD.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KG35_KG30.svg.png",
+      "out": [
+        "assets/products/viet-nam/08-KG35.jpg",
+        "assets/products/viet-nam/09-KG30.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/ki.svg.png",
+      "out": [
+        "assets/products/viet-nam/10-ki.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/Kinox.svg.png",
+      "out": [
+        "assets/products/viet-nam/11-Kinox.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KN.svg.png",
+      "out": [
+        "assets/products/viet-nam/12-KN.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KS.svg.png",
+      "out": [
+        "assets/products/viet-nam/13-KS.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/KTD.svg.png",
+      "out": [
+        "assets/products/viet-nam/14-KTD.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/M2100_MNR_M200.svg.png",
+      "out": [
+        "assets/products/viet-nam/15-M2100.jpg",
+        "assets/products/viet-nam/16-MNR.jpg",
+        "assets/products/viet-nam/17-M200.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/M4200.svg.png",
+      "out": [
+        "assets/products/viet-nam/18-M4200.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/MC4.svg.png",
+      "out": [
+        "assets/products/leader/01-MC4.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/NR.svg.png",
+      "out": [
+        "assets/products/viet-nam/19-NR.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/RN.svg.png",
+      "out": [
+        "assets/products/viet-nam/20-RN.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-batch8/STT.svg.png",
+      "out": [
+        "assets/products/viet-nam/21-STT.jpg"
+      ]
+    }
+  ]
+}

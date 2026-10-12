@@ -1,0 +1,114 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/FB16.svg.png",
+      "out": [
+        "assets/products/pylontech/01-FB16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/FLEX16.svg.png",
+      "out": [
+        "assets/products/valley/03-FLEX16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/HI14.svg.png",
+      "out": [
+        "assets/products/luxpower/25-HI14.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/HI16.svg.png",
+      "out": [
+        "assets/products/luxpower/26-hi16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/HI5.svg.png",
+      "out": [
+        "assets/products/luxpower/22-HI5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/HIG5.svg.png",
+      "out": [
+        "assets/products/luxpower/08-HIG5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/LD15.svg.png",
+      "out": [
+        "assets/products/solax/03-LD15.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/LD16.svg.png",
+      "out": [
+        "assets/products/solax/04-LD16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/LI7.5.svg.png",
+      "out": [
+        "assets/products/luxpower/23-Li7.5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/MBL16.svg.png",
+      "out": [
+        "assets/products/sungrow/10-MBL16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/SVE14.svg.png",
+      "out": [
+        "assets/products/sve/02-sve14.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/SVE16.6.svg.png",
+      "out": [
+        "assets/products/sve/04-sve16.6.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/SVE16.svg.png",
+      "out": [
+        "assets/products/sve/03-SVE16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/VL10.svg.png",
+      "out": [
+        "assets/products/valley/04-VL10.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/VL16.svg.png",
+      "out": [
+        "assets/products/valley/01-VL16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/VL21.svg.png",
+      "out": [
+        "assets/products/valley/05-VL21.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/VL5.svg.png",
+      "out": [
+        "assets/products/valley/06-VL5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-bat/X14.svg.png",
+      "out": [
+        "assets/products/solax/05-X14.jpg"
+      ]
+    }
+  ]
+}

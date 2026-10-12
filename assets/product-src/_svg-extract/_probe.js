@@ -1,0 +1,11 @@
+const fs = require('fs');
+const s = fs.readFileSync('C:/Users/Administrator/Projects/erp-dien-mat-troi/index.html', 'utf8');
+const inv = [...s.matchAll(/\{"code":"(IN[^"]+|XD[^"]+|in50)"[^}]*?"brand":"INVT"/g)].map((m) => m[1]);
+console.log('INVT codes', inv);
+const panels = [...s.matchAll(/\{"code":"(6\d{2})"[^}]*?"brand":"([^"]+)"/g)].map((m) => m[1] + '/' + m[2]);
+console.log('panel 6xx', panels);
+const idx = s.indexOf('function applyPimgOverrides');
+console.log('applyPimgOverrides at', idx);
+console.log(s.slice(idx, idx + 600));
+const idx2 = s.indexOf('applyPimgOverrides();');
+console.log('call at', idx2, s.slice(idx2, idx2 + 80));

@@ -1,0 +1,71 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_white/s6-eh3p-8-18.png",
+      "out": [
+        "assets/products/solis/01-S8.jpg",
+        "assets/products/solis/02-S10.jpg",
+        "assets/products/solis/03-S12.jpg",
+        "assets/products/solis/04-S15.jpg",
+        "assets/products/solis/05-S18.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/s6-eh1p-plus.png",
+      "out": [
+        "assets/products/solis/06-SL5.jpg",
+        "assets/products/solis/07-SL6.jpg",
+        "assets/products/solis/08-SL8.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/s6-eh1p-12-16.png",
+      "out": [
+        "assets/products/solis/09-SL12.jpg",
+        "assets/products/solis/10-SL14.jpg",
+        "assets/products/solis/11-SL16.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/s6-eh3p-80-125.png",
+      "out": [
+        "assets/products/solis/12-SL99.jpg",
+        "assets/products/solis/13-sl125.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/solis-80-110-5g-pro.png",
+      "out": [
+        "assets/products/solis/14-SL80.jpg",
+        "assets/products/solis/15-SL110.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/sun2000-map0.png",
+      "out": ["assets/products/huawei/01-HW10.jpg"]
+    },
+    {
+      "in": "assets/product-src/_white/sna-pro.png",
+      "out": [
+        "assets/products/luxpower/01-SNAPro.jpg",
+        "assets/products/luxpower/02-SNA5.jpg",
+        "assets/products/luxpower/03-SNA6.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/eco-beast.png",
+      "out": [
+        "assets/products/luxpower/04-EB.jpg",
+        "assets/products/luxpower/05-EB5.jpg",
+        "assets/products/luxpower/06-EB10.jpg",
+        "assets/products/luxpower/07-EB15.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_white/powergem.png",
+      "out": ["assets/products/luxpower/08-HIG5.jpg"]
+    }
+  ]
+}

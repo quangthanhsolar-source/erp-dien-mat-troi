@@ -1,0 +1,41 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-solis/S15_SL16_SL12_SL6_S18_SL14_SL8_S10_S8_S12_SL5.svg.png",
+      "out": [
+        "assets/products/solis/04-S15.jpg",
+        "assets/products/solis/11-SL16.jpg",
+        "assets/products/solis/09-SL12.jpg",
+        "assets/products/solis/07-SL6.jpg",
+        "assets/products/solis/05-S18.jpg",
+        "assets/products/solis/10-SL14.jpg",
+        "assets/products/solis/08-SL8.jpg",
+        "assets/products/solis/02-S10.jpg",
+        "assets/products/solis/01-S8.jpg",
+        "assets/products/solis/03-S12.jpg",
+        "assets/products/solis/06-SL5.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-solis/SL125.svg.png",
+      "out": [
+        "assets/products/solis/13-sl125.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-solis/SL80_SL110.svg.png",
+      "out": [
+        "assets/products/solis/14-SL80.jpg",
+        "assets/products/solis/15-SL110.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-solis/SL99.svg.png",
+      "out": [
+        "assets/products/solis/12-SL99.jpg"
+      ]
+    }
+  ]
+}

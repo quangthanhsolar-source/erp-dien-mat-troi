@@ -1,0 +1,19 @@
+{
+  "size": 1000,
+  "margin": 16,
+  "items": [
+    {
+      "in": "assets/product-src/_svg-extract/raster-tu/TUBT.svg.png",
+      "out": [
+        "assets/products/quangthanh/01-TUBT.jpg"
+      ]
+    },
+    {
+      "in": "assets/product-src/_svg-extract/raster-tu/TUHYBRID1P_TUHYBRID3P.svg.png",
+      "out": [
+        "assets/products/quangthanh/02-TUHYBRID1P.jpg",
+        "assets/products/quangthanh/03-TUHYBRID3P.jpg"
+      ]
+    }
+  ]
+}
