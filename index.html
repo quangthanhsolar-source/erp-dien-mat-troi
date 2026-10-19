@@ -8647,7 +8647,7 @@ async function pushUsersToSupabase(){
       name:u.name||null,
       email:u.email||null,
       phone:u.phone||null,
-      role:normalizeAppRole(u.role),
+      role:cloudSafeRole(u.role),
       active:u.active!==false,
       pass:u.pass||null,
       avatar:u.avatar||null,
@@ -8818,18 +8818,21 @@ function userModal(u){
     <div class="field"><label>Mật khẩu ${u?'(để trống nếu giữ nguyên)':'*'}</label><input class="inp" id="uP" type="password" value="${u?'':''}"></div>
     <div class="field"><label>SĐT</label><input class="inp mono" id="uT" value="${esc(u?u.phone:'')}"></div>
     <div class="field" style="margin:0"><label>Vai trò</label><select class="sel" style="width:100%" id="uR">
-      ${Object.keys(ROLE).map(k=>`<option value="${k}" ${u&&u.role===k?'selected':''} ${!u&&k==='sales'?'selected':''}>${ROLE[k].t}</option>`).join('')}</select></div>`,
+      ${Object.keys(ROLE).map(k=>`<option value="${k}" ${u&&effectiveUserRole(u)===k?'selected':''} ${!u&&k==='sales'?'selected':''}>${ROLE[k].t}</option>`).join('')}</select></div>`,
     'Lưu',async ()=>{
       const n=$('#uN').value.trim(),e=$('#uE').value.trim(),p=$('#uP').value;
       if(!n||!e){toast('Nhập tên và email','bad');return false;}
       if(!u&&!p){toast('Đặt mật khẩu cho người dùng mới','bad');return false;}
       if(DB.users.find(x=>x.email.toLowerCase()===e.toLowerCase()&&(!u||x.id!==u.id))){toast('Email này đã được dùng','bad');return false;}
+      // Roster telesale: giữ quyền Telesales theo tên; cloud lưu sales nếu chưa migration.
+      let role=normalizeAppRole($('#uR').value);
+      if(isTelesalesRosterName(n)) role='telesales';
       if(u){
         forgetDeletedUser(e,u.id);
-        Object.assign(u,{name:n,email:e,phone:$('#uT').value,role:$('#uR').value,pass:p||u.pass});
+        Object.assign(u,{name:n,email:e,phone:$('#uT').value,role,pass:p||u.pass});
       }else{
         forgetDeletedUser(e,null);
-        DB.users.push({id:++DB.seq.u,name:n,email:e,phone:$('#uT').value,role:$('#uR').value,active:true,pass:p});
+        DB.users.push({id:++DB.seq.u,name:n,email:e,phone:$('#uT').value,role,active:true,pass:p});
       }
       const ok=await saveUsersDB();
       // Ép Auth Supabase dùng đúng mật khẩu mới — mật khẩu cũ không còn đăng nhập được
