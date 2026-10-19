@@ -6712,6 +6712,7 @@ function downloadOrderExcelTemplate(){
 }
 async function importOrdersFromExcelFile(file){
   if(!file) return;
+  if(!canMutateOrderData()){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
   if(!(await ensureXlsxLib())){ toast('Không tải được thư viện Excel — kiểm tra mạng rồi thử lại','bad'); return; }
   try{
     const buf=await file.arrayBuffer();
@@ -6845,7 +6846,10 @@ function bindQuoteList(){
   const ordFile=$('#ordFile');
   const ordImp=$('#ordImport');
   if(ordImp&&ordFile){
-    ordImp.onclick=()=>ordFile.click();
+    ordImp.onclick=()=>{
+      if(!canMutateOrderData()){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
+      ordFile.click();
+    };
     ordFile.onchange=async()=>{
       const f=ordFile.files&&ordFile.files[0];
       ordFile.value='';
