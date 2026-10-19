@@ -6097,7 +6097,7 @@ function startOrderCellEdit(code, field, td){
   if(td.classList.contains('ord-editing')||td.classList.contains('ord-ro')) return;
   const q=orderQuoteByCode(code);
   if(!q) return;
-  if(!canEditOrder(q)){ toast('Bạn chỉ được sửa đơn hàng do mình phụ trách','bad'); return; }
+  if(!canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
   td.classList.add('ord-editing');
   const monthVal=q.monthLabel||dateToMonthLabel(q.date)||'Tháng 1';
   let editor=null;
@@ -6195,7 +6195,7 @@ function peekQuoteCode(){
   return {code,n};
 }
 function openOrderModal(q){
-  if(q && !canEditOrder(q)){ toast('Bạn chỉ được sửa đơn hàng do mình phụ trách','bad'); return; }
+  if(q && !canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
   const isEdit=!!q;
   const peeked=isEdit?null:peekQuoteCode();
   const code=isEdit?q.code:peeked.code;
@@ -6971,7 +6971,7 @@ function bindQuoteList(){
   });
   $('#main').querySelectorAll('[data-delq]').forEach(b=>b.onclick=()=>{
     const q=DB.quotes.find(x=>x.code===b.dataset.delq);
-    if(q && !canEditOrder(q)){ toast('Bạn chỉ được xóa đơn hàng do mình phụ trách','bad'); return; }
+    if(q && !canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
     if(!confirm('Xóa đơn hàng '+b.dataset.delq+'?'))return;
     rememberDeletedQuotes([b.dataset.delq]);
     DB.quotes=DB.quotes.filter(v=>v.code!==b.dataset.delq);toast('Đã xóa','ok');saveDB();renderPage();
@@ -7224,17 +7224,25 @@ function pageCrm(){
       <th>Trạng thái</th>
       <th>Thao tác</th>
     </tr></thead>
-    <tbody>${pageRows.length?pageRows.map(r=>`<tr>
-      <td class="ord-ed" data-crmid="${r.id}" data-crmfield="owner" title="Nhấp đúp để sửa">${crmIsUnassigned(r.owner)?'<span style="color:var(--muted)">Trống</span>':`<b>${esc(r.owner)}</b>`}</td>
+    <tbody>${pageRows.length?pageRows.map(r=>{
+      const canMut=canMutateCrmData();
+      const edCls=canMut?'ord-ed':'ord-ed ord-ro';
+      const edTitle=canMut?'Nhấp đúp để sửa':'Chỉ Admin được sửa / xóa';
+      const edAttr=(field)=>canMut
+        ?` class="${edCls}" data-crmid="${r.id}" data-crmfield="${field}" title="${edTitle}"`
+        :` class="${edCls}" title="${edTitle}"`;
+      return `<tr>
+      <td${edAttr('owner')}>${crmIsUnassigned(r.owner)?'<span style="color:var(--muted)">Trống</span>':`<b>${esc(r.owner)}</b>`}</td>
       <td class="mono" style="white-space:nowrap">${esc(crmDateLabel(r.date))}</td>
-      <td class="ord-ed" data-crmid="${r.id}" data-crmfield="source" title="Nhấp đúp để sửa">${r.source?`<span class="pill p-gray">${esc(r.source)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+      <td${edAttr('source')}>${r.source?`<span class="pill p-gray">${esc(r.source)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td><div class="crm-info">${esc(crmInfoText(r))}</div></td>
-      <td class="ord-ed" data-crmid="${r.id}" data-crmfield="status" title="Nhấp đúp để sửa">${r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>'}</td>
+      <td${edAttr('status')}>${r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>'}</td>
       <td><div class="act">
-        <button data-crm-edit="${r.id}" title="Sửa">${I.pen}</button>
-        <button class="del" data-crm-del="${r.id}" title="Xóa">${I.trash}</button>
+        ${canMut?`<button data-crm-edit="${r.id}" title="Sửa">${I.pen}</button>
+        <button class="del" data-crm-del="${r.id}" title="Xóa">${I.trash}</button>`:'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>'}
       </div></td>
-    </tr>`).join(''):'<tr><td colspan="6" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
+    </tr>`;
+    }).join(''):'<tr><td colspan="6" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
   </table></div></div>
   ${pageCount>1?`<div class="pager">
     <div class="pager-info">Trang ${crmPage}/${pageCount} · ${shownFrom}–${shownTo} / ${rows.length} khách</div>
@@ -7247,6 +7255,10 @@ function pageCrm(){
 }
 function openCrmModal(row){
   const isEdit=!!row;
+  if(isEdit && !canMutateCrmData()){
+    toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad');
+    return;
+  }
   const now=new Date();
   const dateVal=String((row&&row.date)||'').slice(0,10)||now.toISOString().slice(0,10);
   const y0=Number((dateVal.match(/^(\d{4})/)||[])[1])||now.getFullYear();
@@ -7376,6 +7388,7 @@ function commitCrmCellEdit(td, id, field, el){
 }
 function startCrmCellEdit(id, field, td){
   if(!td || td.classList.contains('ord-editing')) return;
+  if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
   const r=(DB.crm||[]).find(x=>String(x.id)===String(id));
   if(!r) return;
   td.classList.add('ord-editing');
@@ -7431,10 +7444,12 @@ function bindCrm(){
   });
   bindCrmInlineEdit();
   $('#main').querySelectorAll('[data-crm-edit]').forEach(b=>b.onclick=()=>{
+    if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmEdit));
     if(row) openCrmModal(row);
   });
   $('#main').querySelectorAll('[data-crm-del]').forEach(b=>b.onclick=()=>{
+    if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmDel));
     if(!row) return;
     if(!confirm('Xóa khách '+row.name+'?')) return;
