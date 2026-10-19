@@ -1050,6 +1050,10 @@ function ensureTelesalesRoles(){
     if(u.role==='admin') return;
     if(u.role!=='telesales'){ u.role='telesales'; n++; }
   });
+  if(ME&&isTelesalesRosterName(ME.name)&&ME.role!=='admin'&&ME.role!=='telesales'){
+    ME.role='telesales';
+    try{ saveAppSession(ME); }catch(e){}
+  }
   return n;
 }
 const SALES_PERM_DEFAULTS={
