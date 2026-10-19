@@ -1895,7 +1895,7 @@ function resolveLocalUserByEmail(email){
   const u=(DB.users||[]).find(x=>x.email&&String(x.email).toLowerCase()===mail);
   if(!u) return null;
   if(u.active===false) return null;
-  const role=['admin','manager','sales'].includes(u.role)?u.role:'sales';
+  const role=normalizeAppRole(u.role);
   return {...u, role};
 }
 
@@ -2497,7 +2497,7 @@ async function pushDBToSupabase(){
       name:u.name||null,
       email:u.email||null,
       phone:u.phone||null,
-      role:['admin','manager','sales'].includes(u.role)?u.role:'sales',
+      role:normalizeAppRole(u.role),
       active:u.active!==false,
       pass:u.pass||null,
       avatar:u.avatar||null,
@@ -2838,7 +2838,7 @@ async function enterApp(u, opt){
     renderLogin();
     return;
   }
-  const role=['admin','manager','sales'].includes(u.role)?u.role:'sales';
+  const role=normalizeAppRole(u.role);
   ME={...u, role};
   saveAppSession(ME);
   window._warnedLocalOnly=false;
@@ -8626,7 +8626,7 @@ async function pushUsersToSupabase(){
       name:u.name||null,
       email:u.email||null,
       phone:u.phone||null,
-      role:['admin','manager','sales'].includes(u.role)?u.role:'sales',
+      role:normalizeAppRole(u.role),
       active:u.active!==false,
       pass:u.pass||null,
       avatar:u.avatar||null,
@@ -9254,7 +9254,7 @@ renderLogin();
             name:snap.name||snap.email,
             email:snap.email,
             phone:snap.phone||'',
-            role:['admin','manager','sales'].includes(snap.role)?snap.role:'sales',
+            role:normalizeAppRole(snap.role),
             active:true
           };
           await enterApp(local);
