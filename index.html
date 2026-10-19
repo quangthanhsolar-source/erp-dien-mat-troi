@@ -1005,7 +1005,53 @@ const DB={
  trans:[],
  seq:{q:6,t:0,u:23,p:9000,hd:0},
 };
-const ROLE={admin:{t:'Admin',c:'p-red'},manager:{t:'Quản lý',c:'p-yellow'},sales:{t:'Nhân viên KD',c:'p-blue'}};
+const ROLE={
+  admin:{t:'Admin',c:'p-red'},
+  manager:{t:'Quản lý',c:'p-yellow'},
+  sales:{t:'Nhân viên KD',c:'p-blue'},
+  telesales:{t:'Telesales',c:'p-green'}
+};
+const APP_ROLES=['admin','manager','sales','telesales'];
+function normalizeAppRole(role){
+  return APP_ROLES.includes(role)?role:'sales';
+}
+/** Danh sách chuyển sang Telesales (khớp tên trên Người dùng). */
+const TELESALES_ROSTER=[
+  'Phạm Thị Yến Nhi',
+  'Lê Thị Tuyết Nhi',
+  'Nguyễn Thị Thùy Linh',
+  'Dương Thị Mỹ Huyền',
+  'Đào Thị Thuý An',
+  'Nguyễn Thị Ngọc Mai',
+  'Phan Ánh Kiều'
+];
+function telesalesNameKey(s){
+  return String(s||'')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/thúy/g,'thuý')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function isTelesalesRosterName(name){
+  const key=telesalesNameKey(name);
+  if(!key) return false;
+  return TELESALES_ROSTER.some(n=>{
+    const want=telesalesNameKey(n);
+    return key===want || key.endsWith(want) || key.includes(want);
+  });
+}
+/** Ép role telesales cho roster — trả về số user đã đổi. */
+function ensureTelesalesRoles(){
+  if(!Array.isArray(DB.users)) return 0;
+  let n=0;
+  DB.users.forEach(u=>{
+    if(!u||!isTelesalesRosterName(u.name)) return;
+    if(u.role==='admin') return;
+    if(u.role!=='telesales'){ u.role='telesales'; n++; }
+  });
+  return n;
+}
 const SALES_PERM_DEFAULTS={
   viewAllOrders:true,
   editAnyOrder:false,
@@ -1040,40 +1086,40 @@ function salesHasPerm(key){
   const p=normalizeSalesPerms(DB.settings);
   return !!p[key];
 }
-function isSalesRole(){ return !!(ME&&ME.role==='sales'); }
+function isSalesRole(){ return !!(ME&&(ME.role==='sales'||ME.role==='telesales')); }
 function isAdmin(){ return !!(ME&&ME.role==='admin'); }
-function isAdminOrManager(){ return !!(ME&&ME.role&&ME.role!=='sales'); }
+function isAdminOrManager(){ return !!(ME&&(ME.role==='admin'||ME.role==='manager')); }
 /** CRM / Đơn hàng: chỉ Admin được sửa hoặc xóa dữ liệu hiện có. */
 function canMutateCrmData(){ return isAdmin(); }
 function canMutateOrderData(){ return isAdmin(); }
 function canManageUsers(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('manageUsers');
 }
 function canManageStock(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('manageStock');
 }
 function canManageDevices(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('manageDevices');
 }
 function canSeeRegionPricing(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('seeRegionPricing');
 }
 function canSeeCostPrice(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('seeCostPrice');
 }
 function canSeeProfitTable(){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   return salesHasPerm('seeProfitTable');
 }
 function orderStaffNameKey(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
@@ -1088,9 +1134,16 @@ function canEditOrder(q){
 }
 function canViewOrder(q){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  if(!isSalesRole()) return true;
   if(salesHasPerm('viewAllOrders')) return true;
   return orderOwnedByMe(q);
+}
+/** CRM: Admin / Manager / Telesales xem tất cả; Nhân viên KD chỉ xem Trống + của mình. */
+function canViewCrmRow(r){
+  if(!ME) return false;
+  if(ME.role!=='sales') return true;
+  if(crmIsUnassigned(r&&r.owner)) return true;
+  return orderStaffNameKey(r&&r.owner)===orderStaffNameKey(ME.name);
 }
 const CAT={inverter:'Biến tần',panel:'Tấm pin',battery:'Pin lưu trữ',cabinet:'Tủ điện',light:'Đèn NLMT',pump:'Biến tần bơm',accessory:'Phụ kiện & Giám sát',mount:'Khung đỡ & Vật tư',cable:'Dây cáp',service:'DV & Nhân công'};
 const catList=c=>({inverter:DB.inverters,panel:DB.panels,battery:DB.batteries,cabinet:DB.cabinets,light:DB.lights,pump:DB.pumps,accessory:DB.accessories,mount:DB.mounts,cable:DB.cables,service:DB.services}[c]||[]);
