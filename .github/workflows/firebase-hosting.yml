@@ -1,14 +1,22 @@
 ﻿name: Deploy Firebase Hosting
 
+# Mỗi lần push lên main/master → deploy app.quangthanhsolar.com
 on:
   push:
     branches:
       - main
       - master
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-hosting-production
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,4 +32,9 @@ jobs:
       - name: Deploy Hosting
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only hosting --project quang-thanh-solar-erp --non-interactive
+        run: |
+          if [ -z "$FIREBASE_TOKEN" ]; then
+            echo "::error::Missing GitHub secret FIREBASE_TOKEN. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          firebase deploy --only hosting --project quang-thanh-solar-erp --non-interactive

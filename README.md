@@ -8,6 +8,28 @@ Hệ thống quản lý báo giá / đơn hàng điện mặt trời (Quang Than
 
 Repo GitHub: https://github.com/quangthanhsolar-source/erp-dien-mat-troi
 
+## Deploy production (`app.quangthanhsolar.com`)
+
+Luồng A — **sửa → push `main` → site tự cập nhật** (không realtime khi gõ; cập nhật sau khi CI chạy xong, thường 1–3 phút):
+
+```text
+Chỉnh sửa trong Cursor → commit → push origin main
+        → GitHub Actions (Deploy Firebase Hosting)
+        → Firebase Hosting → https://app.quangthanhsolar.com
+```
+
+Yêu cầu trên GitHub repo:
+1. Secret **`FIREBASE_TOKEN`** (Settings → Secrets and variables → Actions)
+2. Quyền push nhánh `main`
+
+Tạo token Firebase (một lần, trên máy đã cài Firebase CLI):
+
+```bash
+npx firebase login:ci
+```
+
+Dán giá trị vào secret `FIREBASE_TOKEN`. Có thể chạy lại workflow thủ công: Actions → Deploy Firebase Hosting → Run workflow.
+
 ## Chạy local (web)
 
 ```bash
