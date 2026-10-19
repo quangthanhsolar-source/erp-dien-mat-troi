@@ -1920,6 +1920,7 @@ function applyDBPayload(data){
     if(k==='users'){
       // Cloud là nguồn sự thật khi đã có user trên Supabase (reload = bản mới nhất)
       DB.users=mergeUsersFromSync(DB.users,data.users);
+      ensureTelesalesRoles();
       return;
     }
     if(k==='crm'){
@@ -2079,7 +2080,7 @@ function sbBundleToPayload(bundle){
   });
   data.users=(bundle.users||[]).map(r=>({
     id:Number(r.id),name:r.name||'',email:r.email||'',phone:r.phone||'',
-    role:r.role||'sales',active:r.active!==false,pass:r.pass||'',avatar:r.avatar||''
+    role:normalizeAppRole(r.role),active:r.active!==false,pass:r.pass||'',avatar:r.avatar||''
   }));
   if(bundle.settings&&bundle.settings.data&&typeof bundle.settings.data==='object'){
     const raw={...bundle.settings.data};
@@ -2872,8 +2873,14 @@ async function enterApp(u, opt){
     applyPimgToDB();
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
+    const telesalesFixed=ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
+    if(telesalesFixed>0){
+      _saveDB();
+      usersOnlyPush=true;
+      toast('Đã chuyển '+telesalesFixed+' tài khoản sang vai trò Telesales','ok');
+    }
     if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
@@ -5411,7 +5418,7 @@ function orderNameWordsMatch(query, full){
   return false;
 }
 function orderAccountUsers(){
-  return (DB.users||[]).filter(u=>u&&u.active!==false&&(u.role==='sales'||u.role==='admin')&&String(u.name||'').trim());
+  return (DB.users||[]).filter(u=>u&&u.active!==false&&(u.role==='sales'||u.role==='telesales'||u.role==='admin')&&String(u.name||'').trim());
 }
 function orderFindUserForName(raw){
   const name=orderNvCanon(raw);
@@ -6215,7 +6222,7 @@ function orderSalesStaff(){
   const seen=new Set();
   const out=[];
   (DB.users||[]).forEach(u=>{
-    if(!u||u.active===false||u.role!=='sales') return;
+    if(!u||u.active===false||(u.role!=='sales'&&u.role!=='telesales')) return;
     const name=String(u.name||'').trim();
     if(!name) return;
     const key=orderStaffNameKey(name);
@@ -6285,7 +6292,7 @@ function openOrderModal(q){
     ${isEdit?`<div class="field"><label>Mã đơn</label><input class="inp mono" id="oCode" value="${esc(code)}" readonly></div>`:''}
     <div class="row2">
       <div class="field"><label>Phụ Trách</label>
-        <select class="sel" style="width:100%" id="oNv">${orderStaffOptions(isEdit?(q&&q.nv)||'':(ME&&ME.role==='sales'?ME.name:''), isEdit)}</select>
+        <select class="sel" style="width:100%" id="oNv">${orderStaffOptions(isEdit?(q&&q.nv)||'':(ME&&isSalesRole()?ME.name:''), isEdit)}</select>
       </div>
       <div class="field"><label>Ngày/Tháng/Năm</label>
         <div style="display:grid;grid-template-columns:1fr 1.1fr 1.15fr;gap:8px">
@@ -6776,7 +6783,7 @@ async function importOrdersFromExcelFile(file){
     if(!Array.isArray(DB.quotes)) DB.quotes=[];
     if(!DB.seq) DB.seq={q:0,t:0,u:0,p:0};
     const used=new Set(DB.quotes.map(q=>String(q.code||'')));
-    const salesLocked=ME&&ME.role==='sales'&&!salesHasPerm('editAnyOrder');
+    const salesLocked=ME&&isSalesRole()&&!salesHasPerm('editAnyOrder');
     let ok=0, fail=0;
     const errors=[];
     for(let i=0;i<rows.length;i++){
@@ -7131,7 +7138,7 @@ function crmSalesStaff(){
   const seen=new Set();
   const out=[];
   (DB.users||[]).forEach(u=>{
-    if(!u||u.active===false||u.role!=='sales') return;
+    if(!u||u.active===false||(u.role!=='sales'&&u.role!=='telesales')) return;
     const name=String(u.name||'').trim();
     if(!name) return;
     const key=orderStaffNameKey(name);
@@ -7158,6 +7165,7 @@ function crmOwnerNames(){
 function crmFiltered(){
   const q=String(crmFilter.q||'').trim().toLowerCase();
   return (DB.crm||[]).filter(r=>{
+    if(!canViewCrmRow(r)) return false;
     const d=String(r.date||'');
     if(crmFilter.y && d.slice(0,4)!==crmFilter.y) return false;
     if(crmFilter.m && d.slice(5,7)!==crmFilter.m) return false;
@@ -7232,7 +7240,7 @@ function pageCrm(){
   }
   return `<div class="page-head"><div class="page-title">Khách hàng CRM</div>
     <button class="btn btn-primary" id="crmAdd">${I.plus} Thêm khách hàng</button></div>
-  <div class="page-sub" style="margin:-8px 0 16px">Nhân viên KD thêm khách mới. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
+  <div class="page-sub" style="margin:-8px 0 16px">Telesales xem tất cả khách. Nhân viên KD chỉ thấy khách «Trống» và khách do mình phụ trách. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
   <div class="sales-summary">
     <div class="ss-card">
       <div class="ss-lbl">Số khách</div>
@@ -8581,7 +8589,7 @@ function mergeUsersFromSync(local, remote){
       name:u.name||'',
       email:u.email||'',
       phone:u.phone||'',
-      role:u.role||'sales',
+      role:normalizeAppRole(u.role),
       active:u.active!==false,
       pass:u.pass||'',
       avatar
@@ -8712,7 +8720,7 @@ function pageUsers(){
     <tbody>${DB.users.map(u=>`<tr class="${u.active?'':'locked'}">
       ${canMut?`<td class="chk-col"><input type="checkbox" data-uchk="${u.id}" ${userSelected.has(String(u.id))?'checked':''}></td>`:''}
       <td><b>${esc(u.name)}</b></td><td><div class="u-photo">${userAvatarInner(u)}</div></td><td style="color:var(--muted)">${esc(u.email)}</td><td class="mono">${esc(u.phone)}</td>
-      <td><span class="pill ${ROLE[u.role].c}">${I.shield} ${ROLE[u.role].t}</span></td>
+      <td><span class="pill ${(ROLE[u.role]||ROLE.sales).c}">${I.shield} ${(ROLE[u.role]||ROLE.sales).t}</span></td>
       <td class="${u.active?'st-on':'st-off'}">${u.active?'Hoạt động':'Bị khóa'}</td>
       ${canMut?`<td><div class="act"><button data-eu="${u.id}" title="Sửa">${I.pen}</button>
         <button class="${u.active?'del':'ok'}" data-lu="${u.id}" title="${u.active?'Khóa tài khoản':'Mở khóa'}">${u.active?I.ux:I.uok}</button>
