@@ -1041,21 +1041,22 @@ function isTelesalesRosterName(name){
     return key===want || key.endsWith(want) || key.includes(want);
   });
 }
-/** Ép role telesales cho roster — trả về số user đã đổi. */
-function ensureTelesalesRoles(){
-  if(!Array.isArray(DB.users)) return 0;
-  let n=0;
-  DB.users.forEach(u=>{
-    if(!u||!isTelesalesRosterName(u.name)) return;
-    if(u.role==='admin') return;
-    if(u.role!=='telesales'){ u.role='telesales'; n++; }
-  });
-  if(ME&&isTelesalesRosterName(ME.name)&&ME.role!=='admin'&&ME.role!=='telesales'){
-    ME.role='telesales';
-    try{ saveAppSession(ME); }catch(e){}
-  }
-  return n;
+/**
+ * Vai trò hiệu lực: roster 7 telesale được coi là Telesales dù DB vẫn để sales
+ * (không bắt buộc migration Supabase).
+ */
+function effectiveUserRole(u){
+  u=u||ME;
+  if(!u) return 'sales';
+  if(u.role==='admin'||u.role==='manager') return u.role;
+  if(u.role==='telesales'||isTelesalesRosterName(u.name)) return 'telesales';
+  return normalizeAppRole(u.role);
 }
+function roleMeta(u){
+  return ROLE[effectiveUserRole(u)]||ROLE.sales;
+}
+/** Giữ tương thích call-site cũ — không ghi đè role lên DB. */
+function ensureTelesalesRoles(){ return 0; }
 const SALES_PERM_DEFAULTS={
   viewAllOrders:true,
   editAnyOrder:false,
@@ -1090,9 +1091,16 @@ function salesHasPerm(key){
   const p=normalizeSalesPerms(DB.settings);
   return !!p[key];
 }
-function isSalesRole(){ return !!(ME&&(ME.role==='sales'||ME.role==='telesales')); }
-function isAdmin(){ return !!(ME&&ME.role==='admin'); }
-function isAdminOrManager(){ return !!(ME&&(ME.role==='admin'||ME.role==='manager')); }
+function isSalesRole(){
+  const r=effectiveUserRole(ME);
+  return r==='sales'||r==='telesales';
+}
+function isTelesalesRole(){ return effectiveUserRole(ME)==='telesales'; }
+function isAdmin(){ return effectiveUserRole(ME)==='admin'; }
+function isAdminOrManager(){
+  const r=effectiveUserRole(ME);
+  return r==='admin'||r==='manager';
+}
 /** CRM / Đơn hàng: chỉ Admin được sửa hoặc xóa dữ liệu hiện có. */
 function canMutateCrmData(){ return isAdmin(); }
 function canMutateOrderData(){ return isAdmin(); }
@@ -1145,7 +1153,8 @@ function canViewOrder(q){
 /** CRM: Admin / Manager / Telesales xem tất cả; Nhân viên KD chỉ xem Trống + của mình. */
 function canViewCrmRow(r){
   if(!ME) return false;
-  if(ME.role!=='sales') return true;
+  const role=effectiveUserRole(ME);
+  if(role!=='sales') return true; // admin, manager, telesales
   if(crmIsUnassigned(r&&r.owner)) return true;
   return orderStaffNameKey(r&&r.owner)===orderStaffNameKey(ME.name);
 }
@@ -2877,14 +2886,9 @@ async function enterApp(u, opt){
     applyPimgToDB();
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
-    const telesalesFixed=ensureTelesalesRoles();
+    ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(telesalesFixed>0){
-      _saveDB();
-      usersOnlyPush=true;
-      toast('Đã chuyển '+telesalesFixed+' tài khoản sang vai trò Telesales','ok');
-    }
     if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
@@ -3138,7 +3142,7 @@ function renderSidebar(){
    <nav class="sb-nav">${NAV.map(n=>n.sub?grp(n):
      `<button class="nav-item ${ROUTE===n.k?'active':''}" data-go="${n.k}">${I[n.i]}<span>${n.t}</span></button>`).join('')}</nav>
    <div class="sb-foot">
-     <div class="sb-user"><button type="button" class="avatar" id="sbAvatar" title="Đổi ảnh đại diện">${userAvatarInner(ME)}</button><div><b>${esc(ME.name)}</b><span>${(ROLE[ME.role]||ROLE.sales).t}</span></div></div>
+     <div class="sb-user"><button type="button" class="avatar" id="sbAvatar" title="Đổi ảnh đại diện">${userAvatarInner(ME)}</button><div><b>${esc(ME.name)}</b><span>${roleMeta(ME).t}</span></div></div>
      <input type="file" id="sbAvatarFile" accept="image/*" hidden>
      <button class="logout" id="btnLogout">${I.out}<span>Đăng xuất</span></button>
    </div>`;
@@ -8724,7 +8728,7 @@ function pageUsers(){
     <tbody>${DB.users.map(u=>`<tr class="${u.active?'':'locked'}">
       ${canMut?`<td class="chk-col"><input type="checkbox" data-uchk="${u.id}" ${userSelected.has(String(u.id))?'checked':''}></td>`:''}
       <td><b>${esc(u.name)}</b></td><td><div class="u-photo">${userAvatarInner(u)}</div></td><td style="color:var(--muted)">${esc(u.email)}</td><td class="mono">${esc(u.phone)}</td>
-      <td><span class="pill ${(ROLE[u.role]||ROLE.sales).c}">${I.shield} ${(ROLE[u.role]||ROLE.sales).t}</span></td>
+      <td><span class="pill ${roleMeta(u).c}">${I.shield} ${roleMeta(u).t}</span></td>
       <td class="${u.active?'st-on':'st-off'}">${u.active?'Hoạt động':'Bị khóa'}</td>
       ${canMut?`<td><div class="act"><button data-eu="${u.id}" title="Sửa">${I.pen}</button>
         <button class="${u.active?'del':'ok'}" data-lu="${u.id}" title="${u.active?'Khóa tài khoản':'Mở khóa'}">${u.active?I.ux:I.uok}</button>
