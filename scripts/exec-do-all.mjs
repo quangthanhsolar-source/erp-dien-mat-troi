@@ -1,0 +1,45 @@
+import fs from 'fs';
+import path from 'path';
+
+const tmp = 'C:\\Users\\Administrator\\AppData\\Local\\Temp';
+const tokenPath = path.join(process.env.USERPROFILE || '', '.supabase', 'access-token');
+const projectId = 'ceiuwiamqszmxmqtbemy';
+const start = Number(process.argv[2] ?? 1);
+const end = Number(process.argv[3] ?? 30);
+const concurrency = Number(process.argv[4] ?? 1);
+
+let token = process.env.SUPABASE_ACCESS_TOKEN;
+if (!token && fs.existsSync(tokenPath)) {
+  token = fs.readFileSync(tokenPath, 'utf8').trim();
+}
+if (!token) {
+  console.error('NO_TOKEN');
+  process.exit(2);
+}
+
+async function runOne(i) {
+  const tag = String(i).padStart(2, '0');
+  const j = JSON.parse(fs.readFileSync(path.join(tmp, `exec-d${tag}.json`), 'utf8'));
+  const res = await fetch(`https://api.supabase.com/v1/projects/${projectId}/database/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query: j.query }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`d${tag} HTTP ${res.status}: ${text.slice(0, 500)}`);
+  }
+  return `d${tag} ok`;
+}
+
+const indices = [];
+for (let i = start; i <= end; i++) indices.push(i);
+
+for (let p = 0; p < indices.length; p += concurrency) {
+  const batch = indices.slice(p, p + concurrency);
+  const results = await Promise.all(batch.map(runOne));
+  console.log(results.join(', '));
+}

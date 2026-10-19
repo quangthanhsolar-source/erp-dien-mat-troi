@@ -16,7 +16,21 @@
       "**/*.bak",
       "**/DEPLOY.md",
       "**/README.md",
-      "**/*.md"
+      "**/*.md",
+      "scripts/**",
+      ".cursor/**",
+      "node_modules/**",
+      "android/**",
+      "ios/**",
+      "www/**",
+      "package.json",
+      "package-lock.json",
+      "capacitor.config.ts",
+      "capacitor.config.json",
+      "docs/**",
+      "*.keystore",
+      "*.jks",
+      "keystore.properties"
     ],
     "headers": [
       {

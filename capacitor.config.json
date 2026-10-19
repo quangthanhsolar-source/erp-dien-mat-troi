@@ -1,0 +1,31 @@
+{
+  "appId": "com.quangthanhsolar.erp",
+  "appName": "Quang Thanh Solar ERP",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.quangthanhsolar.com",
+    "androidScheme": "https",
+    "allowNavigation": [
+      "app.quangthanhsolar.com",
+      "*.quangthanhsolar.com",
+      "*.supabase.co",
+      "ceiuwiamqszmxmqtbemy.supabase.co"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#111214",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#111214"
+    }
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#111214"
+  }
+}

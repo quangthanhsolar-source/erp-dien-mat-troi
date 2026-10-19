@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Brand sun mark (safe-zone centered) -->
+    <path
+        android:fillColor="#C6F24E"
+        android:pathData="M54,32c-12.15,0 -22,9.85 -22,22s9.85,22 22,22 22,-9.85 22,-22 -9.85,-22 -22,-22z" />
+    <path
+        android:fillColor="#C6F24E"
+        android:pathData="M52,14h4v12h-4zM52,82h4v12h-4zM14,52h12v4H14zM82,52h12v4H82zM25.6,25.6l8.5,8.5 -2.8,2.8 -8.5,-8.5zM76.7,71.1l8.5,8.5 -2.8,2.8 -8.5,-8.5zM71.1,25.6l2.8,2.8 -8.5,8.5 -2.8,-2.8zM25.6,76.7l2.8,2.8 8.5,-8.5 -2.8,-2.8z" />
+</vector>

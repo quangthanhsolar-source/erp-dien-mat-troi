@@ -1,25 +1,37 @@
-﻿# Dependencies
-node_modules/
+﻿node_modules/
+.DS_Store
+Thumbs.db
 
-# Firebase
-.firebase/
-firebase-debug.log
-firebase-debug.*.log
-*.log
-
-# Environment / secrets
+# Secrets / signing
+*.keystore
+*.jks
+mobile-release.keystore
+android/keystore.properties
+keystore.properties
+local.properties
 .env
 .env.*
 !.env.example
 
-# OS / editor
-.DS_Store
-Thumbs.db
-*.swp
+# Build / IDE
 .idea/
-.vscode/
+*.iml
+**/.gradle/
+**/build/
+dist/
+.capacitor/
+*.log
+ios/
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+supabase/.temp/
+
+# Local backups / agent temp junk
 *.bak
 *.bak*
-
-# Local scripts / backups
 index.html.bak-section-img
+.cursor/_*
+.cursor/_*/
+scripts/_*
+scripts/**/_*

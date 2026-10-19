@@ -1,0 +1,25 @@
+{
+  "name": "quang-thanh-solar-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Quang Thanh Solar ERP — Capacitor Android shell for Google Play",
+  "scripts": {
+    "mobile:sync": "npx cap sync android",
+    "mobile:open": "npx cap open android",
+    "mobile:add:android": "npx cap add android",
+    "mobile:copy": "npx cap copy android",
+    "mobile:bundle": "npm run mobile:sync && node -e \"require('child_process').execSync('gradlew.bat bundleRelease',{cwd:'android',stdio:'inherit',shell:true})\"",
+    "mobile:assemble": "npm run mobile:sync && node -e \"require('child_process').execSync('gradlew.bat assembleRelease',{cwd:'android',stdio:'inherit',shell:true})\""
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/splash-screen": "^7.0.3",
+    "@capacitor/status-bar": "^7.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "xlsx": "^0.18.5"
+  }
+}
