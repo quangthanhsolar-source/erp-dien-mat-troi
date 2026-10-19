@@ -10,25 +10,30 @@ Repo GitHub: https://github.com/quangthanhsolar-source/erp-dien-mat-troi
 
 ## Deploy production (`app.quangthanhsolar.com`)
 
-Luồng A — **sửa → push `main` → site tự cập nhật** (không realtime khi gõ; cập nhật sau khi CI chạy xong, thường 1–3 phút):
-
-```text
-Chỉnh sửa trong Cursor → commit → push origin main
-        → GitHub Actions (Deploy Firebase Hosting)
-        → Firebase Hosting → https://app.quangthanhsolar.com
-```
-
-Yêu cầu trên GitHub repo:
-1. Secret **`FIREBASE_TOKEN`** (Settings → Secrets and variables → Actions)
-2. Quyền push nhánh `main`
-
-Tạo token Firebase (một lần, trên máy đã cài Firebase CLI):
+### Tự động (khuyến nghị khi chỉnh trên Cursor)
 
 ```bash
-npx firebase login:ci
+npm run sync:auto
 ```
 
-Dán giá trị vào secret `FIREBASE_TOKEN`. Có thể chạy lại workflow thủ công: Actions → Deploy Firebase Hosting → Run workflow.
+Luồng:
+
+```text
+Sửa + Save file trong Cursor
+  → auto-sync (debounce ~8s)
+  → commit + push main + firebase deploy
+  → Ctrl+F5 https://app.quangthanhsolar.com  → thấy bản mới
+```
+
+Hard refresh trình duyệt **không** tự push; việc push/deploy chạy khi bạn **Save** file. Sau khi sync xong, Ctrl+F5 trên production để tải bản mới.
+
+### Thủ công
+
+```text
+commit → push origin main → GitHub Actions → Firebase Hosting
+```
+
+Cần secret GitHub **`FIREBASE_TOKEN`** và quyền push `main`.
 
 ## Chạy local (web)
 

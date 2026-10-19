@@ -12,6 +12,8 @@ local.properties
 .env
 .env.*
 !.env.example
+.firebase-ci-token
+.auto-sync.lock
 
 # Build / IDE
 .idea/

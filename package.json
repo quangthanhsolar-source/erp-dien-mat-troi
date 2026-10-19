@@ -4,6 +4,7 @@
   "private": true,
   "description": "Quang Thanh Solar ERP — Capacitor Android shell for Google Play",
   "scripts": {
+    "sync:auto": "node scripts/auto-sync-production.mjs",
     "mobile:sync": "npx cap sync android",
     "mobile:open": "npx cap open android",
     "mobile:add:android": "npx cap add android",
