@@ -5925,7 +5925,7 @@ function quoteListSection(){
       const catTxt=orderCatLabel(q.cat)||q.catLabel||'';
       const hh=orderCommission(q);
       const canEd=canEditOrder(q);
-      const edTitle=canEd?'Double-click để sửa':'Chỉ phụ trách đơn mới được sửa';
+      const edTitle=canEd?'Double-click để sửa':'Chỉ Admin được sửa / xóa';
       const edAttr=(field)=>{
         const money=field==='total'||field==='deposit'||field==='paid'||field==='debt';
         const cls=['ord-ed',canEd?'':'ord-ro',money?'num mono':'',field==='monthLabel'?'mono':''].filter(Boolean).join(' ');
