@@ -1015,6 +1015,11 @@ const APP_ROLES=['admin','manager','sales','telesales'];
 function normalizeAppRole(role){
   return APP_ROLES.includes(role)?role:'sales';
 }
+/** Role ghi lên Supabase: map telesales → sales khi chưa có migration constraint. */
+function cloudSafeRole(role){
+  const r=normalizeAppRole(role);
+  return r==='telesales'?'sales':r;
+}
 /** Danh sách chuyển sang Telesales (khớp tên trên Người dùng). */
 const TELESALES_ROSTER=[
   'Phạm Thị Yến Nhi',
@@ -2511,7 +2516,7 @@ async function pushDBToSupabase(){
       name:u.name||null,
       email:u.email||null,
       phone:u.phone||null,
-      role:normalizeAppRole(u.role),
+      role:cloudSafeRole(u.role),
       active:u.active!==false,
       pass:u.pass||null,
       avatar:u.avatar||null,
