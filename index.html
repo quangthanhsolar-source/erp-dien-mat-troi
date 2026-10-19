@@ -3055,6 +3055,8 @@ const NAV=[
  {k:'customers',t:'Đơn hàng',i:'book'},
  {k:'device',t:'Thiết bị',i:'cpu',sub:[{k:'dev-panel',t:'Tấm pin'},{k:'dev-inverter',t:'Biến tần'},{k:'dev-battery',t:'Pin lưu trữ'},{k:'dev-cabinet',t:'Tủ điện'},{k:'dev-pump',t:'Biến tần bơm'},{k:'dev-accessory',t:'Phụ kiện & Giám sát'},{k:'dev-mount',t:'Khung đỡ & Vật tư'},{k:'dev-cable',t:'Dây cáp'}]},
  {k:'wh',t:'Kho hàng',i:'box',sub:[{k:'stock',t:'Tồn kho'},{k:'trans',t:'Nhập/Xuất kho'}]},
+ {k:'attendance',t:'Chấm công',i:'clock'},
+ {k:'assets',t:'Quản lý tài sản',i:'build'},
  {k:'users',t:'Người dùng',i:'users'},
  {k:'settings',t:'Cài đặt',i:'gear'},
 ];
@@ -8862,7 +8864,15 @@ function bindSettings(){
 const EYE={dashboard:'Tổng quan',crm:'Khách hàng',"quote-new":'Báo giá NLMT',customers:'Đơn hàng',contracts:'Hợp đồng',
  "dev-inverter":'Thiết bị',"dev-panel":'Thiết bị',"dev-battery":'Thiết bị',"dev-cabinet":'Thiết bị',"dev-service":'Thiết bị',
  "dev-light":'Thiết bị',"dev-pump":'Thiết bị',"dev-accessory":'Thiết bị',"dev-mount":'Thiết bị',"dev-cable":'Thiết bị',
- stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',users:'Hệ thống',settings:'Hệ thống'};
+ stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
+function pageAttendance(){
+  return `<div class="page-head"><div class="page-title">${I.clock} Chấm công</div></div>
+    <div class="card" style="padding:24px;color:var(--muted)">Module Chấm công — nội dung sẽ bổ sung sau.</div>`;
+}
+function pageAssets(){
+  return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div></div>
+    <div class="card" style="padding:24px;color:var(--muted)">Module Quản lý tài sản — nội dung sẽ bổ sung sau.</div>`;
+}
 function renderPage(){
   const m=$('#main');
   switch(ROUTE){
@@ -8878,6 +8888,8 @@ function renderPage(){
     case 'stock': m.innerHTML=pageStock();bindStock();break;
     case 'trans': m.innerHTML=pageTrans();bindTrans();break;
     case 'suppliers': m.innerHTML=pageSuppliers();bindSuppliers();break;
+    case 'attendance': m.innerHTML=pageAttendance();break;
+    case 'assets': m.innerHTML=pageAssets();break;
     case 'users': m.innerHTML=pageUsers();bindUsers();break;
     case 'settings': m.innerHTML=pageSettings();bindSettings();break;
     default: m.innerHTML=pageDashboard();
@@ -8891,6 +8903,7 @@ function renderPage(){
     'dev-inverter':'Biến tần','dev-panel':'Tấm pin','dev-battery':'Pin lưu trữ',
     'dev-cabinet':'Tủ điện','dev-light':'Đèn NLMT','dev-accessory':'Phụ kiện','dev-service':'Dịch vụ',
     stock:'Tồn kho',trans:'Nhập/Xuất kho',suppliers:'Nhà cung cấp',
+    attendance:'Chấm công',assets:'Quản lý tài sản',
     users:'Người dùng',settings:'Cài đặt'};
   if(tbT) tbT.textContent=TITLES[ROUTE]||'Quang Thanh Solar';
   // Sync bottom nav
