@@ -1041,7 +1041,11 @@ function salesHasPerm(key){
   return !!p[key];
 }
 function isSalesRole(){ return !!(ME&&ME.role==='sales'); }
+function isAdmin(){ return !!(ME&&ME.role==='admin'); }
 function isAdminOrManager(){ return !!(ME&&ME.role&&ME.role!=='sales'); }
+/** CRM / Đơn hàng: chỉ Admin được sửa hoặc xóa dữ liệu hiện có. */
+function canMutateCrmData(){ return isAdmin(); }
+function canMutateOrderData(){ return isAdmin(); }
 function canManageUsers(){
   if(!ME) return false;
   if(ME.role!=='sales') return true;
@@ -1079,10 +1083,8 @@ function orderOwnedByMe(q){
   return !!a&&!!b&&a===b;
 }
 function canEditOrder(q){
-  if(!ME) return false;
-  if(ME.role!=='sales') return true;
-  if(salesHasPerm('editAnyOrder')) return true;
-  return orderOwnedByMe(q);
+  // Chỉ Admin được sửa / xóa đơn hàng (yêu cầu nghiệp vụ).
+  return canMutateOrderData();
 }
 function canViewOrder(q){
   if(!ME) return false;
@@ -3183,25 +3185,26 @@ function slimQtValue(v){
   }
   return v;
 }
+function clearQtDraft(){
+  try{ localStorage.removeItem(QT_DRAFT_KEY); }catch(e){}
+}
 function persistQtDraft(){
-  if(!QT) return;
-  try{ localStorage.setItem(QT_DRAFT_KEY, JSON.stringify(slimQtValue(QT))); }catch(e){ console.warn('qt draft', e); }
+  // Không còn lưu nháp qua refresh — mỗi lần tải trang là báo giá mới.
+  clearQtDraft();
 }
 let _qtDraftTimer=null;
 let _qtQtyLockInit=false;
 let _qtPriceLockInit=false;
 function scheduleQtDraft(){
+  // Giữ hàm để không phá call-site; không ghi localStorage.
   if(_qtDraftTimer) clearTimeout(_qtDraftTimer);
-  _qtDraftTimer=setTimeout(()=>{ _qtDraftTimer=null; persistQtDraft(); }, 180);
+  _qtDraftTimer=null;
 }
 function loadQtDraft(){
-  try{
-    const raw=localStorage.getItem(QT_DRAFT_KEY);
-    if(!raw) return null;
-    const d=JSON.parse(raw);
-    return d&&typeof d==='object'?d:null;
-  }catch(e){ return null; }
+  return null;
 }
+// Refresh / mở lại trang: luôn bỏ bản nháp cũ.
+clearQtDraft();
 /** Tải lại trang: bỏ số lượng và giá đã lưu, để buildItems tính lại theo công thức và giá niêm yết. */
 function resetQuoteNumbersToFormula(qt){
   if(!qt) return;
@@ -3228,21 +3231,9 @@ function resetQuoteNumbersToFormula(qt){
   });
 }
 function restoreQtDraft(){
-  const d=loadQtDraft();
-  const base=newQT();
-  if(!d) return base;
-  const qt=Object.assign(base, d);
-  // Tải lại trang: luôn để trống thông tin khách — không giữ tên/SĐT/địa chỉ cũ trong draft.
-  qt.cus={company:'',name:'',phone:'',addr:'',site:'',cccd:'',note:''};
-  qt.showCus=false;
-  qt.pay=Object.assign(base.pay||{p1:0,p2:0,p3:0}, d.pay||{});
-  qt.svc=(d.svc&&typeof d.svc==='object')?d.svc:{};
-  qt.omitSecs=(d.omitSecs&&typeof d.omitSecs==='object')?d.omitSecs:{};
-  qt.omitRows=(d.omitRows&&typeof d.omitRows==='object')?d.omitRows:{};
-  qt.qtyKeep={};
-  if(!Array.isArray(qt.dealerExtras)) qt.dealerExtras=[];
-  resetQuoteNumbersToFormula(qt);
-  return qt;
+  // Mặc định luôn tạo báo giá mới (không khôi phục bản cũ sau refresh).
+  clearQtDraft();
+  return newQT();
 }
 function hasQuoteCusInfo(c){
   c=c||{};
@@ -4346,7 +4337,7 @@ function totals(){
   return{sub,vat,disc,grand:Math.max(0,sub+vat-disc),profit:QT.items.reduce((s,i)=>i._disc?s:s+i.qty*(i.price-(i.cost||0)),0)-disc};
 }
 function pageQuoteNew(){
-  if(!QT) QT=restoreQtDraft();
+  if(!QT) QT=newQT();
   const opt=(arr,sel,lbl)=>arr.map(o=>`<option value="${o.id}" ${o.id==sel?'selected':''}>${esc(lbl(o))}</option>`).join('');
   const panelLbl=o=>{
     const w=+o.w||0;
