@@ -11277,28 +11277,28 @@ function buildHdPdfHtml(){
   const css=`<style>
 @page{size:A4 portrait;margin:12mm 14mm}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-body{font-family:'Times New Roman',Times,serif;font-size:11.5pt;color:#111;width:182mm;margin:0 auto;line-height:1.45}
+body{font-family:'Times New Roman',Times,serif;font-size:13pt;color:#111;width:182mm;margin:0 auto;line-height:1.45}
 .center{text-align:center}.right{text-align:right}.bold{font-weight:700}
 .hd-head{position:relative;text-align:center;margin:0 0 1mm;min-height:16mm}
 .hd-logo{position:absolute;left:0;top:0;width:42mm;height:auto;max-height:14mm;object-fit:contain;display:block;image-rendering:-webkit-optimize-contrast}
-.nation{font-weight:700;font-size:12pt;text-transform:uppercase}
+.nation{font-weight:700;font-size:13.5pt;text-transform:uppercase}
 .motto{font-style:italic;margin-top:1mm}.stars{margin:2mm 0 3mm;letter-spacing:2px}
-.hd-title{font-weight:700;font-size:14pt;text-transform:uppercase;margin:2mm 0 1mm}
+.hd-title{font-weight:700;font-size:15.5pt;text-transform:uppercase;margin:2mm 0 1mm}
 .hd-sub{font-style:italic;margin-bottom:2mm}
 .hd-so{margin-bottom:4mm}
 .sec{font-weight:700;text-transform:uppercase;margin:4mm 0 2mm;text-align:center}
 .p{margin:1.2mm 0;text-align:justify;page-break-inside:avoid;break-inside:avoid}
 .party{margin:3mm 0;border:1px solid #333;padding:2.5mm 3mm;page-break-inside:avoid;break-inside:avoid}
-.party h4{font-size:11.5pt;margin-bottom:1.5mm;text-transform:uppercase}
-.party > .bold{font-size:11.5pt;font-weight:700;margin:0 0 1.5mm;line-height:1.35}
+.party h4{font-size:13pt;margin-bottom:1.5mm;text-transform:uppercase}
+.party > .bold{font-size:13pt;font-weight:700;margin:0 0 1.5mm;line-height:1.35}
 .party .row{display:flex;gap:2mm;margin:.6mm 0}
 .party .lbl{min-width:32mm;flex:0 0 auto}.party .val{flex:1;font-weight:700;border-bottom:1px dotted #999;min-height:4.5mm}
 .article{font-weight:700;margin:3.5mm 0 1.5mm;page-break-after:avoid;break-after:avoid}
-.sign{display:flex;justify-content:space-between;margin-top:10mm;page-break-inside:avoid;break-inside:avoid;font-size:11.5pt}
+.sign{display:flex;justify-content:space-between;margin-top:10mm;page-break-inside:avoid;break-inside:avoid;font-size:13pt}
 .sign .col{width:45%;text-align:center}
-.sign .bold{font-size:11.5pt;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
-.sign .hint{font-size:11.5pt;margin-top:1.2mm;color:#222}
-.sign .name{margin-top:24mm;font-weight:700;font-size:11.5pt}
+.sign .bold{font-size:13pt;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.sign .hint{font-size:13pt;margin-top:1.2mm;color:#222}
+.sign .name{margin-top:24mm;font-weight:700;font-size:13pt}
 ul{margin:1mm 0 1mm 5mm;page-break-inside:avoid;break-inside:avoid}li{margin:.4mm 0;page-break-inside:avoid;break-inside:avoid}
 </style>`;
 
@@ -11508,8 +11508,8 @@ function contractHtmlForWord(fullHtml){
     const t=doc.createElement('table');
     t.setAttribute('width','100%');
     t.innerHTML=`<tr>
-      <td width="120" valign="bottom" style="${F};font-size:11.5pt;width:32mm;border:none;vertical-align:bottom">${lbl?lbl.innerHTML:''}</td>
-      <td valign="bottom" style="${F};font-size:11.5pt;font-weight:bold;border:none;border-bottom:1px dotted #999;vertical-align:bottom">${val?val.innerHTML:''}</td>
+      <td width="120" valign="bottom" style="${F};font-size:13pt;width:32mm;border:none;vertical-align:bottom">${lbl?lbl.innerHTML:''}</td>
+      <td valign="bottom" style="${F};font-size:13pt;font-weight:bold;border:none;border-bottom:1px dotted #999;vertical-align:bottom">${val?val.innerHTML:''}</td>
     </tr>`;
     styleOf(t,'border-collapse:collapse;border:none;width:100%;margin:2pt 0');
     row.replaceWith(t);
@@ -11524,7 +11524,7 @@ function contractHtmlForWord(fullHtml){
       const td=doc.createElement('td');
       td.setAttribute('width','50%');
       td.setAttribute('align','center');
-      styleOf(td,'width:50%;text-align:center;vertical-align:top;border:none;font-size:11.5pt');
+      styleOf(td,'width:50%;text-align:center;vertical-align:top;border:none;font-size:13pt');
       td.innerHTML=col.innerHTML;
       tr.appendChild(td);
     });
@@ -11532,28 +11532,28 @@ function contractHtmlForWord(fullHtml){
     sign.replaceWith(table);
   });
   const rules=[
-    ['.nation','font-size:12pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:0'],
-    ['.motto','font-size:11.5pt;font-style:italic;text-align:center;margin:2pt 0 0'],
-    ['.stars','font-size:11.5pt;text-align:center;letter-spacing:2px;margin:4pt 0 6pt'],
-    ['.hd-title','font-size:14pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:8pt 0 2pt'],
-    ['.hd-sub','font-size:11.5pt;font-style:italic;text-align:center;margin:0 0 2pt'],
-    ['.hd-so','font-size:11.5pt;text-align:center;margin:2pt 0 8pt'],
-    ['.sec','font-size:11.5pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:12pt 0 6pt'],
-    ['.article','font-size:11.5pt;font-weight:bold;margin:12pt 0 4pt'],
-    ['.p','font-size:11.5pt;text-align:justify;margin:3pt 0;line-height:1.45'],
-    ['li','font-size:11.5pt;margin:2pt 0;line-height:1.45'],
-    ['h4','font-size:11.5pt;font-weight:bold;text-transform:uppercase;margin:0 0 4pt'],
-    ['.bold','font-size:11.5pt;font-weight:bold'],
-    ['.hint','font-size:11.5pt;text-align:center;margin-top:2pt'],
-    ['.name','font-size:11.5pt;font-weight:bold;text-align:center;margin-top:48pt'],
-    ['.party','font-size:11.5pt;border:1px solid #333;padding:6pt 8pt;margin:8pt 0']
+    ['.nation','font-size:13.5pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:0'],
+    ['.motto','font-size:13pt;font-style:italic;text-align:center;margin:2pt 0 0'],
+    ['.stars','font-size:13pt;text-align:center;letter-spacing:2px;margin:4pt 0 6pt'],
+    ['.hd-title','font-size:15.5pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:8pt 0 2pt'],
+    ['.hd-sub','font-size:13pt;font-style:italic;text-align:center;margin:0 0 2pt'],
+    ['.hd-so','font-size:13pt;text-align:center;margin:2pt 0 8pt'],
+    ['.sec','font-size:13pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:12pt 0 6pt'],
+    ['.article','font-size:13pt;font-weight:bold;margin:12pt 0 4pt'],
+    ['.p','font-size:13pt;text-align:justify;margin:3pt 0;line-height:1.45'],
+    ['li','font-size:13pt;margin:2pt 0;line-height:1.45'],
+    ['h4','font-size:13pt;font-weight:bold;text-transform:uppercase;margin:0 0 4pt'],
+    ['.bold','font-size:13pt;font-weight:bold'],
+    ['.hint','font-size:13pt;text-align:center;margin-top:2pt'],
+    ['.name','font-size:13pt;font-weight:bold;text-align:center;margin-top:48pt'],
+    ['.party','font-size:13pt;border:1px solid #333;padding:6pt 8pt;margin:8pt 0']
   ];
   rules.forEach(([sel,css])=>doc.querySelectorAll(sel).forEach(el=>styleOf(el,css)));
   doc.querySelectorAll('b,strong').forEach(el=>styleOf(el,'font-weight:bold'));
-  doc.body.setAttribute('style', F+';font-size:11.5pt;color:#111;line-height:1.45');
+  doc.body.setAttribute('style', F+';font-size:13pt;color:#111;line-height:1.45');
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-body,p,div,td,span,li,h4,b{font-family:"Times New Roman",Times,serif;font-size:11.5pt}
-</style></head><body style="${F};font-size:11.5pt;color:#111;line-height:1.45">${doc.body.innerHTML}</body></html>`;
+body,p,div,td,span,li,h4,b{font-family:"Times New Roman",Times,serif;font-size:13pt}
+</style></head><body style="${F};font-size:13pt;color:#111;line-height:1.45">${doc.body.innerHTML}</body></html>`;
 }
 async function downloadContractDocx(fullHtml, filename){
   const wordHtml=contractHtmlForWord(fullHtml);
