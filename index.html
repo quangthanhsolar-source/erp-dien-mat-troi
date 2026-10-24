@@ -217,17 +217,23 @@ tbody tr:active{background:var(--surface)}
 .ord-tbl .crm-info{white-space:pre-wrap;line-height:1.45;min-width:240px;max-width:460px}
 .ord-tbl .ord-note{white-space:pre-wrap;line-height:1.35;max-width:200px;max-height:4.6em;overflow:hidden;color:var(--muted);font-size:12px}
 .ord-tbl .crm-note-cell{min-width:140px;max-width:220px}
-.ord-tbl .crm-survey{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:128px;max-width:240px}
-.ord-tbl .crm-survey-item{position:relative;width:48px;height:48px;flex:0 0 auto}
-.ord-tbl .crm-survey-item img{width:48px;height:48px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--line,#e5e5e5);cursor:zoom-in;background:#f3f3f3}
-.ord-tbl .crm-survey-item .crm-survey-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#111;color:#fff;font-size:12px;line-height:20px;padding:0;cursor:pointer;display:grid;place-items:center}
-.ord-tbl .crm-survey-add{width:48px;height:48px;border-radius:8px;border:1px dashed var(--line,#ccc);background:#fafafa;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.ord-tbl .crm-survey{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:148px;max-width:280px}
+.ord-tbl .crm-survey-item{position:relative;width:52px;height:52px;flex:0 0 auto}
+.ord-tbl .crm-survey-item img{width:52px;height:52px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--line,#e5e5e5);cursor:zoom-in;background:#f3f3f3}
+.ord-tbl .crm-survey-file{width:auto;min-width:52px;max-width:120px;height:52px;padding:4px 6px;border-radius:8px;border:1px solid var(--line,#e5e5e5);background:#f7f7f7;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.ord-tbl .crm-survey-file .crm-survey-fname{font-size:10px;line-height:1.2;max-width:108px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#111)}
+.ord-tbl .crm-survey-actions{display:flex;gap:2px}
+.ord-tbl .crm-survey-actions button{width:22px;height:22px;border-radius:6px;border:none;background:#fff;color:var(--ink);display:grid;place-items:center;padding:0;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+.ord-tbl .crm-survey-actions button svg{width:12px;height:12px}
+.ord-tbl .crm-survey-item .crm-survey-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#111;color:#fff;font-size:12px;line-height:20px;padding:0;cursor:pointer;display:grid;place-items:center;z-index:1}
+.ord-tbl .crm-survey-add{width:52px;height:52px;border-radius:8px;border:1px dashed var(--line,#ccc);background:#fafafa;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
 .ord-tbl .crm-survey-add:hover{background:var(--lime,#d8f56a);color:var(--ink,#111);border-color:transparent}
 .ord-tbl .crm-survey-add svg{width:16px;height:16px}
 .ord-tbl .crm-survey-empty{color:var(--muted);font-size:11px}
 .crm-survey-modal-grid{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
-.crm-survey-modal-grid .crm-survey-item{width:72px;height:72px}
-.crm-survey-modal-grid .crm-survey-item img,.crm-survey-modal-grid .crm-survey-add{width:72px;height:72px}
+.crm-survey-modal-grid .crm-survey-item{width:78px;height:78px}
+.crm-survey-modal-grid .crm-survey-item img,.crm-survey-modal-grid .crm-survey-add{width:78px;height:78px}
+.crm-survey-modal-grid .crm-survey-file{width:120px;height:78px}
 .crm-survey-preview{max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:10px;object-fit:contain}
 .ord-tbl .ord-ed{cursor:text;min-width:48px}
 .ord-tbl .ord-ed:hover{background:rgba(0,0,0,.03)}
@@ -1844,6 +1850,15 @@ function cloneDBForLocalStorage(){
         }
         return p;
       });
+    }else if(k==='crm'){
+      // File khảo sát nặng nằm IndexedDB — localStorage chỉ giữ metadata + thumb nhỏ
+      data[k]=(DB.crm||[]).map(r=>{
+        if(!r) return r;
+        const files=crmSurveyMetaOnly(r);
+        const copy=Object.assign({},r,{surveyFiles:files});
+        delete copy.surveyImgs;
+        return copy;
+      });
     }else data[k]=DB[k];
   });
   return data;
@@ -2078,19 +2093,29 @@ function sbBundleToPayload(bundle){
     ...((r.attrs&&typeof r.attrs==='object')?r.attrs:{}),
     id:Number(r.id),name:r.name||'',phone:r.phone||'',address:r.address||'',note:r.note||''
   }));
-  data.crm=(bundle.crm||[]).map(r=>({
-    id:Number(r.id),
-    name:r.name||'',
-    phone:r.phone||'',
-    address:r.address||'',
-    demand:r.demand||'',
-    owner:r.owner||'',
-    date:r.lead_date||'',
-    source:r.source||'',
-    status:r.status||'',
-    note:r.note||'',
-    surveyImgs:Array.isArray(r.survey_imgs)?r.survey_imgs.filter(x=>typeof x==='string'&&x):[]
-  }));
+  data.crm=(bundle.crm||[]).map(r=>{
+    const remoteFiles=Array.isArray(r.survey_imgs)?r.survey_imgs:[];
+    const surveyFiles=crmSurveyFilesFromRemote(remoteFiles).map(({dataUrl,...meta})=>{
+      // dataUrl hydrate vào IDB bên dưới (không nhét vào localStorage)
+      if(dataUrl){
+        crmSurveyIdbPut(Number(r.id), meta.id, {name:meta.name,mime:meta.mime,kind:meta.kind,dataUrl,size:meta.size}).catch(()=>{});
+      }
+      return meta;
+    });
+    return {
+      id:Number(r.id),
+      name:r.name||'',
+      phone:r.phone||'',
+      address:r.address||'',
+      demand:r.demand||'',
+      owner:r.owner||'',
+      date:r.lead_date||'',
+      source:r.source||'',
+      status:r.status||'',
+      note:r.note||'',
+      surveyFiles
+    };
+  });
   data.suppliers=(bundle.suppliers||[]).map(r=>({
     ...((r.attrs&&typeof r.attrs==='object')?r.attrs:{}),
     id:Number(r.id),name:r.name||'',phone:r.phone||'',email:r.email||'',address:r.address||'',note:r.note||''
@@ -2563,7 +2588,8 @@ async function pushDBToSupabase(){
     await sbUpsertThenPrune('products',productRows,'id',{noPrune:true});
     await sbDeleteTombstonedProducts();
     await sbUpsertThenPrune('customers',customerRows,'id',{noPrune:true});
-    const crmRows=(DB.crm||[]).filter(r=>r&&r.id!=null&&syncRowChanged('crm', r.id, r)).map(r=>({
+    const crmChanged=(DB.crm||[]).filter(r=>r&&r.id!=null&&syncRowChanged('crm', r.id, r));
+    const crmRows=await Promise.all(crmChanged.map(async r=>({
       id:Number(r.id),
       name:r.name||'',
       phone:r.phone||null,
@@ -2574,9 +2600,9 @@ async function pushDBToSupabase(){
       source:r.source||null,
       status:r.status||null,
       note:r.note||null,
-      survey_imgs:crmSurveyImgs(r),
+      survey_imgs:await crmSurveyFilesForSync(r),
       updated_at:now
-    }));
+    })));
     try{
       await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
     }catch(crmSyncErr){
@@ -7218,61 +7244,242 @@ function crmInfoText(r){
   if(r.demand) lines.push('Nhu cầu tiền điện: '+r.demand);
   return lines.join('\n');
 }
-const CRM_SURVEY_MAX=6;
-function crmSurveyImgs(r){
-  const arr=r&&Array.isArray(r.surveyImgs)?r.surveyImgs:[];
-  return arr.filter(x=>typeof x==='string'&&x.trim()).slice(0,CRM_SURVEY_MAX);
+const CRM_SURVEY_MAX=8;
+const CRM_SURVEY_MAX_BYTES=8*1024*1024;
+const CRM_SURVEY_ACCEPT='image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,application/pdf';
+const CRM_SURVEY_IDB_NAME='qts_crm_survey_v1';
+const CRM_SURVEY_IDB_STORE='files';
+let _crmSurveyIdb=null;
+function crmSurveyIdb(){
+  if(_crmSurveyIdb) return _crmSurveyIdb;
+  _crmSurveyIdb=new Promise((resolve,reject)=>{
+    try{
+      const req=indexedDB.open(CRM_SURVEY_IDB_NAME,1);
+      req.onupgradeneeded=()=>{
+        const db=req.result;
+        if(!db.objectStoreNames.contains(CRM_SURVEY_IDB_STORE)) db.createObjectStore(CRM_SURVEY_IDB_STORE);
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error||new Error('IndexedDB'));
+    }catch(e){ reject(e); }
+  });
+  return _crmSurveyIdb;
 }
-function crmNormalizeSurveyImgs(list){
-  return (Array.isArray(list)?list:[]).filter(x=>typeof x==='string'&&x.trim()).slice(0,CRM_SURVEY_MAX);
+function crmSurveyIdbKey(crmId, fileId){ return String(crmId)+'::'+String(fileId); }
+async function crmSurveyIdbPut(crmId, fileId, payload){
+  const db=await crmSurveyIdb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(CRM_SURVEY_IDB_STORE,'readwrite');
+    tx.objectStore(CRM_SURVEY_IDB_STORE).put(payload, crmSurveyIdbKey(crmId,fileId));
+    tx.oncomplete=()=>resolve(true);
+    tx.onerror=()=>reject(tx.error||new Error('IDB put'));
+  });
 }
+async function crmSurveyIdbGet(crmId, fileId){
+  const db=await crmSurveyIdb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(CRM_SURVEY_IDB_STORE,'readonly');
+    const req=tx.objectStore(CRM_SURVEY_IDB_STORE).get(crmSurveyIdbKey(crmId,fileId));
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error||new Error('IDB get'));
+  });
+}
+async function crmSurveyIdbDel(crmId, fileId){
+  const db=await crmSurveyIdb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(CRM_SURVEY_IDB_STORE,'readwrite');
+    tx.objectStore(CRM_SURVEY_IDB_STORE).delete(crmSurveyIdbKey(crmId,fileId));
+    tx.oncomplete=()=>resolve(true);
+    tx.onerror=()=>reject(tx.error||new Error('IDB del'));
+  });
+}
+function crmNewSurveyFileId(){ return 'sf_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+function crmSurveyIsImageMime(mime, name){
+  const m=String(mime||'').toLowerCase();
+  if(m.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(String(name||''));
+}
+function crmSurveyMetaOnly(r){
+  return crmSurveyList(r).map(f=>({
+    id:f.id,
+    name:f.name||'file',
+    mime:f.mime||'application/octet-stream',
+    size:Number(f.size)||0,
+    kind:f.kind==='image'?'image':'file',
+    thumb:(typeof f.thumb==='string'&&f.thumb.startsWith('data:')&&f.thumb.length<48000)?f.thumb:''
+  }));
+}
+/** Danh sách file khảo sát (metadata). Migrate surveyImgs cũ (data URL). */
+function crmSurveyList(r){
+  if(!r) return [];
+  if(Array.isArray(r.surveyFiles) && r.surveyFiles.length){
+    return r.surveyFiles.filter(f=>f&&f.id).slice(0,CRM_SURVEY_MAX);
+  }
+  // Legacy: surveyImgs = mảng data URL ảnh
+  const legacy=Array.isArray(r.surveyImgs)?r.surveyImgs.filter(x=>typeof x==='string'&&x.trim()):[];
+  if(!legacy.length) return [];
+  const migrated=legacy.slice(0,CRM_SURVEY_MAX).map((src,i)=>{
+    const id='legacy_'+i+'_'+String(r.id||'');
+    return {id, name:'khao-sat-'+(i+1)+'.jpg', mime:'image/jpeg', size:src.length, kind:'image', thumb:src.length<48000?src:'', _dataUrl:src};
+  });
+  r.surveyFiles=migrated.map(({_dataUrl,...meta})=>meta);
+  // hydrate IDB async (best-effort)
+  migrated.forEach(async f=>{
+    try{
+      if(f._dataUrl) await crmSurveyIdbPut(r.id, f.id, {name:f.name,mime:f.mime,kind:f.kind,dataUrl:f._dataUrl,size:f.size});
+    }catch(e){}
+  });
+  delete r.surveyImgs;
+  return r.surveyFiles.slice();
+}
+function crmSurveyImgs(r){ return crmSurveyList(r); } // alias tương thích
 function fileToDataUrl(file){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();
     r.onload=()=>resolve(String(r.result||''));
-    r.onerror=()=>reject(r.error||new Error('Không đọc được ảnh'));
+    r.onerror=()=>reject(r.error||new Error('Không đọc được file'));
     r.readAsDataURL(file);
   });
 }
-async function crmCompressSurveyFiles(fileList){
-  const files=[...fileList].filter(f=>f&&String(f.type||'').startsWith('image/'));
+async function crmMakeTinyThumb(dataUrl){
+  try{
+    return await compressProdImg(dataUrl, 96, 0.55);
+  }catch(e){ return ''; }
+}
+async function crmPrepareSurveyUploads(fileList){
+  const files=[...fileList].filter(Boolean);
   const out=[];
   for(const f of files){
     try{
-      const raw=await fileToDataUrl(f);
-      const compressed=await compressProdImg(raw, 960, 0.62);
-      if(compressed) out.push(compressed);
-    }catch(e){ console.warn('crm survey img', e); }
+      if(f.size>CRM_SURVEY_MAX_BYTES){
+        toast('«'+f.name+'» quá lớn (tối đa 8MB)','bad');
+        continue;
+      }
+      const mime=f.type||'application/octet-stream';
+      const isImg=crmSurveyIsImageMime(mime, f.name);
+      let dataUrl=await fileToDataUrl(f);
+      let thumb='';
+      let storeMime=mime;
+      let storeName=f.name||(isImg?'anh-khao-sat.jpg':'file-khao-sat');
+      if(isImg){
+        // Nén JPEG khi trình duyệt đọc được; HEIC/lỗi thì giữ bản gốc
+        try{
+          const compressed=await compressProdImg(dataUrl, 1280, 0.68);
+          if(compressed && compressed.startsWith('data:image')){
+            dataUrl=compressed;
+            storeMime='image/jpeg';
+            if(!/\.jpe?g$/i.test(storeName)) storeName=storeName.replace(/\.[^.]+$/,'')+'.jpg';
+          }
+        }catch(e){}
+        thumb=await crmMakeTinyThumb(dataUrl);
+      }
+      out.push({
+        id:crmNewSurveyFileId(),
+        name:storeName,
+        mime:storeMime,
+        size:dataUrl.length,
+        kind:isImg?'image':'file',
+        thumb:thumb||'',
+        dataUrl
+      });
+    }catch(e){
+      console.warn('crm survey upload', e);
+      toast('Không đọc được «'+(f&&f.name||'file')+'»','bad');
+    }
   }
   return out;
 }
-function crmSurveyCellHtml(r, canEd){
-  const imgs=crmSurveyImgs(r);
-  const id=r&&r.id;
-  const thumbs=imgs.map((src,i)=>`<div class="crm-survey-item">
-      <img src="${src}" alt="Khảo sát ${i+1}" data-crm-survey-view="${id}" data-crm-survey-idx="${i}" loading="lazy">
-      ${canEd?`<button type="button" class="crm-survey-x" title="Xóa ảnh" data-crm-survey-del="${id}" data-crm-survey-idx="${i}">×</button>`:''}
-    </div>`).join('');
-  const add=canEd&&imgs.length<CRM_SURVEY_MAX
-    ?`<label class="crm-survey-add" title="Thêm ảnh khảo sát (máy tính / điện thoại)">${I.up}<input type="file" accept="image/*" multiple hidden data-crm-survey-file="${id}"></label>`
-    :'';
-  if(!thumbs && !add) return '<span class="crm-survey-empty">Chưa có ảnh</span>';
-  return `<div class="crm-survey">${thumbs}${add}</div>`;
+async function crmAttachSurveyFiles(row, prepared){
+  if(!row||!prepared||!prepared.length) return 0;
+  if(!Array.isArray(row.surveyFiles)) row.surveyFiles=crmSurveyList(row);
+  let n=0;
+  for(const f of prepared){
+    if(row.surveyFiles.length>=CRM_SURVEY_MAX) break;
+    try{
+      await crmSurveyIdbPut(row.id, f.id, {name:f.name,mime:f.mime,kind:f.kind,dataUrl:f.dataUrl,size:f.size});
+      row.surveyFiles.push({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||''});
+      n++;
+    }catch(e){
+      console.warn(e);
+      toast('Không lưu được «'+f.name+'» vào bộ nhớ máy','bad');
+    }
+  }
+  delete row.surveyImgs;
+  return n;
 }
-function crmSurveyEditorHtml(imgs, inputId){
-  const list=crmNormalizeSurveyImgs(imgs);
-  const thumbs=list.map((src,i)=>`<div class="crm-survey-item">
-      <img src="${src}" alt="Khảo sát ${i+1}" data-crm-draft-view="${i}">
-      <button type="button" class="crm-survey-x" title="Xóa ảnh" data-crm-draft-del="${i}">×</button>
-    </div>`).join('');
-  const add=list.length<CRM_SURVEY_MAX
-    ?`<label class="crm-survey-add" title="Thêm ảnh khảo sát">${I.up}<input type="file" accept="image/*" multiple hidden id="${inputId}"></label>`
+async function crmSurveyGetDataUrl(crmId, fileMeta){
+  if(!fileMeta) return '';
+  if(fileMeta.dataUrl) return fileMeta.dataUrl;
+  try{
+    const hit=await crmSurveyIdbGet(crmId, fileMeta.id);
+    if(hit&&hit.dataUrl) return hit.dataUrl;
+  }catch(e){}
+  if(fileMeta.thumb) return fileMeta.thumb;
+  return '';
+}
+function crmSurveyDownload(name, dataUrl, mime){
+  if(!dataUrl){ toast('Không tìm thấy file để tải','bad'); return; }
+  try{
+    const a=document.createElement('a');
+    a.href=dataUrl;
+    a.download=name||'khao-sat';
+    a.rel='noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }catch(e){
+    toast('Không tải được file','bad');
+  }
+}
+function crmSurveyFileChipHtml(crmId, f, idx, canEd, draft){
+  const name=esc(f.name||('file-'+(idx+1)));
+  const viewAttr=draft?`data-crm-draft-view="${idx}"`:`data-crm-survey-view="${crmId}" data-crm-survey-idx="${idx}"`;
+  const dlAttr=draft?`data-crm-draft-dl="${idx}"`:`data-crm-survey-dl="${crmId}" data-crm-survey-idx="${idx}"`;
+  const delAttr=draft?`data-crm-draft-del="${idx}"`:`data-crm-survey-del="${crmId}" data-crm-survey-idx="${idx}"`;
+  if(f.kind==='image' && (f.thumb||f.dataUrl)){
+    const src=f.thumb||f.dataUrl;
+    return `<div class="crm-survey-item">
+      <img src="${src}" alt="${name}" ${viewAttr} loading="lazy" title="${name}">
+      <div class="crm-survey-actions" style="position:absolute;left:2px;bottom:2px">
+        <button type="button" title="Tải xuống" ${dlAttr}>${I.pdf}</button>
+      </div>
+      ${canEd?`<button type="button" class="crm-survey-x" title="Xóa" ${delAttr}>×</button>`:''}
+    </div>`;
+  }
+  return `<div class="crm-survey-item crm-survey-file" title="${name}">
+    <div class="crm-survey-fname">${name}</div>
+    <div class="crm-survey-actions">
+      <button type="button" title="Tải xuống" ${dlAttr}>${I.pdf}</button>
+      ${canEd?`<button type="button" title="Xóa" ${delAttr}>${I.trash}</button>`:''}
+    </div>
+  </div>`;
+}
+function crmSurveyCellHtml(r, canEd){
+  const files=crmSurveyList(r);
+  const id=r&&r.id;
+  const chips=files.map((f,i)=>crmSurveyFileChipHtml(id, f, i, canEd, false)).join('');
+  const add=canEd&&files.length<CRM_SURVEY_MAX
+    ?`<button type="button" class="crm-survey-add" title="Tải ảnh / file khảo sát" data-crm-survey-upload="${id}">${I.up}</button>`
     :'';
-  return `<div class="crm-survey-modal-grid" id="crmSurveyDraft">${thumbs}${add}</div>
-    <div style="margin-top:8px;font-size:12px;color:var(--muted)">Tối đa ${CRM_SURVEY_MAX} ảnh · máy tính hoặc điện thoại (chụp / chọn thư viện)</div>`;
+  if(!chips && !add) return '<span class="crm-survey-empty">Chưa có file</span>';
+  return `<div class="crm-survey">${chips}${add}</div>`;
+}
+function crmSurveyEditorHtml(files){
+  const list=(Array.isArray(files)?files:[]).slice(0,CRM_SURVEY_MAX);
+  const chips=list.map((f,i)=>crmSurveyFileChipHtml('draft', f, i, true, true)).join('');
+  const add=list.length<CRM_SURVEY_MAX
+    ?`<button type="button" class="crm-survey-add" title="Tải ảnh / file" id="crmSurveyUploadBtn">${I.up}</button>`
+    :'';
+  return `<div class="crm-survey-modal-grid" id="crmSurveyDraft">${chips}${add}</div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">Tối đa ${CRM_SURVEY_MAX} file (ảnh, PDF, Word, Excel…) · máy tính hoặc điện thoại · mỗi file ≤ 8MB</div>`;
 }
 function openCrmSurveyPreview(src){
   if(!src) return;
+  if(!String(src).startsWith('data:image') && !/\.(jpe?g|png|gif|webp)(\?|$)/i.test(src)){
+    // Không phải ảnh — mở tab / tải
+    window.open(src, '_blank', 'noopener');
+    return;
+  }
   let box=document.getElementById('crmSurveyLightbox');
   if(!box){
     box=document.createElement('div');
@@ -7284,6 +7491,46 @@ function openCrmSurveyPreview(src){
   box.innerHTML=`<img class="crm-survey-preview" src="${src}" alt="Khảo sát" style="cursor:default;max-width:min(960px,100%);max-height:90vh;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.45)">`;
   const img=box.querySelector('img');
   if(img) img.onclick=e=>e.stopPropagation();
+}
+async function crmSurveyFilesForSync(r){
+  const files=crmSurveyList(r);
+  const out=[];
+  for(const f of files){
+    const dataUrl=await crmSurveyGetDataUrl(r.id, f);
+    if(!dataUrl) continue;
+    out.push({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||'',data:dataUrl});
+  }
+  return out;
+}
+function crmSurveyFilesFromRemote(raw){
+  if(!Array.isArray(raw)) return [];
+  return raw.map((item,i)=>{
+    if(typeof item==='string'){
+      return {id:'remote_'+i+'_'+Date.now(), name:'khao-sat-'+(i+1)+'.jpg', mime:'image/jpeg', size:item.length, kind:'image', thumb:item.length<48000?item:'', dataUrl:item};
+    }
+    if(!item||typeof item!=='object') return null;
+    const dataUrl=item.data||item.dataUrl||'';
+    return {
+      id:item.id||('remote_'+i+'_'+Date.now()),
+      name:item.name||('file-'+(i+1)),
+      mime:item.mime||'application/octet-stream',
+      size:Number(item.size)|| (dataUrl?dataUrl.length:0),
+      kind:item.kind==='image'||crmSurveyIsImageMime(item.mime,item.name)?'image':'file',
+      thumb:item.thumb||'',
+      dataUrl
+    };
+  }).filter(Boolean).slice(0,CRM_SURVEY_MAX);
+}
+async function crmHydrateSurveyFromRemoteRow(crmId, remoteFiles){
+  const prepared=crmSurveyFilesFromRemote(remoteFiles);
+  const meta=[];
+  for(const f of prepared){
+    if(f.dataUrl){
+      try{ await crmSurveyIdbPut(crmId, f.id, {name:f.name,mime:f.mime,kind:f.kind,dataUrl:f.dataUrl,size:f.size}); }catch(e){}
+    }
+    meta.push({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||(f.kind==='image'&&f.dataUrl&&f.dataUrl.length<48000?f.dataUrl:'')});
+  }
+  return meta;
 }
 function crmStatusClass(st){
   if(st==='Đã khảo sát') return 'p-green';
@@ -7521,39 +7768,77 @@ function openCrmModal(row){
       return `<option value="${d}" ${d===cur?'selected':''}>${String(d).padStart(2,'0')}</option>`;
     }).join('');
   };
-  let draftImgs=crmSurveyImgs(row);
+  let draftFiles=crmSurveyList(row).map(f=>({...f}));
+  const draftDataUrls={}; // fileId -> dataUrl (cho file mới chưa ghi IDB / tải xuống trong form)
   const paintDraft=()=>{
     const box=$('#crmSurveyBox');
     if(!box) return;
-    box.innerHTML=crmSurveyEditorHtml(draftImgs,'crmSurveyFile');
+    box.innerHTML=crmSurveyEditorHtml(draftFiles);
     bindDraftSurveyUi();
   };
+  const pickSurveyFiles=()=>new Promise(resolve=>{
+    const inp=document.createElement('input');
+    inp.type='file';
+    inp.accept=CRM_SURVEY_ACCEPT;
+    inp.multiple=true;
+    inp.style.cssText='position:fixed;left:-9999px;opacity:0';
+    document.body.appendChild(inp);
+    let done=false;
+    const finish=list=>{ if(done) return; done=true; try{inp.remove();}catch(e){} resolve(list||[]); };
+    inp.onchange=()=>finish(inp.files?[...inp.files]:[]);
+    inp.addEventListener('cancel',()=>finish([]));
+    try{ inp.click(); }catch(e){ finish([]); }
+  });
   const bindDraftSurveyUi=()=>{
-    const file=$('#crmSurveyFile');
-    if(file) file.onchange=async()=>{
-      const picked=file.files;
-      file.value='';
-      if(!picked||!picked.length) return;
-      const room=CRM_SURVEY_MAX-draftImgs.length;
-      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' ảnh khảo sát','bad'); return; }
-      toast('Đang nén ảnh…','');
-      const added=await crmCompressSurveyFiles([...picked].slice(0,room));
-      if(!added.length){ toast('Không đọc được ảnh','bad'); return; }
-      draftImgs=crmNormalizeSurveyImgs(draftImgs.concat(added));
+    const up=$('#crmSurveyUploadBtn');
+    if(up) up.onclick=async e=>{
+      e.preventDefault(); e.stopPropagation();
+      const room=CRM_SURVEY_MAX-draftFiles.length;
+      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' file khảo sát','bad'); return; }
+      const picked=await pickSurveyFiles();
+      if(!picked.length) return;
+      toast('Đang xử lý file…','');
+      const added=await crmPrepareSurveyUploads(picked.slice(0,room));
+      if(!added.length){ toast('Không đọc được file','bad'); return; }
+      added.forEach(f=>{
+        draftDataUrls[f.id]=f.dataUrl;
+        draftFiles.push({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||'',dataUrl:f.dataUrl});
+      });
       paintDraft();
-      toast('Đã thêm '+added.length+' ảnh','ok');
+      toast('Đã thêm '+added.length+' file','ok');
     };
-    $('#crmSurveyDraft')&&$('#crmSurveyDraft').querySelectorAll('[data-crm-draft-del]').forEach(b=>{
+    const root=$('#crmSurveyDraft');
+    if(!root) return;
+    root.querySelectorAll('[data-crm-draft-del]').forEach(b=>{
       b.onclick=e=>{
         e.preventDefault(); e.stopPropagation();
         const i=Number(b.getAttribute('data-crm-draft-del'));
         if(!Number.isFinite(i)) return;
-        draftImgs=draftImgs.filter((_,idx)=>idx!==i);
+        const gone=draftFiles[i];
+        if(gone&&gone.id) delete draftDataUrls[gone.id];
+        draftFiles=draftFiles.filter((_,idx)=>idx!==i);
         paintDraft();
       };
     });
-    $('#crmSurveyDraft')&&$('#crmSurveyDraft').querySelectorAll('[data-crm-draft-view]').forEach(img=>{
-      img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+    root.querySelectorAll('[data-crm-draft-view]').forEach(el=>{
+      el.onclick=async e=>{
+        e.preventDefault(); e.stopPropagation();
+        const i=Number(el.getAttribute('data-crm-draft-view'));
+        const f=draftFiles[i];
+        if(!f) return;
+        const src=f.dataUrl||draftDataUrls[f.id]||f.thumb||await crmSurveyGetDataUrl(row&&row.id, f);
+        openCrmSurveyPreview(src);
+      };
+    });
+    root.querySelectorAll('[data-crm-draft-dl]').forEach(b=>{
+      b.onclick=async e=>{
+        e.preventDefault(); e.stopPropagation();
+        const i=Number(b.getAttribute('data-crm-draft-dl'));
+        const f=draftFiles[i];
+        if(!f) return;
+        const src=f.dataUrl||draftDataUrls[f.id]||await crmSurveyGetDataUrl(row&&row.id, f);
+        crmSurveyDownload(f.name, src, f.mime);
+      };
     });
   };
   openModal(isEdit?'Sửa khách hàng':'Thêm khách hàng',`
@@ -7594,8 +7879,8 @@ function openCrmModal(row){
     </div>
     <div class="field"><label>Nhu cầu tiền điện</label><input class="inp" id="crmDemand" value="${esc((row&&row.demand)||'')}" placeholder="Ví dụ: 1.500.000 đ/tháng"></div>
     <div class="field"><label>Ghi chú</label><textarea class="inp" id="crmNote" rows="3" placeholder="Ghi chú khảo sát / trao đổi với khách…">${esc((row&&row.note)||'')}</textarea></div>
-    <div class="field" style="margin:0"><label>Hình ảnh khảo sát</label><div id="crmSurveyBox">${crmSurveyEditorHtml(draftImgs,'crmSurveyFile')}</div></div>
-  `,'Lưu',()=>{
+    <div class="field" style="margin:0"><label>Hình ảnh khảo sát</label><div id="crmSurveyBox">${crmSurveyEditorHtml(draftFiles)}</div></div>
+  `,'Lưu',async ()=>{
     const name=$('#crmName').value.trim();
     const owner=$('#crmNv').value.trim();
     const source=$('#crmSourceIn').value.trim();
@@ -7616,14 +7901,29 @@ function openCrmModal(row){
         return false;
       }
     }
+    const nextId=isEdit?row.id:nextCrmId();
+    // Ghi file mới vào IndexedDB theo id khách
+    for(const f of draftFiles){
+      const dataUrl=f.dataUrl||draftDataUrls[f.id];
+      if(dataUrl){
+        try{ await crmSurveyIdbPut(nextId, f.id, {name:f.name,mime:f.mime,kind:f.kind,dataUrl,size:f.size}); }catch(e){ console.warn(e); }
+      }
+    }
+    // Xóa file đã bỏ khỏi form
+    if(isEdit){
+      const keep=new Set(draftFiles.map(f=>String(f.id)));
+      crmSurveyList(row).forEach(old=>{
+        if(!keep.has(String(old.id))) crmSurveyIdbDel(row.id, old.id).catch(()=>{});
+      });
+    }
     const next={
-      id:isEdit?row.id:nextCrmId(),
+      id:nextId,
       name,
       phone,
       address:$('#crmAddr').value.trim(),
       demand:$('#crmDemand').value.trim(),
       note:($('#crmNote')||{}).value!=null?String($('#crmNote').value).trim():'',
-      surveyImgs:crmNormalizeSurveyImgs(draftImgs),
+      surveyFiles:draftFiles.map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||''})),
       owner:crmIsUnassigned(owner)?'':owner,
       date,
       source,
@@ -7775,45 +8075,84 @@ function bindCrm(){
   });
   bindCrmSurveyActions();
 }
+function crmPickSurveyFiles(){
+  return new Promise(resolve=>{
+    const inp=document.createElement('input');
+    inp.type='file';
+    inp.accept=CRM_SURVEY_ACCEPT;
+    inp.multiple=true;
+    inp.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(inp);
+    let done=false;
+    const finish=list=>{ if(done) return; done=true; try{inp.remove();}catch(e){} resolve(list||[]); };
+    inp.addEventListener('change',()=>finish(inp.files?[...inp.files]:[]));
+    inp.addEventListener('cancel',()=>finish([]));
+    // Một số trình duyệt mobile không có sự kiện cancel
+    setTimeout(()=>{ if(!done && !inp.files?.length){ /* chờ user */ } }, 0);
+    try{ inp.click(); }catch(e){ finish([]); }
+  });
+}
 function bindCrmSurveyActions(){
   const root=$('#main'); if(!root) return;
-  root.querySelectorAll('[data-crm-survey-view]').forEach(img=>{
-    img.onclick=e=>{
+  root.querySelectorAll('[data-crm-survey-upload]').forEach(btn=>{
+    btn.onclick=async e=>{
       e.preventDefault(); e.stopPropagation();
-      openCrmSurveyPreview(img.getAttribute('src'));
+      const id=btn.getAttribute('data-crm-survey-upload');
+      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
+      if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
+      const cur=crmSurveyList(row);
+      const room=CRM_SURVEY_MAX-cur.length;
+      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' file khảo sát','bad'); return; }
+      const picked=await crmPickSurveyFiles();
+      if(!picked.length) return;
+      toast('Đang xử lý file…','');
+      const prepared=await crmPrepareSurveyUploads(picked.slice(0,room));
+      if(!prepared.length){ toast('Không đọc được file — thử ảnh JPG/PNG hoặc PDF','bad'); return; }
+      const n=await crmAttachSurveyFiles(row, prepared);
+      if(!n){ toast('Không lưu được file','bad'); return; }
+      toast('Đã tải lên '+n+' file khảo sát','ok');
+      saveDB(); renderPage();
+    };
+  });
+  root.querySelectorAll('[data-crm-survey-view]').forEach(el=>{
+    el.onclick=async e=>{
+      e.preventDefault(); e.stopPropagation();
+      const id=el.getAttribute('data-crm-survey-view');
+      const idx=Number(el.getAttribute('data-crm-survey-idx'));
+      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
+      const f=row&&crmSurveyList(row)[idx];
+      if(!f) return;
+      const src=await crmSurveyGetDataUrl(row.id, f);
+      if(!src){ toast('Không mở được file — thử tải xuống','bad'); return; }
+      openCrmSurveyPreview(src);
+    };
+  });
+  root.querySelectorAll('[data-crm-survey-dl]').forEach(b=>{
+    b.onclick=async e=>{
+      e.preventDefault(); e.stopPropagation();
+      const id=b.getAttribute('data-crm-survey-dl');
+      const idx=Number(b.getAttribute('data-crm-survey-idx'));
+      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
+      const f=row&&crmSurveyList(row)[idx];
+      if(!f) return;
+      const src=await crmSurveyGetDataUrl(row.id, f);
+      crmSurveyDownload(f.name, src, f.mime);
     };
   });
   root.querySelectorAll('[data-crm-survey-del]').forEach(b=>{
-    b.onclick=e=>{
+    b.onclick=async e=>{
       e.preventDefault(); e.stopPropagation();
       const id=b.getAttribute('data-crm-survey-del');
       const idx=Number(b.getAttribute('data-crm-survey-idx'));
       const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
       if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
-      const imgs=crmSurveyImgs(row);
-      if(!Number.isFinite(idx) || idx<0 || idx>=imgs.length) return;
-      if(!confirm('Xóa ảnh khảo sát này?')) return;
-      row.surveyImgs=imgs.filter((_,i)=>i!==idx);
-      toast('Đã xóa ảnh','ok');
-      saveDB(); renderPage();
-    };
-  });
-  root.querySelectorAll('input[data-crm-survey-file]').forEach(inp=>{
-    inp.onchange=async()=>{
-      const id=inp.getAttribute('data-crm-survey-file');
-      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
-      const picked=inp.files;
-      inp.value='';
-      if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
-      if(!picked||!picked.length) return;
-      const cur=crmSurveyImgs(row);
-      const room=CRM_SURVEY_MAX-cur.length;
-      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' ảnh khảo sát','bad'); return; }
-      toast('Đang nén ảnh…','');
-      const added=await crmCompressSurveyFiles([...picked].slice(0,room));
-      if(!added.length){ toast('Không đọc được ảnh','bad'); return; }
-      row.surveyImgs=crmNormalizeSurveyImgs(cur.concat(added));
-      toast('Đã thêm '+added.length+' ảnh khảo sát','ok');
+      const files=crmSurveyList(row);
+      if(!Number.isFinite(idx) || idx<0 || idx>=files.length) return;
+      const gone=files[idx];
+      if(!confirm('Xóa «'+(gone.name||'file')+'»?')) return;
+      row.surveyFiles=files.filter((_,i)=>i!==idx);
+      try{ await crmSurveyIdbDel(row.id, gone.id); }catch(err){}
+      toast('Đã xóa file','ok');
       saveDB(); renderPage();
     };
   });
