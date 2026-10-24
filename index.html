@@ -7342,6 +7342,21 @@ function pageCrm(){
     </div>
   </div>`:''}`;
 }
+function normalizeCrmPhone(phone){
+  let d=String(phone||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.startsWith('84') && d.length>=11) d='0'+d.slice(2);
+  return d;
+}
+function findCrmByPhone(phone, excludeId){
+  const key=normalizeCrmPhone(phone);
+  if(!key) return null;
+  return (DB.crm||[]).find(x=>{
+    if(!x) return false;
+    if(excludeId!=null && String(x.id)===String(excludeId)) return false;
+    return normalizeCrmPhone(x.phone)===key;
+  })||null;
+}
 function openCrmModal(row){
   const isEdit=!!row;
   if(isEdit && !canMutateCrmData()){
@@ -7415,10 +7430,18 @@ function openCrmModal(row){
     let dd=Number(($('#crmDay')||{}).value)||d0;
     dd=Math.min(dd, daysInMonth(yy,mm));
     const date=`${yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+    const phone=$('#crmPhone').value.trim();
+    if(phone){
+      const dup=findCrmByPhone(phone, isEdit?row.id:null);
+      if(dup){
+        toast('SĐT đã tồn tại ở khách «'+(dup.name||'không tên')+'» — không được lưu trùng','bad');
+        return false;
+      }
+    }
     const next={
       id:isEdit?row.id:nextCrmId(),
       name,
-      phone:$('#crmPhone').value.trim(),
+      phone,
       address:$('#crmAddr').value.trim(),
       demand:$('#crmDemand').value.trim(),
       owner:crmIsUnassigned(owner)?'':owner,
