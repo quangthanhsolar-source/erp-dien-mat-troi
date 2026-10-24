@@ -1898,6 +1898,7 @@ function loadDB(){
 loadDB();
 if(!Array.isArray(DB.crm)) DB.crm=[];
 try{ if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB(); }catch(e){}
+try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
 if(!Array.isArray(DB.deletedCrmIds)) DB.deletedCrmIds=[];
 if(!Array.isArray(DB.deletedQuoteCodes)) DB.deletedQuoteCodes=[];
 if(!Array.isArray(DB.deletedSupplierIds)) DB.deletedSupplierIds=[];
@@ -1993,6 +1994,27 @@ function applyDBPayload(data){
       ensureTelesalesRoles();
       return;
     }
+    if(k==='settings'){
+      const incoming=data.settings&&typeof data.settings==='object'?data.settings:{};
+      const prev=DB.settings&&typeof DB.settings==='object'?DB.settings:{};
+      const prevOv=(prev.crmOverrides&&typeof prev.crmOverrides==='object')?prev.crmOverrides:{};
+      const nextOv=(incoming.crmOverrides&&typeof incoming.crmOverrides==='object')?incoming.crmOverrides:{};
+      const mergedOv={...prevOv};
+      Object.keys(nextOv).forEach(id=>{
+        const a=prevOv[id], b=nextOv[id];
+        if(!b) return;
+        if(!a || (Number(b.updatedAt)||0)>=(Number(a.updatedAt)||0)) mergedOv[id]=b;
+      });
+      // Giữ override local mới hơn nếu cloud cũ hơn
+      Object.keys(prevOv).forEach(id=>{
+        const a=prevOv[id], b=mergedOv[id];
+        if(a && (!b || (Number(a.updatedAt)||0)>(Number(b.updatedAt)||0))) mergedOv[id]=a;
+      });
+      DB.settings=Object.assign({}, prev, incoming, {crmOverrides:mergedOv});
+      try{ if(typeof saveCrmOverrides==='function') saveCrmOverrides(mergedOv); }catch(e){}
+      try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
+      return;
+    }
     if(k==='crm'){
       const gone=new Set((DB.deletedCrmIds||[]).map(Number));
       const prevById=new Map((DB.crm||[]).filter(r=>r&&r.id!=null).map(r=>[String(r.id),r]));
@@ -2013,10 +2035,19 @@ function applyDBPayload(data){
           });
           r.surveyFiles=[...byId.values()].slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
         }
-        if(prev&&prev.note&&!r.note) r.note=prev.note;
+        // Giữ các field local nếu remote trống / cũ (trước khi apply overlay)
+        if(prev){
+          ['note','status','owner','name','phone','address','demand','source','date'].forEach(f=>{
+            const pv=prev[f], rv=r[f];
+            const pEmpty=pv==null||String(pv).trim()===''||String(pv)==='Trống';
+            const rEmpty=rv==null||String(rv).trim()===''||String(rv)==='Trống';
+            if(!pEmpty && rEmpty) r[f]=pv;
+          });
+        }
         return r;
       });
       if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB();
+      if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB();
       return;
     }
     if(k==='quotes'){
@@ -2484,6 +2515,8 @@ async function pullDBFromSupabase(){
     const snap=dirtyBefore?takeSyncSnapshot():null;
     const localUsersBefore=(DB.users||[]).slice();
     const brandN=applyDBPayload(sbBundleToPayload(bundle))||0;
+    try{ crmApplyOverridesToDB(); }catch(e){}
+    try{ crmApplySurveyMetaToDB(); }catch(e){}
     const idsBeforeSeed=new Set();
     SB_PRODUCT_KEYS.forEach(k=>(DB[k]||[]).forEach(p=>{ if(p&&p.id!=null) idsBeforeSeed.add(String(p.id)); }));
     const restored=mergeSeedCatalog();
@@ -2675,11 +2708,31 @@ async function pushDBToSupabase(){
     await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
 
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
-    if(settingsChanged||quoteTombs.length){
+    const hasCrmOverrides=!!(DB.settings&&DB.settings.crmOverrides&&Object.keys(DB.settings.crmOverrides).length);
+    // Luôn đẩy settings khi có CRM override (ghi chú/ảnh/trạng thái…) để không mất sau reload
+    if(settingsChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
     const {error:setErr}=await sb.from('erp_settings').upsert({
       id:'main',
       data:{
         ...(DB.settings||{}),
+        crmOverrides:(()=>{
+          // Đồng bộ override CRM qua erp_settings (kể cả khi cột note/survey_imgs chưa có trên crm_leads)
+          const ov=(DB.settings&&DB.settings.crmOverrides)||loadCrmOverrides()||{};
+          const slim={};
+          Object.keys(ov).forEach(id=>{
+            const o=ov[id]; if(!o) return;
+            slim[id]={
+              updatedAt:Number(o.updatedAt)||Date.now(),
+              name:o.name||'', phone:o.phone||'', address:o.address||'', demand:o.demand||'',
+              owner:o.owner||'', date:o.date||'', source:o.source||'', status:o.status||'', note:o.note||'',
+              surveyFiles:Array.isArray(o.surveyFiles)?o.surveyFiles.map(f=>({
+                id:f.id, name:f.name, mime:f.mime, size:f.size, kind:f.kind,
+                thumb:(typeof f.thumb==='string'&&f.thumb.length<24000)?f.thumb:''
+              })):[]
+            };
+          });
+          return slim;
+        })(),
         // Chỉ sync URL http — không đẩy data URL ảnh (payload nhẹ khi nhiều user)
         _pimgOverrides:(()=>{
           const o=loadPimgOverrides()||{};
@@ -7275,7 +7328,93 @@ const CRM_SURVEY_ACCEPT='image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,appli
 const CRM_SURVEY_IDB_NAME='qts_crm_survey_v1';
 const CRM_SURVEY_IDB_STORE='files';
 const CRM_SURVEY_META_KEY='qts_crm_survey_meta_v1';
+const CRM_OVERRIDE_KEY='qts_crm_overrides_v1';
+const CRM_OVERRIDE_FIELDS=['name','phone','address','demand','owner','date','source','status','note'];
 let _crmSurveyIdb=null;
+function loadCrmOverrides(){
+  try{ return JSON.parse(localStorage.getItem(CRM_OVERRIDE_KEY)||'{}')||{}; }catch(e){ return {}; }
+}
+function saveCrmOverrides(map){
+  try{
+    localStorage.setItem(CRM_OVERRIDE_KEY, JSON.stringify(map||{}));
+    return true;
+  }catch(e){
+    try{
+      // Bỏ thumb nặng nếu tràn quota
+      const slim={};
+      Object.keys(map||{}).forEach(id=>{
+        const o=map[id]; if(!o) return;
+        slim[id]=Object.assign({}, o, {
+          surveyFiles:Array.isArray(o.surveyFiles)?o.surveyFiles.map(f=>({
+            id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:''
+          })) : []
+        });
+      });
+      localStorage.setItem(CRM_OVERRIDE_KEY, JSON.stringify(slim));
+      return true;
+    }catch(e2){ console.warn('crm overrides save', e2); return false; }
+  }
+}
+function crmBuildOverride(r){
+  const o={updatedAt:Date.now()};
+  CRM_OVERRIDE_FIELDS.forEach(k=>{ o[k]=r&&r[k]!=null?r[k]:''; });
+  o.surveyFiles=(typeof crmSurveyMetaOnly==='function')?crmSurveyMetaOnly(r):[];
+  return o;
+}
+/** Ghi bản CRM mới nhất (local + settings để sync cloud, không bị pull đè mất). */
+function crmRememberOverride(r){
+  if(!r||r.id==null) return;
+  const id=String(r.id);
+  const ov=crmBuildOverride(r);
+  const map=loadCrmOverrides();
+  map[id]=ov;
+  saveCrmOverrides(map);
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!DB.settings.crmOverrides||typeof DB.settings.crmOverrides!=='object') DB.settings.crmOverrides={};
+  DB.settings.crmOverrides[id]=ov;
+  try{ crmPersistSurveyMeta(r.id, ov.surveyFiles||[]); }catch(e){}
+}
+function crmApplyOverridesToDB(){
+  const local=loadCrmOverrides();
+  const fromSettings=(DB.settings&&DB.settings.crmOverrides&&typeof DB.settings.crmOverrides==='object')?DB.settings.crmOverrides:{};
+  const ids=new Set([...Object.keys(local||{}),...Object.keys(fromSettings||{})]);
+  if(!ids.size) return 0;
+  let n=0;
+  const unified={...local};
+  ids.forEach(id=>{
+    const a=local[id], b=fromSettings[id];
+    let ov=a;
+    if(a&&b) ov=(Number(a.updatedAt)||0)>=(Number(b.updatedAt)||0)?a:b;
+    else ov=a||b;
+    if(!ov) return;
+    unified[id]=ov;
+    const r=(DB.crm||[]).find(x=>x&&String(x.id)===String(id));
+    if(!r) return;
+    CRM_OVERRIDE_FIELDS.forEach(k=>{
+      if(ov[k]!==undefined) r[k]=ov[k];
+    });
+    if(Array.isArray(ov.surveyFiles)){
+      const cur=typeof crmSurveyList==='function'?crmSurveyList(r):[];
+      if(!cur.length && ov.surveyFiles.length){
+        r.surveyFiles=ov.surveyFiles.map(f=>Object.assign({},f));
+      }else if(ov.surveyFiles.length){
+        const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
+        ov.surveyFiles.forEach(f=>{
+          if(!f||!f.id) return;
+          const key=String(f.id);
+          if(!byId.has(key)) byId.set(key,Object.assign({},f));
+          else if(!byId.get(key).thumb && f.thumb) byId.get(key).thumb=f.thumb;
+        });
+        r.surveyFiles=[...byId.values()].slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
+      }
+    }
+    n++;
+  });
+  saveCrmOverrides(unified);
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  DB.settings.crmOverrides=unified;
+  return n;
+}
 function loadCrmSurveyMetaMap(){
   try{ return JSON.parse(localStorage.getItem(CRM_SURVEY_META_KEY)||'{}')||{}; }catch(e){ return {}; }
 }
@@ -7344,11 +7483,13 @@ function crmApplySurveyMetaToDB(){
   });
   return n;
 }
-// Khôi phục metadata sau khi loadDB (function đã hoist)
+// Khôi phục metadata + override sau khi loadDB (function đã hoist)
 try{ crmApplySurveyMetaToDB(); }catch(e){}
+try{ crmApplyOverridesToDB(); }catch(e){}
 setTimeout(()=>{
   crmRecoverSurveyMetaFromIdb().then(n=>{
-    if(n>0){
+    const m=crmApplyOverridesToDB();
+    if(n>0||m>0){
       try{ if(typeof _saveDB==='function') _saveDB(); else saveDB(); }catch(e){}
       if(typeof ROUTE!=='undefined' && ROUTE==='crm' && typeof renderPage==='function') renderPage();
     }
@@ -7586,6 +7727,7 @@ async function crmAttachSurveyFiles(row, prepared){
   }
   delete row.surveyImgs;
   crmPersistSurveyMeta(row.id, row.surveyFiles);
+  crmRememberOverride(row);
   return n;
 }
 async function crmSurveyGetDataUrl(crmId, fileMeta){
@@ -8111,6 +8253,7 @@ function openCrmModal(row){
       status:CRM_STATUS.includes(status)?status:''
     };
     crmPersistSurveyMeta(nextId, next.surveyFiles);
+    crmRememberOverride(next);
     if(!Array.isArray(DB.crm)) DB.crm=[];
     if(isEdit){
       const i=DB.crm.findIndex(x=>String(x.id)===String(row.id));
@@ -8162,6 +8305,7 @@ function commitCrmCellEdit(td, id, field, el){
   }else if(field==='note'){
     r.note=v;
   }else return finishCrmCellEdit(td, id, field);
+  crmRememberOverride(r);
   saveDB();
   renderPage();
 }
@@ -8212,9 +8356,11 @@ function bindCrmInlineEdit(){
   });
 }
 function bindCrm(){
-  // Phục hồi ảnh khảo sát từ IndexedDB/meta nếu vừa bị pull cloud xóa nhầm
+  // Phục hồi bản CRM mới nhất (ghi chú/ảnh/trạng thái/…) sau pull cloud
+  crmApplyOverridesToDB();
   crmRecoverSurveyMetaFromIdb().then(n=>{
-    if(n>0 && ROUTE==='crm'){ try{ _saveDB(); }catch(e){} renderPage(); }
+    const m=crmApplyOverridesToDB();
+    if((n>0||m>0) && ROUTE==='crm'){ try{ _saveDB(); }catch(e){} renderPage(); }
   }).catch(()=>{});
   const add=$('#crmAdd');
   if(add) add.onclick=()=>openCrmModal(null);
@@ -8256,6 +8402,15 @@ function bindCrm(){
     if(!Array.isArray(DB.deletedCrmIds)) DB.deletedCrmIds=[];
     if(id && !DB.deletedCrmIds.includes(id)) DB.deletedCrmIds.push(id);
     DB.crm=DB.crm.filter(x=>Number(x.id)!==id);
+    try{
+      const map=loadCrmOverrides();
+      delete map[String(id)];
+      saveCrmOverrides(map);
+      if(DB.settings&&DB.settings.crmOverrides) delete DB.settings.crmOverrides[String(id)];
+      const sm=loadCrmSurveyMetaMap();
+      delete sm[String(id)];
+      saveCrmSurveyMetaMap(sm);
+    }catch(e){}
     toast('Đã xóa khách hàng','ok');
     saveDB();renderPage();
   });
@@ -8339,6 +8494,7 @@ function bindCrmSurveyActions(){
       row.surveyFiles=files.filter((_,i)=>i!==idx);
       try{ await crmSurveyIdbDel(row.id, gone.id); }catch(err){}
       crmPersistSurveyMeta(row.id, row.surveyFiles);
+      crmRememberOverride(row);
       toast('Đã xóa file','ok');
       saveDB(); renderPage();
     };
