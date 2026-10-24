@@ -1852,10 +1852,12 @@ function cloneDBForLocalStorage(){
       });
     }else if(k==='crm'){
       // File khảo sát nặng nằm IndexedDB — localStorage chỉ giữ metadata + thumb nhỏ
+      const metaMap=(typeof loadCrmSurveyMetaMap==='function')?loadCrmSurveyMetaMap():{};
       data[k]=(DB.crm||[]).map(r=>{
         if(!r) return r;
-        const files=crmSurveyMetaOnly(r);
-        const copy=Object.assign({},r,{surveyFiles:files});
+        let files=(typeof crmSurveyMetaOnly==='function')?crmSurveyMetaOnly(r):[];
+        if((!files||!files.length) && metaMap[String(r.id)]) files=metaMap[String(r.id)];
+        const copy=Object.assign({},r,{surveyFiles:files||[]});
         delete copy.surveyImgs;
         return copy;
       });
@@ -1895,6 +1897,7 @@ function loadDB(){
 }
 loadDB();
 if(!Array.isArray(DB.crm)) DB.crm=[];
+try{ if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB(); }catch(e){}
 if(!Array.isArray(DB.deletedCrmIds)) DB.deletedCrmIds=[];
 if(!Array.isArray(DB.deletedQuoteCodes)) DB.deletedQuoteCodes=[];
 if(!Array.isArray(DB.deletedSupplierIds)) DB.deletedSupplierIds=[];
@@ -1992,7 +1995,28 @@ function applyDBPayload(data){
     }
     if(k==='crm'){
       const gone=new Set((DB.deletedCrmIds||[]).map(Number));
-      DB.crm=(data.crm||[]).filter(r=>!gone.has(Number(r.id)));
+      const prevById=new Map((DB.crm||[]).filter(r=>r&&r.id!=null).map(r=>[String(r.id),r]));
+      DB.crm=(data.crm||[]).filter(r=>!gone.has(Number(r.id))).map(r=>{
+        if(!r) return r;
+        const prev=prevById.get(String(r.id));
+        const remoteFiles=(typeof crmSurveyList==='function')?crmSurveyList(r):[];
+        const localFiles=prev&&typeof crmSurveyList==='function'?crmSurveyList(prev):[];
+        // Pull cloud không được xóa ảnh khảo sát đang có trên máy (khi cột survey_imgs chưa sync)
+        if((!remoteFiles||!remoteFiles.length) && localFiles&&localFiles.length){
+          r.surveyFiles=localFiles.slice();
+        }else if(remoteFiles&&remoteFiles.length&&localFiles&&localFiles.length){
+          const byId=new Map(remoteFiles.map(f=>[String(f.id),Object.assign({},f)]));
+          localFiles.forEach(f=>{
+            const id=String(f.id);
+            if(!byId.has(id)) byId.set(id,Object.assign({},f));
+            else if(!byId.get(id).thumb && f.thumb) byId.get(id).thumb=f.thumb;
+          });
+          r.surveyFiles=[...byId.values()].slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
+        }
+        if(prev&&prev.note&&!r.note) r.note=prev.note;
+        return r;
+      });
+      if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB();
       return;
     }
     if(k==='quotes'){
@@ -2102,6 +2126,7 @@ function sbBundleToPayload(bundle){
       }
       return meta;
     });
+    if(surveyFiles.length) crmPersistSurveyMeta(Number(r.id), surveyFiles);
     return {
       id:Number(r.id),
       name:r.name||'',
@@ -7249,7 +7274,162 @@ const CRM_SURVEY_MAX_BYTES=8*1024*1024;
 const CRM_SURVEY_ACCEPT='image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,application/pdf';
 const CRM_SURVEY_IDB_NAME='qts_crm_survey_v1';
 const CRM_SURVEY_IDB_STORE='files';
+const CRM_SURVEY_META_KEY='qts_crm_survey_meta_v1';
 let _crmSurveyIdb=null;
+function loadCrmSurveyMetaMap(){
+  try{ return JSON.parse(localStorage.getItem(CRM_SURVEY_META_KEY)||'{}')||{}; }catch(e){ return {}; }
+}
+function saveCrmSurveyMetaMap(map){
+  try{
+    localStorage.setItem(CRM_SURVEY_META_KEY, JSON.stringify(map||{}));
+    return true;
+  }catch(e){
+    try{
+      const slim={};
+      Object.keys(map||{}).forEach(id=>{
+        slim[id]=(map[id]||[]).map(f=>({
+          id:f.id, name:f.name||'file', mime:f.mime||'application/octet-stream',
+          size:Number(f.size)||0, kind:f.kind==='image'?'image':'file', thumb:''
+        }));
+      });
+      localStorage.setItem(CRM_SURVEY_META_KEY, JSON.stringify(slim));
+      return true;
+    }catch(e2){
+      console.warn('crm survey meta', e2);
+      return false;
+    }
+  }
+}
+/** Lưu metadata ảnh khảo sát riêng — không bị pull Supabase ghi đè mất. */
+function crmPersistSurveyMeta(crmId, files){
+  if(crmId==null) return;
+  const map=loadCrmSurveyMetaMap();
+  const id=String(crmId);
+  const list=(Array.isArray(files)?files:[]).filter(f=>f&&f.id).slice(0,CRM_SURVEY_MAX).map(f=>({
+    id:f.id,
+    name:f.name||'file',
+    mime:f.mime||'application/octet-stream',
+    size:Number(f.size)||0,
+    kind:f.kind==='image'?'image':'file',
+    thumb:(typeof f.thumb==='string'&&f.thumb.startsWith('data:')&&f.thumb.length<48000)?f.thumb:''
+  }));
+  if(list.length) map[id]=list; else delete map[id];
+  saveCrmSurveyMetaMap(map);
+}
+function crmApplySurveyMetaToDB(){
+  const map=loadCrmSurveyMetaMap();
+  if(!map||typeof map!=='object') return 0;
+  let n=0;
+  (DB.crm||[]).forEach(r=>{
+    if(!r||r.id==null) return;
+    const saved=map[String(r.id)];
+    if(!Array.isArray(saved)||!saved.length) return;
+    const cur=Array.isArray(r.surveyFiles)?r.surveyFiles.filter(f=>f&&f.id):[];
+    if(!cur.length){
+      r.surveyFiles=saved.map(f=>Object.assign({},f));
+      n++;
+      return;
+    }
+    const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
+    let changed=false;
+    saved.forEach(f=>{
+      const id=String(f.id);
+      if(!byId.has(id)){ byId.set(id,Object.assign({},f)); changed=true; }
+      else if(!byId.get(id).thumb && f.thumb){ byId.get(id).thumb=f.thumb; changed=true; }
+    });
+    if(changed || cur.length<saved.length){
+      r.surveyFiles=[...byId.values()].slice(0,CRM_SURVEY_MAX);
+      n++;
+    }
+  });
+  return n;
+}
+// Khôi phục metadata sau khi loadDB (function đã hoist)
+try{ crmApplySurveyMetaToDB(); }catch(e){}
+setTimeout(()=>{
+  crmRecoverSurveyMetaFromIdb().then(n=>{
+    if(n>0){
+      try{ if(typeof _saveDB==='function') _saveDB(); else saveDB(); }catch(e){}
+      if(typeof ROUTE!=='undefined' && ROUTE==='crm' && typeof renderPage==='function') renderPage();
+    }
+  }).catch(()=>{});
+}, 0);
+async function crmRecoverSurveyMetaFromIdb(){
+  try{
+    const db=await crmSurveyIdb();
+    const items=await new Promise((resolve,reject)=>{
+      const tx=db.transaction(CRM_SURVEY_IDB_STORE,'readonly');
+      const store=tx.objectStore(CRM_SURVEY_IDB_STORE);
+      const out=[];
+      const req=store.openCursor();
+      req.onsuccess=()=>{
+        const cur=req.result;
+        if(!cur){ resolve(out); return; }
+        out.push({key:String(cur.key), val:cur.value});
+        cur.continue();
+      };
+      req.onerror=()=>reject(req.error||new Error('IDB cursor'));
+    });
+    if(!items.length) return 0;
+    const byCrm={};
+    items.forEach(({key,val})=>{
+      if(!val) return;
+      const parts=String(key).split('::');
+      if(parts.length<2) return;
+      const crmId=parts[0];
+      const fileId=parts.slice(1).join('::')||val.id;
+      if(!fileId) return;
+      if(!byCrm[crmId]) byCrm[crmId]=[];
+      byCrm[crmId].push({
+        id:String(fileId),
+        name:val.name||'file',
+        mime:val.mime||'application/octet-stream',
+        size:Number(val.size)||0,
+        kind:val.kind==='image'||crmSurveyIsImageMime(val.mime,val.name)?'image':'file',
+        thumb:''
+      });
+    });
+    const map=loadCrmSurveyMetaMap();
+    let changed=0;
+    Object.keys(byCrm).forEach(crmId=>{
+      const have=Array.isArray(map[crmId])?map[crmId].slice():[];
+      const ids=new Set(have.map(f=>String(f&&f.id)));
+      let grew=false;
+      byCrm[crmId].forEach(f=>{
+        if(!ids.has(String(f.id))){ have.push(f); ids.add(String(f.id)); grew=true; }
+      });
+      if(!map[crmId]||!map[crmId].length||grew){
+        map[crmId]=have.slice(0,CRM_SURVEY_MAX);
+        changed++;
+      }
+    });
+    if(changed) saveCrmSurveyMetaMap(map);
+    const applied=crmApplySurveyMetaToDB();
+    // Tạo thumb nhỏ từ IDB để hiện lại sau reload
+    for(const r of (DB.crm||[])){
+      if(!r||!r.id) continue;
+      const files=crmSurveyList(r);
+      let touch=false;
+      for(const f of files){
+        if(f.kind!=='image' || f.thumb) continue;
+        try{
+          const hit=await crmSurveyIdbGet(r.id, f.id);
+          if(!hit||!hit.dataUrl) continue;
+          const thumb=await crmMakeTinyThumb(hit.dataUrl);
+          if(thumb){ f.thumb=thumb; touch=true; }
+        }catch(e){}
+      }
+      if(touch){
+        r.surveyFiles=files.map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||''}));
+        crmPersistSurveyMeta(r.id, r.surveyFiles);
+      }
+    }
+    return changed+applied;
+  }catch(e){
+    console.warn('crmRecoverSurveyMetaFromIdb', e);
+    return 0;
+  }
+}
 function crmSurveyIdb(){
   if(_crmSurveyIdb) return _crmSurveyIdb;
   _crmSurveyIdb=new Promise((resolve,reject)=>{
@@ -7405,6 +7585,7 @@ async function crmAttachSurveyFiles(row, prepared){
     }
   }
   delete row.surveyImgs;
+  crmPersistSurveyMeta(row.id, row.surveyFiles);
   return n;
 }
 async function crmSurveyGetDataUrl(crmId, fileMeta){
@@ -7929,6 +8110,7 @@ function openCrmModal(row){
       source,
       status:CRM_STATUS.includes(status)?status:''
     };
+    crmPersistSurveyMeta(nextId, next.surveyFiles);
     if(!Array.isArray(DB.crm)) DB.crm=[];
     if(isEdit){
       const i=DB.crm.findIndex(x=>String(x.id)===String(row.id));
@@ -8030,6 +8212,10 @@ function bindCrmInlineEdit(){
   });
 }
 function bindCrm(){
+  // Phục hồi ảnh khảo sát từ IndexedDB/meta nếu vừa bị pull cloud xóa nhầm
+  crmRecoverSurveyMetaFromIdb().then(n=>{
+    if(n>0 && ROUTE==='crm'){ try{ _saveDB(); }catch(e){} renderPage(); }
+  }).catch(()=>{});
   const add=$('#crmAdd');
   if(add) add.onclick=()=>openCrmModal(null);
   const statsToggle=$('#crmStatsToggle');
@@ -8152,6 +8338,7 @@ function bindCrmSurveyActions(){
       if(!confirm('Xóa «'+(gone.name||'file')+'»?')) return;
       row.surveyFiles=files.filter((_,i)=>i!==idx);
       try{ await crmSurveyIdbDel(row.id, gone.id); }catch(err){}
+      crmPersistSurveyMeta(row.id, row.surveyFiles);
       toast('Đã xóa file','ok');
       saveDB(); renderPage();
     };
