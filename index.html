@@ -216,6 +216,19 @@ tbody tr:active{background:var(--surface)}
 .ord-tbl .ord-multi{white-space:pre-wrap;line-height:1.35;max-width:280px;max-height:4.6em;overflow:hidden}
 .ord-tbl .crm-info{white-space:pre-wrap;line-height:1.45;min-width:240px;max-width:460px}
 .ord-tbl .ord-note{white-space:pre-wrap;line-height:1.35;max-width:200px;max-height:4.6em;overflow:hidden;color:var(--muted);font-size:12px}
+.ord-tbl .crm-note-cell{min-width:140px;max-width:220px}
+.ord-tbl .crm-survey{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:128px;max-width:240px}
+.ord-tbl .crm-survey-item{position:relative;width:48px;height:48px;flex:0 0 auto}
+.ord-tbl .crm-survey-item img{width:48px;height:48px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--line,#e5e5e5);cursor:zoom-in;background:#f3f3f3}
+.ord-tbl .crm-survey-item .crm-survey-x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#111;color:#fff;font-size:12px;line-height:20px;padding:0;cursor:pointer;display:grid;place-items:center}
+.ord-tbl .crm-survey-add{width:48px;height:48px;border-radius:8px;border:1px dashed var(--line,#ccc);background:#fafafa;color:var(--muted);display:grid;place-items:center;cursor:pointer;padding:0}
+.ord-tbl .crm-survey-add:hover{background:var(--lime,#d8f56a);color:var(--ink,#111);border-color:transparent}
+.ord-tbl .crm-survey-add svg{width:16px;height:16px}
+.ord-tbl .crm-survey-empty{color:var(--muted);font-size:11px}
+.crm-survey-modal-grid{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+.crm-survey-modal-grid .crm-survey-item{width:72px;height:72px}
+.crm-survey-modal-grid .crm-survey-item img,.crm-survey-modal-grid .crm-survey-add{width:72px;height:72px}
+.crm-survey-preview{max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:10px;object-fit:contain}
 .ord-tbl .ord-ed{cursor:text;min-width:48px}
 .ord-tbl .ord-ed:hover{background:rgba(0,0,0,.03)}
 .ord-tbl .ord-ed.ord-ro{cursor:default}
@@ -2074,7 +2087,9 @@ function sbBundleToPayload(bundle){
     owner:r.owner||'',
     date:r.lead_date||'',
     source:r.source||'',
-    status:r.status||''
+    status:r.status||'',
+    note:r.note||'',
+    surveyImgs:Array.isArray(r.survey_imgs)?r.survey_imgs.filter(x=>typeof x==='string'&&x):[]
   }));
   data.suppliers=(bundle.suppliers||[]).map(r=>({
     ...((r.attrs&&typeof r.attrs==='object')?r.attrs:{}),
@@ -2174,8 +2189,8 @@ async function sbClearTable(table,idCol){
 }
 async function sbUpsertChunks(table,rows,onConflict){
   if(!rows.length)return;
-  // products có thể kèm data URL ảnh → chunk nhỏ hơn để tránh payload quá lớn
-  const chunk=table==='products'?15:200;
+  // products / CRM survey imgs có data URL → chunk nhỏ để tránh payload quá lớn
+  const chunk=table==='products'?15:(table==='crm_leads'?10:200);
   for(let i=0;i<rows.length;i+=chunk){
     const part=rows.slice(i,i+chunk);
     const {error}=await sb.from(table).upsert(part,onConflict?{onConflict}:undefined);
@@ -2558,9 +2573,23 @@ async function pushDBToSupabase(){
       lead_date:r.date||null,
       source:r.source||null,
       status:r.status||null,
+      note:r.note||null,
+      survey_imgs:crmSurveyImgs(r),
       updated_at:now
     }));
-    await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
+    try{
+      await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
+    }catch(crmSyncErr){
+      // Schema cũ chưa có note/survey_imgs — vẫn đồng bộ các cột lõi
+      const msg=String((crmSyncErr&&crmSyncErr.message)||crmSyncErr||'');
+      if(!/note|survey_imgs|column/i.test(msg)) throw crmSyncErr;
+      const crmCore=crmRows.map(r=>{
+        const {note,survey_imgs,...rest}=r;
+        return rest;
+      });
+      await sbUpsertThenPrune('crm_leads',crmCore,'id',{noPrune:true});
+      console.warn('CRM sync: thiếu cột note/survey_imgs trên Supabase — đã đẩy phần còn lại. Chạy migration 20261024143000_crm_leads_note_survey_imgs.sql');
+    }
     const crmGone=[...new Set((DB.deletedCrmIds||[]).map(Number).filter(Boolean))];
     if(crmGone.length){
       const {error:crmDelErr}=await sb.from('crm_leads').delete().in('id',crmGone);
@@ -7189,6 +7218,73 @@ function crmInfoText(r){
   if(r.demand) lines.push('Nhu cầu tiền điện: '+r.demand);
   return lines.join('\n');
 }
+const CRM_SURVEY_MAX=6;
+function crmSurveyImgs(r){
+  const arr=r&&Array.isArray(r.surveyImgs)?r.surveyImgs:[];
+  return arr.filter(x=>typeof x==='string'&&x.trim()).slice(0,CRM_SURVEY_MAX);
+}
+function crmNormalizeSurveyImgs(list){
+  return (Array.isArray(list)?list:[]).filter(x=>typeof x==='string'&&x.trim()).slice(0,CRM_SURVEY_MAX);
+}
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(String(r.result||''));
+    r.onerror=()=>reject(r.error||new Error('Không đọc được ảnh'));
+    r.readAsDataURL(file);
+  });
+}
+async function crmCompressSurveyFiles(fileList){
+  const files=[...fileList].filter(f=>f&&String(f.type||'').startsWith('image/'));
+  const out=[];
+  for(const f of files){
+    try{
+      const raw=await fileToDataUrl(f);
+      const compressed=await compressProdImg(raw, 960, 0.62);
+      if(compressed) out.push(compressed);
+    }catch(e){ console.warn('crm survey img', e); }
+  }
+  return out;
+}
+function crmSurveyCellHtml(r, canEd){
+  const imgs=crmSurveyImgs(r);
+  const id=r&&r.id;
+  const thumbs=imgs.map((src,i)=>`<div class="crm-survey-item">
+      <img src="${src}" alt="Khảo sát ${i+1}" data-crm-survey-view="${id}" data-crm-survey-idx="${i}" loading="lazy">
+      ${canEd?`<button type="button" class="crm-survey-x" title="Xóa ảnh" data-crm-survey-del="${id}" data-crm-survey-idx="${i}">×</button>`:''}
+    </div>`).join('');
+  const add=canEd&&imgs.length<CRM_SURVEY_MAX
+    ?`<label class="crm-survey-add" title="Thêm ảnh khảo sát (máy tính / điện thoại)">${I.up}<input type="file" accept="image/*" multiple hidden data-crm-survey-file="${id}"></label>`
+    :'';
+  if(!thumbs && !add) return '<span class="crm-survey-empty">Chưa có ảnh</span>';
+  return `<div class="crm-survey">${thumbs}${add}</div>`;
+}
+function crmSurveyEditorHtml(imgs, inputId){
+  const list=crmNormalizeSurveyImgs(imgs);
+  const thumbs=list.map((src,i)=>`<div class="crm-survey-item">
+      <img src="${src}" alt="Khảo sát ${i+1}" data-crm-draft-view="${i}">
+      <button type="button" class="crm-survey-x" title="Xóa ảnh" data-crm-draft-del="${i}">×</button>
+    </div>`).join('');
+  const add=list.length<CRM_SURVEY_MAX
+    ?`<label class="crm-survey-add" title="Thêm ảnh khảo sát">${I.up}<input type="file" accept="image/*" multiple hidden id="${inputId}"></label>`
+    :'';
+  return `<div class="crm-survey-modal-grid" id="crmSurveyDraft">${thumbs}${add}</div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">Tối đa ${CRM_SURVEY_MAX} ảnh · máy tính hoặc điện thoại (chụp / chọn thư viện)</div>`;
+}
+function openCrmSurveyPreview(src){
+  if(!src) return;
+  let box=document.getElementById('crmSurveyLightbox');
+  if(!box){
+    box=document.createElement('div');
+    box.id='crmSurveyLightbox';
+    box.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out';
+    box.onclick=()=>box.remove();
+    document.body.appendChild(box);
+  }
+  box.innerHTML=`<img class="crm-survey-preview" src="${src}" alt="Khảo sát" style="cursor:default;max-width:min(960px,100%);max-height:90vh;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.45)">`;
+  const img=box.querySelector('img');
+  if(img) img.onclick=e=>e.stopPropagation();
+}
 function crmStatusClass(st){
   if(st==='Đã khảo sát') return 'p-green';
   if(st==='Đã báo giá') return 'p-yellow';
@@ -7233,7 +7329,7 @@ function crmFiltered(){
     if(crmFilter.source && r.source!==crmFilter.source) return false;
     if(crmFilter.status && r.status!==crmFilter.status) return false;
     if(q){
-      const blob=[r.name,r.phone,r.address,r.demand,r.owner,r.source,r.status].join(' ').toLowerCase();
+      const blob=[r.name,r.phone,r.address,r.demand,r.owner,r.source,r.status,r.note].join(' ').toLowerCase();
       if(!blob.includes(q)) return false;
     }
     return true;
@@ -7347,6 +7443,8 @@ function pageCrm(){
       <th>Nguồn</th>
       <th>Thông tin khách hàng</th>
       <th>Trạng thái</th>
+      <th>Ghi chú</th>
+      <th>Hình ảnh khảo sát</th>
       <th>Thao tác</th>
     </tr></thead>
     <tbody>${pageRows.length?pageRows.map(r=>{
@@ -7354,22 +7452,27 @@ function pageCrm(){
       const canDel=canDeleteCrmData();
       const edCls=canEd?'ord-ed':'ord-ed ord-ro';
       const edTitle=canEd?'Nhấp đúp để sửa':(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa / xóa');
-      const edAttr=(field)=>canEd
-        ?` class="${edCls}" data-crmid="${r.id}" data-crmfield="${field}" title="${edTitle}"`
-        :` class="${edCls}" title="${edTitle}"`;
+      const edAttr=(field, extraCls)=>{
+        const cls=[edCls,extraCls].filter(Boolean).join(' ');
+        return canEd
+          ?` class="${cls}" data-crmid="${r.id}" data-crmfield="${field}" title="${edTitle}"`
+          :` class="${cls}" title="${edTitle}"`;
+      };
       return `<tr>
       <td${edAttr('owner')}>${crmIsUnassigned(r.owner)?'<span style="color:var(--muted)">Trống</span>':`<b>${esc(r.owner)}</b>`}</td>
       <td class="mono" style="white-space:nowrap">${esc(crmDateLabel(r.date))}</td>
       <td${edAttr('source')}>${r.source?`<span class="pill p-gray">${esc(r.source)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
       <td><div class="crm-info">${esc(crmInfoText(r))}</div></td>
       <td${edAttr('status')}>${r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>'}</td>
+      <td${edAttr('note','crm-note-cell')}><div class="ord-note">${r.note?esc(r.note):'<span style="color:var(--muted)">—</span>'}</div></td>
+      <td>${crmSurveyCellHtml(r, canEd)}</td>
       <td><div class="act">
         ${canEd?`<button data-crm-edit="${r.id}" title="Sửa">${I.pen}</button>`:''}
         ${canDel?`<button class="del" data-crm-del="${r.id}" title="Xóa">${I.trash}</button>`:''}
         ${!canEd&&!canDel?'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>':''}
       </div></td>
     </tr>`;
-    }).join(''):'<tr><td colspan="6" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
+    }).join(''):'<tr><td colspan="8" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
   </table></div></div>
   ${pageCount>1?`<div class="pager">
     <div class="pager-info">Trang ${crmPage}/${pageCount} · ${shownFrom}–${shownTo} / ${rows.length} khách</div>
@@ -7418,6 +7521,41 @@ function openCrmModal(row){
       return `<option value="${d}" ${d===cur?'selected':''}>${String(d).padStart(2,'0')}</option>`;
     }).join('');
   };
+  let draftImgs=crmSurveyImgs(row);
+  const paintDraft=()=>{
+    const box=$('#crmSurveyBox');
+    if(!box) return;
+    box.innerHTML=crmSurveyEditorHtml(draftImgs,'crmSurveyFile');
+    bindDraftSurveyUi();
+  };
+  const bindDraftSurveyUi=()=>{
+    const file=$('#crmSurveyFile');
+    if(file) file.onchange=async()=>{
+      const picked=file.files;
+      file.value='';
+      if(!picked||!picked.length) return;
+      const room=CRM_SURVEY_MAX-draftImgs.length;
+      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' ảnh khảo sát','bad'); return; }
+      toast('Đang nén ảnh…','');
+      const added=await crmCompressSurveyFiles([...picked].slice(0,room));
+      if(!added.length){ toast('Không đọc được ảnh','bad'); return; }
+      draftImgs=crmNormalizeSurveyImgs(draftImgs.concat(added));
+      paintDraft();
+      toast('Đã thêm '+added.length+' ảnh','ok');
+    };
+    $('#crmSurveyDraft')&&$('#crmSurveyDraft').querySelectorAll('[data-crm-draft-del]').forEach(b=>{
+      b.onclick=e=>{
+        e.preventDefault(); e.stopPropagation();
+        const i=Number(b.getAttribute('data-crm-draft-del'));
+        if(!Number.isFinite(i)) return;
+        draftImgs=draftImgs.filter((_,idx)=>idx!==i);
+        paintDraft();
+      };
+    });
+    $('#crmSurveyDraft')&&$('#crmSurveyDraft').querySelectorAll('[data-crm-draft-view]').forEach(img=>{
+      img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+    });
+  };
   openModal(isEdit?'Sửa khách hàng':'Thêm khách hàng',`
     <div class="row2">
       <div class="field"><label>Người phụ trách *</label>
@@ -7454,7 +7592,9 @@ function openCrmModal(row){
       <div class="field"><label>SĐT</label><input class="inp mono" id="crmPhone" value="${esc((row&&row.phone)||'')}"></div>
       <div class="field"><label>Địa chỉ</label><input class="inp" id="crmAddr" value="${esc((row&&row.address)||'')}"></div>
     </div>
-    <div class="field" style="margin:0"><label>Nhu cầu tiền điện</label><input class="inp" id="crmDemand" value="${esc((row&&row.demand)||'')}" placeholder="Ví dụ: 1.500.000 đ/tháng"></div>
+    <div class="field"><label>Nhu cầu tiền điện</label><input class="inp" id="crmDemand" value="${esc((row&&row.demand)||'')}" placeholder="Ví dụ: 1.500.000 đ/tháng"></div>
+    <div class="field"><label>Ghi chú</label><textarea class="inp" id="crmNote" rows="3" placeholder="Ghi chú khảo sát / trao đổi với khách…">${esc((row&&row.note)||'')}</textarea></div>
+    <div class="field" style="margin:0"><label>Hình ảnh khảo sát</label><div id="crmSurveyBox">${crmSurveyEditorHtml(draftImgs,'crmSurveyFile')}</div></div>
   `,'Lưu',()=>{
     const name=$('#crmName').value.trim();
     const owner=$('#crmNv').value.trim();
@@ -7482,6 +7622,8 @@ function openCrmModal(row){
       phone,
       address:$('#crmAddr').value.trim(),
       demand:$('#crmDemand').value.trim(),
+      note:($('#crmNote')||{}).value!=null?String($('#crmNote').value).trim():'',
+      surveyImgs:crmNormalizeSurveyImgs(draftImgs),
       owner:crmIsUnassigned(owner)?'':owner,
       date,
       source,
@@ -7497,7 +7639,8 @@ function openCrmModal(row){
       toast('Đã thêm khách hàng','ok');
     }
     saveDB();renderPage();return true;
-  },{w:640});
+  },{w:680});
+  bindDraftSurveyUi();
   const syncDay=()=>{
     const y=Number(($('#crmYear')||{}).value)||y0;
     const m=Number(($('#crmMonthNum')||{}).value)||m0;
@@ -7513,6 +7656,7 @@ function crmCellHtml(r, field){
   if(field==='owner') return crmIsUnassigned(r.owner)?'<span style="color:var(--muted)">Trống</span>':`<b>${esc(r.owner)}</b>`;
   if(field==='source') return r.source?`<span class="pill p-gray">${esc(r.source)}</span>`:'<span style="color:var(--muted)">—</span>';
   if(field==='status') return r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>';
+  if(field==='note') return `<div class="ord-note">${r.note?esc(r.note):'<span style="color:var(--muted)">—</span>'}</div>`;
   return '';
 }
 function finishCrmCellEdit(td, id, field){
@@ -7533,6 +7677,8 @@ function commitCrmCellEdit(td, id, field, el){
   }else if(field==='status'){
     if(v && !CRM_STATUS.includes(v)){ toast('Chọn trạng thái','bad'); return finishCrmCellEdit(td, id, field); }
     r.status=CRM_STATUS.includes(v)?v:'';
+  }else if(field==='note'){
+    r.note=v;
   }else return finishCrmCellEdit(td, id, field);
   saveDB();
   renderPage();
@@ -7546,19 +7692,29 @@ function startCrmCellEdit(id, field, td){
     return;
   }
   td.classList.add('ord-editing');
-  const editor=document.createElement('select');
-  editor.className='sel';
-  if(field==='owner') editor.innerHTML=crmStaffOptions(r.owner);
-  else if(field==='source') editor.innerHTML=`<option value="">-- Chọn nguồn --</option>`+CRM_SOURCE.map(s=>`<option value="${esc(s)}" ${r.source===s?'selected':''}>${esc(s)}</option>`).join('');
-  else if(field==='status') editor.innerHTML=`<option value="" ${!r.status||r.status==='Trống'?'selected':''}>Trống</option>`+CRM_STATUS.map(s=>`<option value="${esc(s)}" ${r.status===s?'selected':''}>${esc(s)}</option>`).join('');
-  else return finishCrmCellEdit(td, id, field);
+  let editor=null;
+  if(field==='note'){
+    editor=document.createElement('textarea');
+    editor.className='inp';
+    editor.rows=3;
+    editor.value=r.note||'';
+  }else{
+    editor=document.createElement('select');
+    editor.className='sel';
+    if(field==='owner') editor.innerHTML=crmStaffOptions(r.owner);
+    else if(field==='source') editor.innerHTML=`<option value="">-- Chọn nguồn --</option>`+CRM_SOURCE.map(s=>`<option value="${esc(s)}" ${r.source===s?'selected':''}>${esc(s)}</option>`).join('');
+    else if(field==='status') editor.innerHTML=`<option value="" ${!r.status||r.status==='Trống'?'selected':''}>Trống</option>`+CRM_STATUS.map(s=>`<option value="${esc(s)}" ${r.status===s?'selected':''}>${esc(s)}</option>`).join('');
+    else return finishCrmCellEdit(td, id, field);
+  }
   td.innerHTML='';
   td.appendChild(editor);
   editor.focus();
+  if(editor.select) editor.select();
   const done=()=>commitCrmCellEdit(td, id, field, editor);
   editor.onblur=()=>setTimeout(done, 80);
-  editor.onchange=()=>editor.blur();
+  if(editor.tagName==='SELECT') editor.onchange=()=>editor.blur();
   editor.onkeydown=e=>{
+    if(e.key==='Enter' && editor.tagName!=='TEXTAREA'){ e.preventDefault(); editor.blur(); }
     if(e.key==='Escape'){
       editor.onblur=null;
       finishCrmCellEdit(td, id, field);
@@ -7616,6 +7772,50 @@ function bindCrm(){
     DB.crm=DB.crm.filter(x=>Number(x.id)!==id);
     toast('Đã xóa khách hàng','ok');
     saveDB();renderPage();
+  });
+  bindCrmSurveyActions();
+}
+function bindCrmSurveyActions(){
+  const root=$('#main'); if(!root) return;
+  root.querySelectorAll('[data-crm-survey-view]').forEach(img=>{
+    img.onclick=e=>{
+      e.preventDefault(); e.stopPropagation();
+      openCrmSurveyPreview(img.getAttribute('src'));
+    };
+  });
+  root.querySelectorAll('[data-crm-survey-del]').forEach(b=>{
+    b.onclick=e=>{
+      e.preventDefault(); e.stopPropagation();
+      const id=b.getAttribute('data-crm-survey-del');
+      const idx=Number(b.getAttribute('data-crm-survey-idx'));
+      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
+      if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
+      const imgs=crmSurveyImgs(row);
+      if(!Number.isFinite(idx) || idx<0 || idx>=imgs.length) return;
+      if(!confirm('Xóa ảnh khảo sát này?')) return;
+      row.surveyImgs=imgs.filter((_,i)=>i!==idx);
+      toast('Đã xóa ảnh','ok');
+      saveDB(); renderPage();
+    };
+  });
+  root.querySelectorAll('input[data-crm-survey-file]').forEach(inp=>{
+    inp.onchange=async()=>{
+      const id=inp.getAttribute('data-crm-survey-file');
+      const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
+      const picked=inp.files;
+      inp.value='';
+      if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
+      if(!picked||!picked.length) return;
+      const cur=crmSurveyImgs(row);
+      const room=CRM_SURVEY_MAX-cur.length;
+      if(room<=0){ toast('Tối đa '+CRM_SURVEY_MAX+' ảnh khảo sát','bad'); return; }
+      toast('Đang nén ảnh…','');
+      const added=await crmCompressSurveyFiles([...picked].slice(0,room));
+      if(!added.length){ toast('Không đọc được ảnh','bad'); return; }
+      row.surveyImgs=crmNormalizeSurveyImgs(cur.concat(added));
+      toast('Đã thêm '+added.length+' ảnh khảo sát','ok');
+      saveDB(); renderPage();
+    };
   });
 }
 
