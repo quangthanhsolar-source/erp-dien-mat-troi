@@ -7393,20 +7393,16 @@ function crmApplyOverridesToDB(){
     CRM_OVERRIDE_FIELDS.forEach(k=>{
       if(ov[k]!==undefined) r[k]=ov[k];
     });
+    // surveyFiles trong override là nguồn sự thật (kể cả khi mảng rỗng = đã xóa hết ảnh)
     if(Array.isArray(ov.surveyFiles)){
       const cur=typeof crmSurveyList==='function'?crmSurveyList(r):[];
-      if(!cur.length && ov.surveyFiles.length){
-        r.surveyFiles=ov.surveyFiles.map(f=>Object.assign({},f));
-      }else if(ov.surveyFiles.length){
-        const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
-        ov.surveyFiles.forEach(f=>{
-          if(!f||!f.id) return;
-          const key=String(f.id);
-          if(!byId.has(key)) byId.set(key,Object.assign({},f));
-          else if(!byId.get(key).thumb && f.thumb) byId.get(key).thumb=f.thumb;
-        });
-        r.surveyFiles=[...byId.values()].slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
-      }
+      const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
+      r.surveyFiles=ov.surveyFiles.filter(f=>f&&f.id).map(f=>{
+        const prev=byId.get(String(f.id));
+        const next=Object.assign({},f);
+        if((!next.thumb) && prev&&prev.thumb) next.thumb=prev.thumb;
+        return next;
+      }).slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
     }
     n++;
   });
@@ -7452,7 +7448,8 @@ function crmPersistSurveyMeta(crmId, files){
     kind:f.kind==='image'?'image':'file',
     thumb:(typeof f.thumb==='string'&&f.thumb.startsWith('data:')&&f.thumb.length<48000)?f.thumb:''
   }));
-  if(list.length) map[id]=list; else delete map[id];
+  // Giữ cả mảng rỗng để biết user đã xóa hết — tránh recover từ IDB nhét lại
+  map[id]=list;
   saveCrmSurveyMetaMap(map);
 }
 function crmApplySurveyMetaToDB(){
@@ -7461,25 +7458,22 @@ function crmApplySurveyMetaToDB(){
   let n=0;
   (DB.crm||[]).forEach(r=>{
     if(!r||r.id==null) return;
-    const saved=map[String(r.id)];
-    if(!Array.isArray(saved)||!saved.length) return;
+    const key=String(r.id);
+    // Nếu đã có override CRM thì override là nguồn sự thật
+    if(DB.settings&&DB.settings.crmOverrides&&DB.settings.crmOverrides[key]) return;
+    if(!Object.prototype.hasOwnProperty.call(map, key)) return;
+    const saved=Array.isArray(map[key])?map[key]:[];
     const cur=Array.isArray(r.surveyFiles)?r.surveyFiles.filter(f=>f&&f.id):[];
-    if(!cur.length){
-      r.surveyFiles=saved.map(f=>Object.assign({},f));
-      n++;
-      return;
-    }
+    const same=cur.length===saved.length && saved.every((f,i)=>String(f.id)===String(cur[i]&&cur[i].id));
+    if(same) return;
     const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
-    let changed=false;
-    saved.forEach(f=>{
-      const id=String(f.id);
-      if(!byId.has(id)){ byId.set(id,Object.assign({},f)); changed=true; }
-      else if(!byId.get(id).thumb && f.thumb){ byId.get(id).thumb=f.thumb; changed=true; }
+    r.surveyFiles=saved.filter(f=>f&&f.id).map(f=>{
+      const prev=byId.get(String(f.id));
+      const next=Object.assign({},f);
+      if((!next.thumb) && prev&&prev.thumb) next.thumb=prev.thumb;
+      return next;
     });
-    if(changed || cur.length<saved.length){
-      r.surveyFiles=[...byId.values()].slice(0,CRM_SURVEY_MAX);
-      n++;
-    }
+    n++;
   });
   return n;
 }
@@ -7531,22 +7525,20 @@ async function crmRecoverSurveyMetaFromIdb(){
       });
     });
     const map=loadCrmSurveyMetaMap();
+    const overrides=loadCrmOverrides();
     let changed=0;
+    // Chỉ khôi phục từ IDB khi CHƯA có metadata/override — không được nhét lại file user đã xóa
     Object.keys(byCrm).forEach(crmId=>{
-      const have=Array.isArray(map[crmId])?map[crmId].slice():[];
-      const ids=new Set(have.map(f=>String(f&&f.id)));
-      let grew=false;
-      byCrm[crmId].forEach(f=>{
-        if(!ids.has(String(f.id))){ have.push(f); ids.add(String(f.id)); grew=true; }
-      });
-      if(!map[crmId]||!map[crmId].length||grew){
-        map[crmId]=have.slice(0,CRM_SURVEY_MAX);
-        changed++;
-      }
+      const ov=overrides[crmId];
+      const hasOverrideList=ov&&Array.isArray(ov.surveyFiles);
+      // Đã có meta (kể cả []) hoặc override → không recover từ IDB (tránh ảnh đã xóa hiện lại)
+      if(Object.prototype.hasOwnProperty.call(map, crmId) || hasOverrideList) return;
+      map[crmId]=byCrm[crmId].slice(0,CRM_SURVEY_MAX);
+      changed++;
     });
     if(changed) saveCrmSurveyMetaMap(map);
     const applied=crmApplySurveyMetaToDB();
-    // Tạo thumb nhỏ từ IDB để hiện lại sau reload
+    // Tạo thumb nhỏ từ IDB cho file đang giữ (không thêm file mới)
     for(const r of (DB.crm||[])){
       if(!r||!r.id) continue;
       const files=crmSurveyList(r);
@@ -7563,6 +7555,7 @@ async function crmRecoverSurveyMetaFromIdb(){
       if(touch){
         r.surveyFiles=files.map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||''}));
         crmPersistSurveyMeta(r.id, r.surveyFiles);
+        crmRememberOverride(r);
       }
     }
     return changed+applied;
@@ -8487,16 +8480,19 @@ function bindCrmSurveyActions(){
       const idx=Number(b.getAttribute('data-crm-survey-idx'));
       const row=(DB.crm||[]).find(x=>String(x.id)===String(id));
       if(!row || !canEditCrmRow(row)){ toast('Không sửa được khách này','bad'); return; }
-      const files=crmSurveyList(row);
+      const files=crmSurveyList(row).slice();
       if(!Number.isFinite(idx) || idx<0 || idx>=files.length) return;
       const gone=files[idx];
-      if(!confirm('Xóa «'+(gone.name||'file')+'»?')) return;
-      row.surveyFiles=files.filter((_,i)=>i!==idx);
-      try{ await crmSurveyIdbDel(row.id, gone.id); }catch(err){}
-      crmPersistSurveyMeta(row.id, row.surveyFiles);
+      const label=String(gone.name||'ảnh khảo sát').replace(/^data:.*$/,'ảnh khảo sát');
+      if(!confirm('Xóa «'+label+'» khỏi hình ảnh khảo sát?')) return;
+      const nextFiles=files.filter((_,i)=>i!==idx);
+      row.surveyFiles=nextFiles;
+      try{ await crmSurveyIdbDel(row.id, gone.id); }catch(err){ console.warn('crm survey del', err); }
+      crmPersistSurveyMeta(row.id, nextFiles);
       crmRememberOverride(row);
-      toast('Đã xóa file','ok');
-      saveDB(); renderPage();
+      toast('Đã xóa ảnh khảo sát','ok');
+      saveDB();
+      renderPage();
     };
   });
 }
