@@ -1106,9 +1106,19 @@ function isAdminOrManager(){
   const r=effectiveUserRole(ME);
   return r==='admin'||r==='manager';
 }
-/** CRM / Đơn hàng: chỉ Admin được sửa hoặc xóa dữ liệu hiện có. */
-function canMutateCrmData(){ return isAdmin(); }
+/** Đơn hàng: Excel import / thao tác hàng loạt — chỉ Admin. */
 function canMutateOrderData(){ return isAdmin(); }
+/** CRM: chỉ Admin được xóa khách hàng. */
+function canDeleteCrmData(){ return isAdmin(); }
+/** @deprecated dùng canDeleteCrmData / canEditCrmRow */
+function canMutateCrmData(){ return canDeleteCrmData(); }
+/** CRM: Admin sửa tất cả; NV KD / Telesales sửa khách mình được xem (KD: Trống + của mình; Telesales: tất cả). */
+function canEditCrmRow(r){
+  if(!ME || !r) return false;
+  if(isAdmin()) return true;
+  if(!isSalesRole()) return false;
+  return canViewCrmRow(r);
+}
 function canManageUsers(){
   if(!ME) return false;
   if(!isSalesRole()) return true;
@@ -1146,8 +1156,19 @@ function orderOwnedByMe(q){
   return !!a&&!!b&&a===b;
 }
 function canEditOrder(q){
-  // Chỉ Admin được sửa / xóa đơn hàng (yêu cầu nghiệp vụ).
-  return canMutateOrderData();
+  if(!ME || !q) return false;
+  if(isAdmin()) return true;
+  if(!isSalesRole()) return false;
+  if(salesHasPerm('editAnyOrder')) return true;
+  return orderOwnedByMe(q);
+}
+function canDeleteOrder(q){
+  if(!ME || !q) return false;
+  if(isAdmin()) return true;
+  // NV KD / Telesales được xóa đơn của mình; xóa CRM vẫn chỉ Admin.
+  if(!isSalesRole()) return false;
+  if(salesHasPerm('editAnyOrder')) return true;
+  return orderOwnedByMe(q);
 }
 function canViewOrder(q){
   if(!ME) return false;
@@ -6009,7 +6030,8 @@ function quoteListSection(){
       const catTxt=orderCatLabel(q.cat)||q.catLabel||'';
       const hh=orderCommission(q);
       const canEd=canEditOrder(q);
-      const edTitle=canEd?'Double-click để sửa':'Chỉ Admin được sửa / xóa';
+      const canDel=canDeleteOrder(q);
+      const edTitle=canEd?'Double-click để sửa':(isSalesRole()?'Chỉ được sửa đơn do mình phụ trách':'Chỉ Admin được sửa / xóa');
       const edAttr=(field)=>{
         const money=field==='total'||field==='deposit'||field==='paid'||field==='debt';
         const cls=['ord-ed',canEd?'':'ord-ro',money?'num mono':'',field==='monthLabel'?'mono':''].filter(Boolean).join(' ');
@@ -6031,8 +6053,9 @@ function quoteListSection(){
       <td class="num mono ord-ed ord-ro" style="font-weight:600;color:var(--muted)" title="Hoa hồng — không sửa">${hh!=null?num(hh):'—'}</td>
       <td${edAttr('note')}><div class="ord-note">${esc(q.note||'')}</div></td>
       <td><div class="act">
-        ${canEd?`<button data-eq="${esc(q.code)}" title="Sửa">${I.pen}</button>
-        <button class="del" data-delq="${esc(q.code)}" title="Xóa">${I.trash}</button>`:'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>'}
+        ${canEd?`<button data-eq="${esc(q.code)}" title="Sửa">${I.pen}</button>`:''}
+        ${canDel?`<button class="del" data-delq="${esc(q.code)}" title="Xóa">${I.trash}</button>`:''}
+        ${!canEd&&!canDel?'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>':''}
       </div></td></tr>`;
     }).join('')
     :'<tr><td colspan="13" class="empty">Không có đơn hàng phù hợp bộ lọc.</td></tr>'}</tbody>
@@ -6161,6 +6184,10 @@ function commitOrderCellEdit(td, code, field, el){
     default: return finishOrderCellEdit(td, code, field, false);
   }
   if(remove){
+    if(!canDeleteOrder(q)){
+      toast('Không được để trống Sale phụ trách','bad');
+      return finishOrderCellEdit(td, code, field, false);
+    }
     rememberDeletedQuotes([q.code]);
     DB.quotes=DB.quotes.filter(x=>x.code!==q.code);
     saveDB();
@@ -6181,7 +6208,10 @@ function startOrderCellEdit(code, field, td){
   if(td.classList.contains('ord-editing')||td.classList.contains('ord-ro')) return;
   const q=orderQuoteByCode(code);
   if(!q) return;
-  if(!canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
+  if(!canEditOrder(q)){
+    toast(isSalesRole()?'Chỉ được sửa đơn do mình phụ trách':'Chỉ Admin được sửa / xóa đơn hàng','bad');
+    return;
+  }
   td.classList.add('ord-editing');
   const monthVal=q.monthLabel||dateToMonthLabel(q.date)||'Tháng 1';
   let editor=null;
@@ -6279,7 +6309,10 @@ function peekQuoteCode(){
   return {code,n};
 }
 function openOrderModal(q){
-  if(q && !canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
+  if(q && !canEditOrder(q)){
+    toast(isSalesRole()?'Chỉ được sửa đơn do mình phụ trách':'Chỉ Admin được sửa / xóa đơn hàng','bad');
+    return;
+  }
   const isEdit=!!q;
   const peeked=isEdit?null:peekQuoteCode();
   const code=isEdit?q.code:peeked.code;
@@ -7059,7 +7092,10 @@ function bindQuoteList(){
   });
   $('#main').querySelectorAll('[data-delq]').forEach(b=>b.onclick=()=>{
     const q=DB.quotes.find(x=>x.code===b.dataset.delq);
-    if(q && !canEditOrder(q)){ toast('Chỉ Admin được sửa / xóa đơn hàng','bad'); return; }
+    if(!q || !canDeleteOrder(q)){
+      toast(isSalesRole()?'Chỉ được xóa đơn do mình phụ trách':'Chỉ Admin được sửa / xóa đơn hàng','bad');
+      return;
+    }
     if(!confirm('Xóa đơn hàng '+b.dataset.delq+'?'))return;
     rememberDeletedQuotes([b.dataset.delq]);
     DB.quotes=DB.quotes.filter(v=>v.code!==b.dataset.delq);toast('Đã xóa','ok');saveDB();renderPage();
@@ -7314,10 +7350,11 @@ function pageCrm(){
       <th>Thao tác</th>
     </tr></thead>
     <tbody>${pageRows.length?pageRows.map(r=>{
-      const canMut=canMutateCrmData();
-      const edCls=canMut?'ord-ed':'ord-ed ord-ro';
-      const edTitle=canMut?'Nhấp đúp để sửa':'Chỉ Admin được sửa / xóa';
-      const edAttr=(field)=>canMut
+      const canEd=canEditCrmRow(r);
+      const canDel=canDeleteCrmData();
+      const edCls=canEd?'ord-ed':'ord-ed ord-ro';
+      const edTitle=canEd?'Nhấp đúp để sửa':(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa / xóa');
+      const edAttr=(field)=>canEd
         ?` class="${edCls}" data-crmid="${r.id}" data-crmfield="${field}" title="${edTitle}"`
         :` class="${edCls}" title="${edTitle}"`;
       return `<tr>
@@ -7327,8 +7364,9 @@ function pageCrm(){
       <td><div class="crm-info">${esc(crmInfoText(r))}</div></td>
       <td${edAttr('status')}>${r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>'}</td>
       <td><div class="act">
-        ${canMut?`<button data-crm-edit="${r.id}" title="Sửa">${I.pen}</button>
-        <button class="del" data-crm-del="${r.id}" title="Xóa">${I.trash}</button>`:'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>'}
+        ${canEd?`<button data-crm-edit="${r.id}" title="Sửa">${I.pen}</button>`:''}
+        ${canDel?`<button class="del" data-crm-del="${r.id}" title="Xóa">${I.trash}</button>`:''}
+        ${!canEd&&!canDel?'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>':''}
       </div></td>
     </tr>`;
     }).join(''):'<tr><td colspan="6" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
@@ -7359,8 +7397,8 @@ function findCrmByPhone(phone, excludeId){
 }
 function openCrmModal(row){
   const isEdit=!!row;
-  if(isEdit && !canMutateCrmData()){
-    toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad');
+  if(isEdit && !canEditCrmRow(row)){
+    toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
     return;
   }
   const now=new Date();
@@ -7485,6 +7523,7 @@ function finishCrmCellEdit(td, id, field){
 function commitCrmCellEdit(td, id, field, el){
   const r=(DB.crm||[]).find(x=>String(x.id)===String(id));
   if(!r) return finishCrmCellEdit(td, id, field);
+  if(!canEditCrmRow(r)) return finishCrmCellEdit(td, id, field);
   const v=String(el.value||'').trim();
   if(field==='owner'){
     r.owner=crmIsUnassigned(v)?'':v;
@@ -7500,9 +7539,12 @@ function commitCrmCellEdit(td, id, field, el){
 }
 function startCrmCellEdit(id, field, td){
   if(!td || td.classList.contains('ord-editing')) return;
-  if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
   const r=(DB.crm||[]).find(x=>String(x.id)===String(id));
   if(!r) return;
+  if(!canEditCrmRow(r)){
+    toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
+    return;
+  }
   td.classList.add('ord-editing');
   const editor=document.createElement('select');
   editor.className='sel';
@@ -7556,12 +7598,15 @@ function bindCrm(){
   });
   bindCrmInlineEdit();
   $('#main').querySelectorAll('[data-crm-edit]').forEach(b=>b.onclick=()=>{
-    if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmEdit));
-    if(row) openCrmModal(row);
+    if(!row || !canEditCrmRow(row)){
+      toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
+      return;
+    }
+    openCrmModal(row);
   });
   $('#main').querySelectorAll('[data-crm-del]').forEach(b=>b.onclick=()=>{
-    if(!canMutateCrmData()){ toast('Chỉ Admin được sửa / xóa khách hàng CRM','bad'); return; }
+    if(!canDeleteCrmData()){ toast('Chỉ Admin được xóa khách hàng CRM','bad'); return; }
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmDel));
     if(!row) return;
     if(!confirm('Xóa khách '+row.name+'?')) return;
