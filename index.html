@@ -10324,6 +10324,13 @@ const PDF_REF_DPI=96;
 const PDF_CONTENT_MM=190;
 const PDF_CONTENT_PX=Math.round(PDF_CONTENT_MM*PDF_REF_DPI/25.4); // 718
 const PDF_FONT_STACK='Arial,Helvetica,sans-serif';
+/** Hợp đồng PDF — khổ cố định giống máy tính (không phụ thuộc viewport điện thoại). */
+const HD_PDF_MM=182;
+const HD_PDF_PX=Math.round(HD_PDF_MM*PDF_REF_DPI/25.4); // 688
+/** Tinos ≈ Times New Roman — có trên cả điện thoại & máy tính qua Google Fonts. */
+const HD_PDF_FONT="Tinos,'Times New Roman',Times,serif";
+const HD_PDF_SCALE=3;
+const HD_PDF_FONT_HREF='https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap';
 function romanQT(n){
   const v=[1000,900,500,400,100,90,50,40,10,9,5,4,1];
   const s=['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
@@ -11140,6 +11147,133 @@ async function ensurePdfProductImages(doc, map){
     return {injected:reinjected,baked:0,mode:'img-fallback'};
   }
   return {injected,baked:qNodes.filter(n=>n.tagName==='CANVAS').length,mode:'baked'};
+}
+/** CSS khóa form HĐ PDF — cùng font/cỡ/lề trên điện thoại và máy tính. */
+function hdPdfLockCss(){
+  return [
+    'html,body{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;-moz-text-size-adjust:100%!important;zoom:1!important;transform:none!important}',
+    'html{width:'+HD_PDF_PX+'px!important;max-width:'+HD_PDF_PX+'px!important;margin:0!important;padding:0!important;background:#fff!important}',
+    'body{width:'+HD_PDF_PX+'px!important;max-width:'+HD_PDF_PX+'px!important;margin:0 auto!important;padding:0!important;background:#fff!important;',
+      'font-family:'+HD_PDF_FONT+'!important;font-size:13.6pt!important;line-height:1.5!important;color:#111!important;',
+      '-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}',
+    'body,body *{font-family:'+HD_PDF_FONT+'!important;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;letter-spacing:normal!important}',
+    'img,.hd-logo{max-width:42mm!important;height:auto!important}',
+    '.p,.sec,.article,li,ul{font-size:13.6pt!important;line-height:1.5!important}',
+    '.p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
+    '.p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
+    '.p,.article,li,ul{page-break-inside:avoid!important;break-inside:avoid!important}',
+    '.article,.sec{page-break-after:avoid!important;break-after:avoid!important}',
+    /* 3 khối khóa size */
+    '.hd-head,.hd-head *:not(img){font-size:13pt!important;line-height:1.45!important}',
+    '.nation{font-size:13.5pt!important;font-weight:700!important}',
+    '.motto,.stars{font-size:13pt!important}',
+    '.hd-title,.center > .hd-title{font-size:15.5pt!important;font-weight:700!important}',
+    '.hd-sub,.hd-so,.center > .hd-sub,.center > .hd-so{font-size:13pt!important}',
+    '.party,.party *:not(img){font-size:13pt!important;line-height:1.45!important}',
+    '.sign,.sign *:not(img){font-size:13pt!important;line-height:1.45!important}',
+    '.party,.hd-head,.sign,ul{page-break-inside:avoid!important;break-inside:avoid!important}'
+  ].join('');
+}
+/**
+ * Mount HĐ vào iframe khổ cố định — tránh điện thoại phóng chữ / co viewport khác máy tính.
+ * Trả {frame, root, cleanup}.
+ */
+async function mountHdPdfCaptureHost(fullHtml){
+  const old=document.getElementById('hdPdfCaptureFrame'); if(old) old.remove();
+  const oldHost=document.getElementById('hdPdfCaptureHost'); if(oldHost) oldHost.remove();
+  const frame=document.createElement('iframe');
+  frame.id='hdPdfCaptureFrame';
+  // allow-same-origin + allow-scripts: tải font Tinos (Google) giống máy tính trên điện thoại
+  frame.setAttribute('sandbox','allow-same-origin allow-scripts');
+  frame.setAttribute('scrolling','no');
+  frame.style.cssText='position:fixed;left:0;top:0;width:'+HD_PDF_PX+'px;height:200px;border:0;opacity:1;visibility:visible;z-index:1;pointer-events:none;background:#fff;overflow:hidden;';
+  document.body.appendChild(frame);
+  const doc=frame.contentDocument;
+  const parsed=new DOMParser().parseFromString(fullHtml||'','text/html');
+  const styles=[...parsed.querySelectorAll('style')].map(s=>s.textContent||'').join('\n');
+  const bodyHtml=parsed.body?parsed.body.innerHTML:(fullHtml||'');
+  doc.open();
+  doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'
+    +'<meta name="viewport" content="width='+HD_PDF_PX+', initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">'
+    +'<link rel="preconnect" href="https://fonts.googleapis.com">'
+    +'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    +'<link href="'+HD_PDF_FONT_HREF+'" rel="stylesheet">'
+    +'<style>'+styles+'</style>'
+    +'<style id="hd-pdf-lock">'+hdPdfLockCss()+'</style>'
+    +'</head><body>'+bodyHtml+'</body></html>');
+  doc.close();
+  const root=doc.body;
+  // Chờ font Tinos (cùng metric điện thoại/máy tính) rồi mới đo layout
+  try{
+    if(doc.fonts&&doc.fonts.load){
+      await Promise.race([
+        Promise.all([
+          doc.fonts.load('400 13.6pt Tinos'),
+          doc.fonts.load('700 13.6pt Tinos'),
+          doc.fonts.load('italic 400 13.6pt Tinos'),
+          doc.fonts.load('italic 700 13.6pt Tinos')
+        ]).then(()=>doc.fonts.ready),
+        new Promise(r=>setTimeout(r,2500))
+      ]);
+    }else if(doc.fonts&&doc.fonts.ready){
+      await Promise.race([doc.fonts.ready, new Promise(r=>setTimeout(r,2500))]);
+    }
+  }catch(e){}
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  await new Promise(r=>setTimeout(r,100));
+  const h=Math.max(root.scrollHeight||0, root.offsetHeight||0, doc.documentElement.scrollHeight||0, 1);
+  frame.style.height=h+'px';
+  void frame.offsetHeight;
+  await new Promise(r=>setTimeout(r,40));
+  const cleanup=()=>{ try{ if(frame.parentNode) frame.parentNode.removeChild(frame); }catch(e){} };
+  return {frame, root, doc, cleanup};
+}
+/** html2canvas HĐ — không ghi đè Arial như báo giá; khóa width/scale giống máy tính. */
+async function captureHdCanvas(root){
+  const w=HD_PDF_PX;
+  const h=Math.max(1, root.scrollHeight||0, root.offsetHeight||0, root.ownerDocument&&root.ownerDocument.documentElement.scrollHeight||0);
+  if(root.style){
+    root.style.width=w+'px';
+    root.style.maxWidth=w+'px';
+    root.style.margin='0';
+    root.style.zoom='1';
+  }
+  const canvas=await html2canvas(root,{
+    scale:HD_PDF_SCALE,
+    useCORS:true,
+    allowTaint:true,
+    backgroundColor:'#ffffff',
+    logging:false,
+    imageTimeout:20000,
+    scrollX:0,
+    scrollY:0,
+    windowWidth:w,
+    windowHeight:h,
+    width:w,
+    height:h,
+    x:0,
+    y:0,
+    foreignObjectRendering:false,
+    onclone:(clonedDoc)=>{
+      try{
+        const st=clonedDoc.createElement('style');
+        st.textContent=hdPdfLockCss()
+          +'html,body{width:'+w+'px!important;max-width:'+w+'px!important;margin:0!important;}'
+          +'html,body,body *{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;}';
+        (clonedDoc.head||clonedDoc.documentElement).appendChild(st);
+        const b=clonedDoc.body;
+        if(b&&b.style){
+          b.style.width=w+'px';
+          b.style.maxWidth=w+'px';
+          b.style.margin='0';
+          b.style.zoom='1';
+          b.style.webkitTextSizeAdjust='100%';
+          b.style.textSizeAdjust='100%';
+        }
+      }catch(e){ console.warn('hd onclone', e); }
+    }
+  });
+  return {canvas, scale:HD_PDF_SCALE, target:root};
 }
 function contractSeqCode(cusName){
   const y=new Date().getFullYear();
@@ -12133,62 +12267,29 @@ const doPrint=async()=>{
     const spinBtn=btn||bHd;
     const prevLabel=spinBtn.innerHTML;
     spinBtn.disabled=true; spinBtn.innerHTML='⏳ Đang tạo HĐ…';
-    let host=null;
+    let cleanupHd=null;
     const unlockZoom=pdfHtmlZoomLock();
     try{
-      const mounted=await mountPdfCaptureHost(hdHtml, {});
-      host=mounted.host;
-      const measureRoot=mounted.body||host;
-      // Chỉ PDF: nội dung điều khoản 13.6pt (−0.4 so với bản trước). Preview giữ nguyên.
-      // 3 khối (đầu trang / Bên A·B / chữ ký) giữ size — không đổi.
-      if(!host.querySelector('#hd-pdf-font-boost')){
-        const boost=document.createElement('style');
-        boost.id='hd-pdf-font-boost';
-        boost.textContent=[
-          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:13.6pt!important;line-height:1.5!important;color:#111!important}',
-          '.pdf-capture-root,.pdf-capture-root *:not(img){font-family:\'Times New Roman\',Times,serif!important}',
-          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:13.6pt!important;line-height:1.5!important}',
-          '.pdf-capture-root .p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
-          '.pdf-capture-root .p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
-          '.pdf-capture-root .p,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{page-break-inside:avoid!important;break-inside:avoid!important}',
-          '.pdf-capture-root .article{page-break-after:avoid!important;break-after:avoid!important}',
-          '.pdf-capture-root .sec{page-break-after:avoid!important;break-after:avoid!important}',
-          /* Khối 1: quốc hiệu + tiêu đề HĐ — giữ nguyên */
-          '.pdf-capture-root .hd-head,.pdf-capture-root .hd-head *:not(img){font-size:13pt!important;line-height:1.45!important}',
-          '.pdf-capture-root .nation{font-size:13.5pt!important;font-weight:700!important}',
-          '.pdf-capture-root .motto,.pdf-capture-root .stars{font-size:13pt!important}',
-          '.pdf-capture-root .hd-title{font-size:15.5pt!important;font-weight:700!important}',
-          '.pdf-capture-root .hd-sub,.pdf-capture-root .hd-so{font-size:13pt!important}',
-          '.pdf-capture-root .center > .hd-title{font-size:15.5pt!important}',
-          '.pdf-capture-root .center > .hd-sub,.pdf-capture-root .center > .hd-so{font-size:13pt!important}',
-          /* Khối 2: Bên A / Bên B — giữ nguyên */
-          '.pdf-capture-root .party,.pdf-capture-root .party *:not(img){font-size:13pt!important;line-height:1.45!important}',
-          '.pdf-capture-root .party,.pdf-capture-root .hd-head,.pdf-capture-root .sign{page-break-inside:avoid!important;break-inside:avoid!important}',
-          /* Khối 3: chữ ký — giữ nguyên */
-          '.pdf-capture-root .sign,.pdf-capture-root .sign *:not(img){font-size:13pt!important;line-height:1.45!important}'
-        ].join('');
-        host.appendChild(boost);
-        void host.offsetHeight;
-        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-        await new Promise(r=>setTimeout(r,60));
-      }
-      let cap=await captureToPdf(measureRoot, {});
+      // Iframe khổ cố định — điện thoại và máy tính cùng form/font/lề
+      const mounted=await mountHdPdfCaptureHost(hdHtml);
+      cleanupHd=mounted.cleanup;
+      const measureRoot=mounted.root;
+      let cap=await captureHdCanvas(measureRoot);
       if(!cap||!cap.canvas||canvasLooksBlank(cap.canvas)){
-        cap=await captureToPdf(host, {});
+        throw new Error('Không chụp được nội dung hợp đồng');
       }
-      const canvas=cap&&cap.canvas;
-      if(!canvas||!canvas.width) throw new Error('Không chụp được nội dung hợp đồng');
+      const canvas=cap.canvas;
       if(canvasLooksBlank(canvas)) throw new Error('PDF hợp đồng bị trắng — thử lại');
       const {jsPDF}=window.jspdf;
-      const pageW=210, pageH=297, marginY=12, contentW=182, marginX=(pageW-contentW)/2;
-      const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+      const pageW=210, pageH=297, marginY=12, contentW=HD_PDF_MM, marginX=(pageW-contentW)/2;
+      const pdfDoc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
       const imgW=canvas.width, imgH=canvas.height;
       const mmPerPx=contentW/imgW;
       const pageHpx=(pageH-marginY*2)/mmPerPx;
       const pageStarts=pdfSmartPageStarts(measureRoot, imgH, pageHpx);
-      console.log('HD PDF pages', pageStarts.length-1, pageStarts.map(v=>Math.round(v)));
+      console.log('HD PDF pages', pageStarts.length-1, 'w', imgW, pageStarts.map(v=>Math.round(v)));
       for(let p=0;p<pageStarts.length-1;p++){
-        if(p) doc.addPage();
+        if(p) pdfDoc.addPage();
         const srcY=pageStarts[p];
         const srcH=Math.max(1, pageStarts[p+1]-srcY);
         const pageCv=document.createElement('canvas');
@@ -12198,20 +12299,20 @@ const doPrint=async()=>{
         ctx.drawImage(canvas,0,srcY,imgW,srcH,0,0,imgW,srcH);
         const natH=srcH*mmPerPx;
         const maxDrawH=pageH-marginY*2;
-        const scale=natH>maxDrawH+0.05?maxDrawH/natH:1;
-        const drawW=contentW*scale, drawH=natH*scale;
+        const fit=natH>maxDrawH+0.05?maxDrawH/natH:1;
+        const drawW=contentW*fit, drawH=natH*fit;
         const drawX=marginX+(contentW-drawW)/2;
         const data=pageCv.toDataURL('image/jpeg',0.94);
-        doc.addImage(data,'JPEG',drawX,marginY,drawW,drawH);
+        pdfDoc.addImage(data,'JPEG',drawX,marginY,drawW,drawH);
       }
-      await savePdfDoc(doc, fname);
+      await savePdfDoc(pdfDoc, fname);
       toast('✅ Đã tải Hợp Đồng PDF','ok');
     }catch(err){
       console.error(err);
       toast('Lỗi tạo Hợp Đồng PDF: '+(err&&err.message||err),'bad');
     }finally{
       unlockZoom();
-      if(host&&host.parentNode) host.parentNode.removeChild(host);
+      if(typeof cleanupHd==='function') cleanupHd();
       spinBtn.disabled=false; spinBtn.innerHTML=prevLabel;
     }
   };
