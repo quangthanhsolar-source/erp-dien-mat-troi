@@ -11298,7 +11298,8 @@ body{font-family:'Times New Roman',Times,serif;font-size:13pt;color:#111;width:1
 .hd-sub{font-style:italic;margin-bottom:2mm}
 .hd-so{margin-bottom:4mm}
 .sec{font-weight:700;text-transform:uppercase;margin:4mm 0 2mm;text-align:center}
-.p{margin:1.2mm 0;text-align:justify;page-break-inside:avoid;break-inside:avoid}
+.p{margin:1.2mm 0;text-align:justify;text-align-last:left;page-break-inside:avoid;break-inside:avoid}
+.p-left{text-align:left;text-align-last:left}
 .party{margin:3mm 0;border:1px solid #333;padding:2.5mm 3mm;page-break-inside:avoid;break-inside:avoid}
 .party h4{font-size:13pt;margin-bottom:1.5mm;text-transform:uppercase}
 .party > .bold{font-size:13pt;font-weight:700;margin:0 0 1.5mm;line-height:1.35}
@@ -11390,7 +11391,7 @@ ${warrantyLines.join('\n')||'<p class="p"><i>(Chưa có thiết bị chính trê
 <div class="article">Điều 5. Tiến độ Hợp đồng và Nghiệm thu</div>
 <p class="p"><b>5.1. Tiến độ thực hiện Hợp đồng</b></p>
 <p class="p">5.1.1. Giao hàng: Bên B sẽ tiến hành giao hàng trong vòng 5 -7 ngày kể từ ngày nhận được tạm ứng. Trường hợp vì lý do khách quan có thể dẫn đến việc giao hàng chậm tiến độ, Bên B sẽ thông báo cho Bên A một cách sớm nhất về lý do khách quan và thời gian giao hàng dự kiến.</p>
-<p class="p">5.1.2. <b>Địa điểm thi công lắp đặt:</b> ${E(siteAddr)}</p>
+<p class="p p-left">5.1.2. <b>Địa điểm thi công lắp đặt:</b> ${E(siteAddr)}</p>
 <p class="p">5.1.3. Tiến độ thi công lắp đặt: Trong vòng 3-5 ngày làm việc từ ngày các bên đã hoàn tất kiểm tra bàn giao vật tư, thiết bị và Bên B được bàn giao mặt bằng đáp ứng yêu cầu thi công (không tính chậm trễ do các lý do khách quan hoặc điều kiện thời tiết không cho phép).</p>
 <p class="p"><b>5.2. Điều kiện nghiệm thu:</b></p>
 <p class="p">5.2.1. Việc nghiệm thu được thực hiện bằng biên bản có chữ ký của hai Bên, sau khi thiết bị được kiểm tra và vận hành ổn định tại địa điểm thi công lắp đặt.</p>
@@ -12137,19 +12138,21 @@ const doPrint=async()=>{
       const mounted=await mountPdfCaptureHost(hdHtml, {});
       host=mounted.host;
       const measureRoot=mounted.body||host;
-      // Chỉ PDF: +2pt nội dung điều khoản. Preview giữ nguyên.
-      // 3 khối (đầu trang / Bên A·B / chữ ký) giữ size preview — không +2.
+      // Chỉ PDF: nội dung điều khoản 14pt (−1 so với bản trước). Preview giữ nguyên.
+      // 3 khối (đầu trang / Bên A·B / chữ ký) giữ size — không đổi.
       if(!host.querySelector('#hd-pdf-font-boost')){
         const boost=document.createElement('style');
         boost.id='hd-pdf-font-boost';
         boost.textContent=[
-          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:15pt!important;line-height:1.5!important;color:#111!important}',
+          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:14pt!important;line-height:1.5!important;color:#111!important}',
           '.pdf-capture-root,.pdf-capture-root *:not(img){font-family:\'Times New Roman\',Times,serif!important}',
-          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:15pt!important;line-height:1.5!important}',
+          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:14pt!important;line-height:1.5!important}',
+          '.pdf-capture-root .p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
+          '.pdf-capture-root .p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
           '.pdf-capture-root .p,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{page-break-inside:avoid!important;break-inside:avoid!important}',
           '.pdf-capture-root .article{page-break-after:avoid!important;break-after:avoid!important}',
           '.pdf-capture-root .sec{page-break-after:avoid!important;break-after:avoid!important}',
-          /* Khối 1: quốc hiệu + tiêu đề HĐ */
+          /* Khối 1: quốc hiệu + tiêu đề HĐ — giữ nguyên */
           '.pdf-capture-root .hd-head,.pdf-capture-root .hd-head *:not(img){font-size:13pt!important;line-height:1.45!important}',
           '.pdf-capture-root .nation{font-size:13.5pt!important;font-weight:700!important}',
           '.pdf-capture-root .motto,.pdf-capture-root .stars{font-size:13pt!important}',
@@ -12157,10 +12160,10 @@ const doPrint=async()=>{
           '.pdf-capture-root .hd-sub,.pdf-capture-root .hd-so{font-size:13pt!important}',
           '.pdf-capture-root .center > .hd-title{font-size:15.5pt!important}',
           '.pdf-capture-root .center > .hd-sub,.pdf-capture-root .center > .hd-so{font-size:13pt!important}',
-          /* Khối 2: Bên A / Bên B */
+          /* Khối 2: Bên A / Bên B — giữ nguyên */
           '.pdf-capture-root .party,.pdf-capture-root .party *:not(img){font-size:13pt!important;line-height:1.45!important}',
           '.pdf-capture-root .party,.pdf-capture-root .hd-head,.pdf-capture-root .sign{page-break-inside:avoid!important;break-inside:avoid!important}',
-          /* Khối 3: chữ ký */
+          /* Khối 3: chữ ký — giữ nguyên */
           '.pdf-capture-root .sign,.pdf-capture-root .sign *:not(img){font-size:13pt!important;line-height:1.45!important}'
         ].join('');
         host.appendChild(boost);
