@@ -7390,21 +7390,32 @@ function crmApplyOverridesToDB(){
     unified[id]=ov;
     const r=(DB.crm||[]).find(x=>x&&String(x.id)===String(id));
     if(!r) return;
+    let changed=false;
     CRM_OVERRIDE_FIELDS.forEach(k=>{
-      if(ov[k]!==undefined) r[k]=ov[k];
+      if(ov[k]===undefined) return;
+      if(String(r[k]??'')!==String(ov[k]??'')){
+        r[k]=ov[k];
+        changed=true;
+      }
     });
     // surveyFiles trong override là nguồn sự thật (kể cả khi mảng rỗng = đã xóa hết ảnh)
     if(Array.isArray(ov.surveyFiles)){
       const cur=typeof crmSurveyList==='function'?crmSurveyList(r):[];
-      const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
-      r.surveyFiles=ov.surveyFiles.filter(f=>f&&f.id).map(f=>{
-        const prev=byId.get(String(f.id));
-        const next=Object.assign({},f);
-        if((!next.thumb) && prev&&prev.thumb) next.thumb=prev.thumb;
-        return next;
-      }).slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
+      const nextList=ov.surveyFiles.filter(f=>f&&f.id);
+      const curIds=cur.map(f=>String(f.id)).join('|');
+      const nextIds=nextList.map(f=>String(f.id)).join('|');
+      if(curIds!==nextIds){
+        const byId=new Map(cur.map(f=>[String(f.id),Object.assign({},f)]));
+        r.surveyFiles=nextList.map(f=>{
+          const prev=byId.get(String(f.id));
+          const next=Object.assign({},f);
+          if((!next.thumb) && prev&&prev.thumb) next.thumb=prev.thumb;
+          return next;
+        }).slice(0, typeof CRM_SURVEY_MAX==='number'?CRM_SURVEY_MAX:8);
+        changed=true;
+      }
     }
-    n++;
+    if(changed) n++;
   });
   saveCrmOverrides(unified);
   if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
@@ -7480,12 +7491,15 @@ function crmApplySurveyMetaToDB(){
 // Khôi phục metadata + override sau khi loadDB (function đã hoist)
 try{ crmApplySurveyMetaToDB(); }catch(e){}
 try{ crmApplyOverridesToDB(); }catch(e){}
+let _crmBootRecoverDone=false;
 setTimeout(()=>{
+  if(_crmBootRecoverDone) return;
+  _crmBootRecoverDone=true;
   crmRecoverSurveyMetaFromIdb().then(n=>{
     const m=crmApplyOverridesToDB();
-    if(n>0||m>0){
+    if((n>0||m>0) && typeof ROUTE!=='undefined' && ROUTE==='crm' && typeof renderPage==='function'){
       try{ if(typeof _saveDB==='function') _saveDB(); else saveDB(); }catch(e){}
-      if(typeof ROUTE!=='undefined' && ROUTE==='crm' && typeof renderPage==='function') renderPage();
+      renderPage();
     }
   }).catch(()=>{});
 }, 0);
@@ -8021,11 +8035,15 @@ function pageCrm(){
           ?` class="${cls}" data-crmid="${r.id}" data-crmfield="${field}" title="${edTitle}"`
           :` class="${cls}" title="${edTitle}"`;
       };
+      const infoCls=canEd?'ord-ed':'ord-ed ord-ro';
+      const infoAttr=canEd
+        ?` class="${infoCls}" data-crmid="${r.id}" data-crmfield="info" title="Nhấp đúp để sửa thông tin khách"`
+        :` class="${infoCls}" title="${edTitle}"`;
       return `<tr>
       <td${edAttr('owner')}>${crmIsUnassigned(r.owner)?'<span style="color:var(--muted)">Trống</span>':`<b>${esc(r.owner)}</b>`}</td>
       <td class="mono" style="white-space:nowrap">${esc(crmDateLabel(r.date))}</td>
       <td${edAttr('source')}>${r.source?`<span class="pill p-gray">${esc(r.source)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
-      <td><div class="crm-info">${esc(crmInfoText(r))}</div></td>
+      <td${infoAttr}><div class="crm-info">${esc(crmInfoText(r))}</div></td>
       <td${edAttr('status')}>${r.status&&r.status!=='Trống'?`<span class="pill ${crmStatusClass(r.status)}">${esc(r.status)}</span>`:'<span style="color:var(--muted)">Trống</span>'}</td>
       <td${edAttr('note','crm-note-cell')}><div class="ord-note">${r.note?esc(r.note):'<span style="color:var(--muted)">—</span>'}</div></td>
       <td>${crmSurveyCellHtml(r, canEd)}</td>
@@ -8303,11 +8321,16 @@ function commitCrmCellEdit(td, id, field, el){
   renderPage();
 }
 function startCrmCellEdit(id, field, td){
-  if(!td || td.classList.contains('ord-editing')) return;
+  if(!td || td.classList.contains('ord-editing') || td.classList.contains('ord-ro')) return;
   const r=(DB.crm||[]).find(x=>String(x.id)===String(id));
   if(!r) return;
   if(!canEditCrmRow(r)){
     toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
+    return;
+  }
+  // Cột thông tin khách → mở form sửa đầy đủ
+  if(field==='info'){
+    openCrmModal(r);
     return;
   }
   td.classList.add('ord-editing');
@@ -8341,20 +8364,39 @@ function startCrmCellEdit(id, field, td){
   };
 }
 function bindCrmInlineEdit(){
-  $('#main').querySelectorAll('.ord-ed[data-crmfield]').forEach(td=>{
-    td.ondblclick=e=>{
-      if(e.target.closest('.act')||e.target.closest('button')) return;
+  const root=$('#main'); if(!root) return;
+  // Delegation — không mất handler khi DOM con đổi
+  if(!root._crmInlineBound){
+    root._crmInlineBound=true;
+    root.addEventListener('dblclick',e=>{
+      if(ROUTE!=='crm') return;
+      const td=e.target.closest('td.ord-ed[data-crmfield]');
+      if(!td||!root.contains(td)) return;
+      if(td.classList.contains('ord-ro')||td.classList.contains('ord-editing')) return;
+      if(e.target.closest('.act')||e.target.closest('button')||e.target.closest('a')||e.target.closest('label')||e.target.closest('input')) return;
+      e.preventDefault();
       startCrmCellEdit(td.dataset.crmid, td.dataset.crmfield, td);
-    };
-  });
+    });
+  }
 }
+let _crmRecoverInFlight=false;
 function bindCrm(){
-  // Phục hồi bản CRM mới nhất (ghi chú/ảnh/trạng thái/…) sau pull cloud
-  crmApplyOverridesToDB();
-  crmRecoverSurveyMetaFromIdb().then(n=>{
-    const m=crmApplyOverridesToDB();
-    if((n>0||m>0) && ROUTE==='crm'){ try{ _saveDB(); }catch(e){} renderPage(); }
-  }).catch(()=>{});
+  // Áp override im lặng — KHÔNG renderPage lại (tránh phá double-click đang mở)
+  try{ crmApplyOverridesToDB(); }catch(e){}
+  if(!_crmRecoverInFlight){
+    _crmRecoverInFlight=true;
+    crmRecoverSurveyMetaFromIdb().then(n=>{
+      const m=crmApplyOverridesToDB();
+      _crmRecoverInFlight=false;
+      // Chỉ vẽ lại khi thật sự có dữ liệu mới được khôi phục
+      if((n>0||m>0) && ROUTE==='crm'){
+        const editing=$('#main')&&$('#main').querySelector('td.ord-editing');
+        if(editing) return; // đang sửa ô — không đạp form
+        try{ _saveDB(); }catch(e){}
+        renderPage();
+      }
+    }).catch(()=>{ _crmRecoverInFlight=false; });
+  }
   const add=$('#crmAdd');
   if(add) add.onclick=()=>openCrmModal(null);
   const statsToggle=$('#crmStatsToggle');
