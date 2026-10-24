@@ -10075,9 +10075,20 @@ function pdfSmartPageStarts(measureRoot, imgH, pageHpx){
     };
   };
   const keep=[];
-  measureRoot.querySelectorAll('.party,.sign,.hd-head').forEach(el=>{
+  measureRoot.querySelectorAll('.party,.sign,.hd-head,.center').forEach(el=>{
     const b=boxOf(el);
     if(b.end>b.start) keep.push(b);
+  });
+  // Giữ nguyên cụm Điều X + đoạn ngay sau — tránh cắt nửa tiêu đề điều khoản
+  measureRoot.querySelectorAll('.article').forEach(el=>{
+    const b=boxOf(el);
+    let end=b.end;
+    let n=el.nextElementSibling;
+    if(n&&(n.classList.contains('p')||n.tagName==='UL'||n.tagName==='P')){
+      const nb=boxOf(n);
+      if(nb.end>end) end=nb.end;
+    }
+    if(end>b.start) keep.push({start:b.start, end});
   });
 
   const snapOutOfLine=(cut, pageTop)=>{
@@ -12126,6 +12137,37 @@ const doPrint=async()=>{
       const mounted=await mountPdfCaptureHost(hdHtml, {});
       host=mounted.host;
       const measureRoot=mounted.body||host;
+      // Chỉ PDF: +2pt nội dung điều khoản. Preview giữ nguyên.
+      // 3 khối (đầu trang / Bên A·B / chữ ký) giữ size preview — không +2.
+      if(!host.querySelector('#hd-pdf-font-boost')){
+        const boost=document.createElement('style');
+        boost.id='hd-pdf-font-boost';
+        boost.textContent=[
+          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:15pt!important;line-height:1.5!important;color:#111!important}',
+          '.pdf-capture-root,.pdf-capture-root *:not(img){font-family:\'Times New Roman\',Times,serif!important}',
+          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:15pt!important;line-height:1.5!important}',
+          '.pdf-capture-root .p,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{page-break-inside:avoid!important;break-inside:avoid!important}',
+          '.pdf-capture-root .article{page-break-after:avoid!important;break-after:avoid!important}',
+          '.pdf-capture-root .sec{page-break-after:avoid!important;break-after:avoid!important}',
+          /* Khối 1: quốc hiệu + tiêu đề HĐ */
+          '.pdf-capture-root .hd-head,.pdf-capture-root .hd-head *:not(img){font-size:13pt!important;line-height:1.45!important}',
+          '.pdf-capture-root .nation{font-size:13.5pt!important;font-weight:700!important}',
+          '.pdf-capture-root .motto,.pdf-capture-root .stars{font-size:13pt!important}',
+          '.pdf-capture-root .hd-title{font-size:15.5pt!important;font-weight:700!important}',
+          '.pdf-capture-root .hd-sub,.pdf-capture-root .hd-so{font-size:13pt!important}',
+          '.pdf-capture-root .center > .hd-title{font-size:15.5pt!important}',
+          '.pdf-capture-root .center > .hd-sub,.pdf-capture-root .center > .hd-so{font-size:13pt!important}',
+          /* Khối 2: Bên A / Bên B */
+          '.pdf-capture-root .party,.pdf-capture-root .party *:not(img){font-size:13pt!important;line-height:1.45!important}',
+          '.pdf-capture-root .party,.pdf-capture-root .hd-head,.pdf-capture-root .sign{page-break-inside:avoid!important;break-inside:avoid!important}',
+          /* Khối 3: chữ ký */
+          '.pdf-capture-root .sign,.pdf-capture-root .sign *:not(img){font-size:13pt!important;line-height:1.45!important}'
+        ].join('');
+        host.appendChild(boost);
+        void host.offsetHeight;
+        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+        await new Promise(r=>setTimeout(r,60));
+      }
       let cap=await captureToPdf(measureRoot, {});
       if(!cap||!cap.canvas||canvasLooksBlank(cap.canvas)){
         cap=await captureToPdf(host, {});
