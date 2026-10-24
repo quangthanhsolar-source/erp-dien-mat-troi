@@ -11553,6 +11553,7 @@ function contractHtmlForWord(fullHtml){
     ['.sec','font-size:13pt;font-weight:bold;text-align:center;text-transform:uppercase;margin:12pt 0 6pt'],
     ['.article','font-size:13pt;font-weight:bold;margin:12pt 0 4pt'],
     ['.p','font-size:13pt;text-align:justify;margin:3pt 0;line-height:1.45'],
+    ['.p-left','font-size:13pt;text-align:left;margin:3pt 0;line-height:1.45'],
     ['li','font-size:13pt;margin:2pt 0;line-height:1.45'],
     ['h4','font-size:13pt;font-weight:bold;text-transform:uppercase;margin:0 0 4pt'],
     ['.bold','font-size:13pt;font-weight:bold'],
@@ -12138,15 +12139,15 @@ const doPrint=async()=>{
       const mounted=await mountPdfCaptureHost(hdHtml, {});
       host=mounted.host;
       const measureRoot=mounted.body||host;
-      // Chỉ PDF: nội dung điều khoản 14pt (−1 so với bản trước). Preview giữ nguyên.
+      // Chỉ PDF: nội dung điều khoản 13.6pt (−0.4 so với bản trước). Preview giữ nguyên.
       // 3 khối (đầu trang / Bên A·B / chữ ký) giữ size — không đổi.
       if(!host.querySelector('#hd-pdf-font-boost')){
         const boost=document.createElement('style');
         boost.id='hd-pdf-font-boost';
         boost.textContent=[
-          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:14pt!important;line-height:1.5!important;color:#111!important}',
+          '.pdf-capture-root{font-family:\'Times New Roman\',Times,serif!important;font-size:13.6pt!important;line-height:1.5!important;color:#111!important}',
           '.pdf-capture-root,.pdf-capture-root *:not(img){font-family:\'Times New Roman\',Times,serif!important}',
-          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:14pt!important;line-height:1.5!important}',
+          '.pdf-capture-root .p,.pdf-capture-root .sec,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{font-size:13.6pt!important;line-height:1.5!important}',
           '.pdf-capture-root .p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
           '.pdf-capture-root .p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
           '.pdf-capture-root .p,.pdf-capture-root .article,.pdf-capture-root li,.pdf-capture-root ul{page-break-inside:avoid!important;break-inside:avoid!important}',
