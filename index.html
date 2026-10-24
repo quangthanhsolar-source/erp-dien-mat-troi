@@ -4037,6 +4037,7 @@ function paintQtMoney(){
   });
   const sum=$('#qtSum');
   if(sum) sum.innerHTML=sumHTML();
+  if(typeof window._bindQtPdf==='function') window._bindQtPdf();
   scheduleQtDraft();
 }
 function qtKeepUnitPrice(prevItems, key, id, listed){
@@ -4918,6 +4919,9 @@ function sumHTML(){
     <div class="grand-row"><span class="grand-k">VAT ${vatPct}%</span><span class="grand-v mono">${vnd(t.vat)}</span></div>
     <div class="grand-row grand-final"><span class="grand-k">TỔNG CỘNG (đã bao gồm VAT ${vatPct}%)</span><span class="grand-v mono">${vnd(t.grand)}</span></div>
   </div>
+  <div style="margin:14px 0 4px;display:flex;justify-content:center">
+    <button type="button" class="btn btn-green" id="qtPdfBottom" style="width:100%;max-width:420px;height:46px;font-size:14px">${I.pdf} Xuất PDF Báo Giá &amp; Hợp Đồng</button>
+  </div>
   ${profitBlock}`;
 }
 function ensureQtPay(){
@@ -5358,7 +5362,14 @@ function bindQuote(){
   };
   bindPayFmt('qtPay1');
   bindPayFmt('qtPay2');
-  $('#qtPdf').onclick=()=>{syncCus();syncPay();openQtPdf3();};
+  const bindQtPdf=()=>{
+    ['qtPdf','qtPdfBottom'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.onclick=()=>{syncCus();syncPay();openQtPdf3();};
+    });
+  };
+  bindQtPdf();
+  window._bindQtPdf=bindQtPdf;
 }
 
 /* ---------------- DANH SÁCH BÁO GIÁ (nhúng vào Đơn hàng) ---------------- */
@@ -9636,7 +9647,7 @@ thead{display:table-header-group}
   <div class="hdr-line"></div>
   <div class="hdr-info">
     <div class="hdr-addr">
-      <div><b>Trụ sở chính:</b> 1099/3 Nguyễn Thị Thích, P. Tam Bình, TP.HCM.</div>
+      <div><b>Trụ sở chính:</b> 1099/3 Tỉnh Lộ 43, Khu Phố 2, Phường Tam Bình, Thành Phố Hồ Chí Minh, Việt Nam</div>
       <div><b>Đơn vị thành viên Bình Định:</b> 233 Ngô Gia Tự, P. Bình Định, Tỉnh Gia Lai.</div>
       <div><b>Kho hàng:</b> 86 Nguyễn Thị Thích, P. Tam Bình, TP.HCM.</div>
     </div>
@@ -10408,7 +10419,7 @@ ${warrantyLines.join('\n')||'<p class="p"><i>(Chưa có thiết bị chính trê
   <li>Bán hàng và thu tiền đúng với giá trong Hợp đồng và các khoản phát sinh (nếu có).</li>
   <li>Bên B hoàn toàn chịu trách nhiệm về việc đảm bảo an toàn lao động khi tham gia thi công tại công trình.</li>
   <li>Trong thời gian thi công, Bên B phải bảo vệ công trình và sửa chữa mọi hư hỏng do mình gây ra, chịu toàn bộ chi phí. Nếu không thực hiện, Bên A có quyền thuê đơn vị khác và khấu trừ chi phí hoặc yêu cầu Bên B hoàn trả.</li>
-  <li>Liên hệ khắc phục sự cố kỹ thuật trong vòng 48 giờ kể từ khi nhận được thông báo của Bên A.</li>
+  <li>Liên hệ khắc phục sự cố kỹ thuật trong vòng 48 giờ (trừ lễ tết, chủ nhật) kể từ khi nhận được thông báo của Bên A.</li>
   <li>Thực hiện đầy đủ nghĩa vụ, trách nhiệm khác được quy định trong Hợp đồng.</li>
 </ul>
 
