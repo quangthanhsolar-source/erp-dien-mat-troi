@@ -14,6 +14,12 @@
         "assets/products/quangthanh/02-TUHYBRID1P.jpg",
         "assets/products/quangthanh/03-TUHYBRID3P.jpg"
       ]
+    },
+    {
+      "in": "assets/product-src/quangthanh/tuats-mica-100a.png",
+      "out": [
+        "assets/products/quangthanh/04-TUATS.jpg"
+      ]
     }
   ]
 }
