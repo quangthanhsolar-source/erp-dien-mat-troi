@@ -4623,7 +4623,7 @@ function pageQuoteNew(){
       <div class="field qt-cus-span"><input class="inp" id="qtCusCompany" placeholder="Tên Công Ty (không bắt buộc)" value="${esc((QT.cus&&QT.cus.company)||'')}"></div>
       <div class="field"><input class="inp" id="qtCusName" placeholder="Họ và tên" value="${esc((QT.cus&&QT.cus.name)||'')}"></div>
       <div class="field"><input class="inp" id="qtCusPhone" placeholder="SĐT" value="${esc((QT.cus&&QT.cus.phone)||'')}"></div>
-      <div class="field qt-cus-span"><input class="inp" id="qtCusCccd" placeholder="CCCD" value="${esc((QT.cus&&QT.cus.cccd)||'')}"></div>
+      <div class="field qt-cus-span"><input class="inp" id="qtCusCccd" placeholder="CCCD/MST" value="${esc((QT.cus&&QT.cus.cccd)||'')}"></div>
       <div class="field qt-cus-span"><input class="inp" id="qtCusAddr" placeholder="Địa chỉ" value="${esc((QT.cus&&QT.cus.addr)||'')}"></div>
       <div class="field qt-cus-span"><input class="inp" id="qtCusSite" placeholder="Địa điểm lắp đặt" value="${esc((QT.cus&&QT.cus.site)||'')}"></div>
     </div>
@@ -10348,7 +10348,7 @@ function buildQtPdf3(pngMap){
   if(String(cus.name||'').trim()) cusHdrLines.push(`<div class="cus-name">${E(cus.name)}</div>`);
   if(String(cus.phone||'').trim()) cusHdrLines.push(`<div>SDT: ${E(cus.phone)}</div>`);
   if(String(cus.addr||'').trim()) cusHdrLines.push(`<div>${E(cus.addr)}</div>`);
-  if(String(cus.cccd||'').trim()) cusHdrLines.push(`<div>CCCD: ${E(cus.cccd)}</div>`);
+  if(String(cus.cccd||'').trim()) cusHdrLines.push(`<div>CCCD/MST: ${E(cus.cccd)}</div>`);
 
   const OK=u=>isRealProdImg(u);
   const escSrc=u=>String(u||'').replace(/"/g,'&quot;');
