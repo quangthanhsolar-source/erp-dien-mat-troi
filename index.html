@@ -253,6 +253,39 @@ tbody tr:active{background:var(--surface)}
 .act .del{color:var(--orange)}
 .act .del:active{background:var(--orange);color:#fff}
 
+/* ============ CHẤM CÔNG ============ */
+.att-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.att-tbl{min-width:720px}
+.att-tbl th{padding:10px 12px}
+.att-tbl td{padding:12px;vertical-align:middle}
+.att-tbl tr.att-today{background:var(--green-l)}
+.att-tbl tr.att-future{opacity:.62}
+.att-name{font-weight:700}
+.att-addr{max-width:240px;font-size:12.5px;line-height:1.4;color:var(--ink-2);white-space:pre-wrap}
+.att-empty{color:var(--muted)}
+.att-time{font-variant-numeric:tabular-nums;font-weight:800;font-size:14px}
+.att-photo{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.att-thumb{width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f3f3f3;display:block;cursor:zoom-in}
+.att-upload{width:64px;min-height:64px;border-radius:12px;border:1px dashed #c9ccd1;background:#fafafa;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px;font-size:10px;font-weight:700}
+.att-upload svg{width:18px;height:18px}
+.att-upload:hover,.att-chg:hover{background:var(--lime);color:var(--ink);border-color:transparent}
+.att-chg{height:28px;padding:0 10px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:11px;font-weight:700;color:var(--ink-2)}
+.att-btn{height:36px;padding:0 14px;font-size:12.5px;min-width:96px}
+.att-wd{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.att-day{font-weight:800}
+.att-mobile{display:none;flex-direction:column;gap:10px}
+.att-card{background:var(--surface);border-radius:var(--r);padding:14px 14px 12px}
+.att-card.att-today{box-shadow:inset 0 0 0 2px var(--lime)}
+.att-card.att-future{opacity:.7}
+.att-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.att-card-head b{font-size:16px}
+.att-card-row{display:grid;grid-template-columns:118px 1fr;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line-2);font-size:13px}
+.att-card-row>span{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+@media(max-width:767px){
+  .att-desktop{display:none}
+  .att-mobile{display:flex}
+}
+
 /* ============ FORMS ============ */
 .field{margin-bottom:14px}
 .field label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:7px;text-transform:uppercase;letter-spacing:.07em}
@@ -1011,6 +1044,7 @@ const DB={
   {id:703,name:'Tô Hữu Đức',phone:'0328431227',address:'TP. Hồ Chí Minh',note:''},
  ],
  crm:[],
+ attendance:[],
  contracts:[],
  quotes:[
   {code:'BG-00006',cus:'Tô Hữu Đức',phone:'0328431227',addr:'TP. Hồ Chí Minh',total:97416000,status:'draft',nv:'Admin Quang Thanh',date:'2026-06-12T09:10'},
@@ -1854,7 +1888,7 @@ let userSelected=new Set();
 
 /* ---- Persist danh mục thiết bị & dữ liệu nghiệp vụ ---- */
 const DB_STORE_KEY='qts_erp_db_v1';
-const DB_PERSIST_KEYS=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services','stock','trans','quotes','customers','crm','contracts','suppliers','users','settings','seq','deletedProductCodes','deletedUserIds','deletedUserEmails','deletedCrmIds','deletedQuoteCodes','deletedSupplierIds'];
+const DB_PERSIST_KEYS=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services','stock','trans','quotes','customers','crm','attendance','contracts','suppliers','users','settings','seq','deletedProductCodes','deletedUserIds','deletedUserEmails','deletedCrmIds','deletedQuoteCodes','deletedSupplierIds'];
 function cloneDBForLocalStorage(){
   // Không ghi data URL ảnh vào DB chính (đã nằm PIMG override / RAM / Supabase)
   const prodKeys=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services'];
@@ -1918,6 +1952,7 @@ function loadDB(){
 }
 loadDB();
 if(!Array.isArray(DB.crm)) DB.crm=[];
+if(!Array.isArray(DB.attendance)) DB.attendance=[];
 try{ if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB(); }catch(e){}
 try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
 if(!Array.isArray(DB.deletedCrmIds)) DB.deletedCrmIds=[];
@@ -2081,6 +2116,7 @@ function applyDBPayload(data){
       DB.suppliers=(data.suppliers||[]).filter(s=>s&&!gone.has(Number(s.id)));
       return;
     }
+    if(k==='attendance') return;
     DB[k]=data[k];
   });
   bumpUserSeq();
@@ -10081,9 +10117,238 @@ const EYE={dashboard:'Tổng quan',crm:'Khách hàng',"quote-new":'Báo giá NLM
  "dev-inverter":'Thiết bị',"dev-panel":'Thiết bị',"dev-battery":'Thiết bị',"dev-cabinet":'Thiết bị',"dev-service":'Thiết bị',
  "dev-light":'Thiết bị',"dev-pump":'Thiết bị',"dev-accessory":'Thiết bị',"dev-mount":'Thiết bị',"dev-cable":'Thiết bị',
  stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
+function attPad(n){ return String(n).padStart(2,'0'); }
+function attDateKey(d){
+  const x=d instanceof Date?d:new Date(d);
+  return x.getFullYear()+'-'+attPad(x.getMonth()+1)+'-'+attPad(x.getDate());
+}
+function attEmpId(){ return ME&&ME.id!=null?ME.id:0; }
+function attEmpName(){ return (ME&&ME.name)||''; }
+function attEnsureStore(){
+  if(!Array.isArray(DB.attendance)) DB.attendance=[];
+  return DB.attendance;
+}
+function attGetRecord(date){
+  const uid=attEmpId();
+  return attEnsureStore().find(r=>r&&Number(r.userId)===Number(uid)&&r.date===date)||null;
+}
+function attUpsert(date, patch){
+  const uid=attEmpId();
+  attEnsureStore();
+  let rec=attGetRecord(date);
+  if(!rec){
+    rec={id:Date.now(),userId:uid,date:date,name:attEmpName(),address:'',img:'',checkIn:'',checkOut:''};
+    DB.attendance.push(rec);
+  }
+  Object.assign(rec, patch||{});
+  rec.userId=uid;
+  rec.name=attEmpName()||rec.name||'';
+  rec.date=date;
+  saveDB();
+  return rec;
+}
+function attFormatTime(iso){
+  if(!iso) return '';
+  const x=new Date(iso);
+  if(isNaN(+x)) return '';
+  return attPad(x.getHours())+':'+attPad(x.getMinutes());
+}
+function attFormatDay(key){
+  const p=String(key||'').split('-').map(Number);
+  const dt=new Date(p[0], (p[1]||1)-1, p[2]||1);
+  const wd=['CN','T2','T3','T4','T5','T6','T7'][dt.getDay()];
+  return {wd, label:attPad(dt.getDate())+'/'+attPad(dt.getMonth()+1), full:attPad(dt.getDate())+'/'+attPad(dt.getMonth()+1)+'/'+dt.getFullYear()};
+}
+function attCanPunch(date){
+  return date<=attDateKey(new Date());
+}
+function attImgSrc(img){
+  if(!img) return '';
+  const s=String(img);
+  return s.startsWith('data:')?s:esc(s);
+}
+function attGetPosition(){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation){ reject(new Error('Trình duyệt không hỗ trợ định vị')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos=>resolve(pos.coords),
+      err=>reject(err||new Error('Không lấy được vị trí')),
+      {enableHighAccuracy:true,timeout:14000,maximumAge:20000}
+    );
+  });
+}
+async function attReverseGeocode(lat,lng){
+  const fallback=lat.toFixed(5)+', '+lng.toFixed(5);
+  try{
+    const url='https://api.bigdatacloud.net/data/reverse-geocode-client?latitude='+encodeURIComponent(lat)+'&longitude='+encodeURIComponent(lng)+'&localityLanguage=vi';
+    const r=await fetch(url);
+    if(!r.ok) return fallback;
+    const j=await r.json();
+    const parts=[];
+    const seen=new Set();
+    const push=v=>{
+      const s=String(v||'').trim();
+      if(!s||seen.has(s)) return;
+      seen.add(s); parts.push(s);
+    };
+    const adm=j&&j.localityInfo&&Array.isArray(j.localityInfo.administrative)?j.localityInfo.administrative:[];
+    adm.forEach(a=>push(a&&(a.name||a.description)));
+    push(j.locality); push(j.city); push(j.principalSubdivision); push(j.countryName);
+    return parts.length?parts.join(', '):fallback;
+  }catch(e){
+    return fallback;
+  }
+}
+async function attCurrentAddress(){
+  const coords=await attGetPosition();
+  return attReverseGeocode(coords.latitude, coords.longitude);
+}
+function attPhotoCell(rec, date, canEdit){
+  if(rec&&rec.img){
+    return `<div class="att-photo">
+      <img class="att-thumb" src="${attImgSrc(rec.img)}" alt="Ảnh chấm công" data-att-preview="1">
+      ${canEdit?`<button type="button" class="att-chg" data-att-photo="${date}">Đổi ảnh</button>`:''}
+    </div>`;
+  }
+  if(canEdit) return `<button type="button" class="att-upload" data-att-photo="${date}" title="Tải ảnh lên">${I.img}<span>Tải ảnh</span></button>`;
+  return `<span class="att-empty">—</span>`;
+}
+function attPunchCell(rec, date, kind, canEdit){
+  const iso=rec&&rec[kind];
+  if(iso) return `<div class="att-time">${esc(attFormatTime(iso))}</div>`;
+  if(!canEdit) return `<span class="att-empty">—</span>`;
+  if(kind==='checkOut' && !(rec&&rec.checkIn)) return `<span class="att-empty">—</span>`;
+  const isIn=kind==='checkIn';
+  return `<button type="button" class="btn ${isIn?'btn-green':'btn-primary'} att-btn" data-att-${isIn?'in':'out'}="${date}">${isIn?'Check in':'Check out'}</button>`;
+}
+function attMonthDays(){
+  const now=new Date();
+  const y=now.getFullYear(), m=now.getMonth();
+  const n=new Date(y, m+1, 0).getDate();
+  const days=[];
+  for(let d=1;d<=n;d++) days.push(attDateKey(new Date(y,m,d)));
+  return {y,m,days,today:attDateKey(now)};
+}
 function pageAttendance(){
-  return `<div class="page-head"><div class="page-title">${I.clock} Chấm công</div></div>
+  if(isAdmin()){
+    return `<div class="page-head"><div class="page-title">${I.clock} Chấm công</div></div>
     <div class="card" style="padding:24px;color:var(--muted)">Module Chấm công — nội dung sẽ bổ sung sau.</div>`;
+  }
+  const {y,m,days,today}=attMonthDays();
+  const name=attEmpName()||'Nhân viên';
+  const monthLabel='Tháng '+(m+1)+' / '+y;
+  const rows=days.map(date=>{
+    const rec=attGetRecord(date);
+    const can=attCanPunch(date);
+    const meta=attFormatDay(date);
+    const isToday=date===today;
+    const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
+    const addr=(rec&&rec.address)||'';
+    return `<tr class="${cls.trim()}">
+      <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
+      <td class="att-name">${esc(name)}</td>
+      <td class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</td>
+      <td>${attPhotoCell(rec,date,can)}</td>
+      <td>${attPunchCell(rec,date,'checkIn',can)}</td>
+      <td>${attPunchCell(rec,date,'checkOut',can)}</td>
+    </tr>`;
+  }).join('');
+  const cards=days.map(date=>{
+    const rec=attGetRecord(date);
+    const can=attCanPunch(date);
+    const meta=attFormatDay(date);
+    const isToday=date===today;
+    const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
+    const addr=(rec&&rec.address)||'';
+    return `<article class="att-card ${cls.trim()}">
+      <div class="att-card-head"><b>${esc(meta.wd)} ${esc(meta.full)}</b>${isToday?'<span class="pill p-green">Hôm nay</span>':''}</div>
+      <div class="att-card-row"><span>Họ và tên</span><b class="att-name">${esc(name)}</b></div>
+      <div class="att-card-row"><span>Địa chỉ hiện tại</span><div class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</div></div>
+      <div class="att-card-row"><span>Hình ảnh</span>${attPhotoCell(rec,date,can)}</div>
+      <div class="att-card-row"><span>Check in</span>${attPunchCell(rec,date,'checkIn',can)}</div>
+      <div class="att-card-row"><span>Check out</span>${attPunchCell(rec,date,'checkOut',can)}</div>
+    </article>`;
+  }).join('');
+  return `<div class="page-head">
+      <div class="page-title">${I.clock} Chấm công</div>
+      <div class="att-sub">${esc(monthLabel)} · ${esc(name)}</div>
+    </div>
+    <div class="tbl-card att-desktop"><div class="tbl-wrap"><table class="att-tbl">
+      <thead><tr>
+        <th>Ngày</th>
+        <th>Họ và tên</th>
+        <th>Địa chỉ hiện tại</th>
+        <th>Hình ảnh</th>
+        <th>Check in</th>
+        <th>Check out</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>
+    <div class="att-mobile">${cards}</div>
+    <input type="file" id="attFile" accept="image/*" hidden>`;
+}
+let attBusy=false;
+async function attDoCheckIn(date){
+  if(attBusy||!attCanPunch(date)) return;
+  const rec=attGetRecord(date);
+  if(rec&&rec.checkIn){ toast('Ngày này đã check in','bad'); return; }
+  attBusy=true;
+  document.querySelectorAll('[data-att-in="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
+  toast('Đang lấy địa chỉ hiện tại…');
+  let address='Không lấy được vị trí';
+  try{
+    try{ address=await attCurrentAddress(); }
+    catch(e){ address='Không lấy được vị trí'; }
+    attUpsert(date,{checkIn:new Date().toISOString(),address,name:attEmpName()});
+    toast('Đã check in','ok');
+    renderPage();
+  }finally{
+    attBusy=false;
+  }
+}
+function attDoCheckOut(date){
+  if(!attCanPunch(date)) return;
+  const rec=attGetRecord(date);
+  if(!rec||!rec.checkIn){ toast('Hãy check in trước','bad'); return; }
+  if(rec.checkOut){ toast('Ngày này đã check out','bad'); return; }
+  attUpsert(date,{checkOut:new Date().toISOString()});
+  toast('Đã check out','ok');
+  renderPage();
+}
+function attPickPhoto(date){
+  const inp=document.getElementById('attFile');
+  if(!inp) return;
+  inp.value='';
+  inp.onchange=async ()=>{
+    const f=inp.files&&inp.files[0];
+    inp.onchange=null;
+    if(!f) return;
+    try{
+      const dataUrl=await fileToDataUrl(f);
+      const img=await compressProdImg(dataUrl, 480, 0.68);
+      attUpsert(date,{img,name:attEmpName()});
+      toast('Đã lưu ảnh chấm công','ok');
+      renderPage();
+    }catch(e){
+      toast('Không đọc được ảnh','bad');
+    }
+  };
+  inp.click();
+}
+function bindAttendance(){
+  if(isAdmin()) return;
+  document.querySelectorAll('[data-att-in]').forEach(b=>{
+    b.onclick=()=>attDoCheckIn(b.getAttribute('data-att-in'));
+  });
+  document.querySelectorAll('[data-att-out]').forEach(b=>{
+    b.onclick=()=>attDoCheckOut(b.getAttribute('data-att-out'));
+  });
+  document.querySelectorAll('[data-att-photo]').forEach(b=>{
+    b.onclick=()=>attPickPhoto(b.getAttribute('data-att-photo'));
+  });
+  document.querySelectorAll('[data-att-preview]').forEach(img=>{
+    img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+  });
 }
 function pageAssets(){
   return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div></div>
@@ -10104,7 +10369,7 @@ function renderPage(){
     case 'stock': m.innerHTML=pageStock();bindStock();break;
     case 'trans': m.innerHTML=pageTrans();bindTrans();break;
     case 'suppliers': m.innerHTML=pageSuppliers();bindSuppliers();break;
-    case 'attendance': m.innerHTML=pageAttendance();break;
+    case 'attendance': m.innerHTML=pageAttendance();bindAttendance();break;
     case 'assets': m.innerHTML=pageAssets();break;
     case 'users': m.innerHTML=pageUsers();bindUsers();break;
     case 'settings': m.innerHTML=pageSettings();bindSettings();break;
