@@ -10732,6 +10732,12 @@ function romanQT(n){
   let r='';v.forEach((val,i)=>{while(n>=val){r+=s[i];n-=val;}});return r;
 }
 
+function quoteNvUnitBrand(r){
+  const n=String(r&&r.name||'');
+  if(/Dây\s*cáp\s*AC/i.test(n)) return ' (Cadivi)';
+  if(/Dây\s*cáp\s*DC\s*màu\s*(đỏ|đen)/i.test(n)) return ' (Helukabel - Đức)';
+  return '';
+}
 function buildQtPdf3(pngMap){
   const st=DB.settings, cus=QT.cus||{}, items=QT.items, t=totals(), c=effectiveCalc();
   const showCusHdr=hasQuoteCusInfo(cus);
@@ -10841,9 +10847,10 @@ function buildQtPdf3(pngMap){
       const sec=[`<tbody class="qt-sec">`,`<tr class="grp"><td class="ct">${romanQT(rom)}</td><td class="gt" colspan="5">${E(titl)}</td><td class="rt">${N(gp.it.price)}</td></tr>`];
       rows.forEach((r,ri)=>{
         const specs=(r.specs||[]).filter(s=>s&&s.trim());
+        const unitBrand=gp.key==='Ngoại vi'?quoteNvUnitBrand(r):'';
         sec.push(`<tr>
           <td class="ct mid">${ri+1}</td>
-          <td class="sub"><b>${E(r.name)}</b><span class="unit-lbl"> / ${E(r.unit||'')}</span>${specs.map(s=>`<br><span class="sp">- ${E(s)}</span>`).join('')}</td>
+          <td class="sub"><b>${E(r.name)}</b><span class="unit-lbl"> / ${E(r.unit||'')}${unitBrand?E(unitBrand):''}</span>${specs.map(s=>`<br><span class="sp">- ${E(s)}</span>`).join('')}</td>
           ${ri===0?`<td class="imgc imgc-sec${gp.key==='Ưu đãi'?' imgc-empty':''}" rowspan="${rows.length}">${gp.key==='Ưu đãi'?'':IMGP(gp.it)}</td>`:''}
           <td class="ct mid">${E(r.unit||'')}</td>
           <td class="ct mid">${Q(r.qty)}</td>
