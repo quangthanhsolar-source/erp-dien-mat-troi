@@ -9984,7 +9984,7 @@ function bindUsers(){
 function userModal(u){
   if(!canManageUsers()){ toast('Nhân viên KD không được thêm/sửa người dùng','bad'); return; }
   openModal(u?'Sửa người dùng':'Thêm người dùng',`
-    <div class="field"><label>Tên *</label><input class="inp" id="uN" value="${esc(u?u.name:'')}"></div>
+    <div class="field"><label>Họ Và Tên *</label><input class="inp" id="uN" value="${esc(u?u.name:'')}"></div>
     <div class="field"><label>Email *</label><input class="inp" id="uE" value="${esc(u?u.email:'')}"></div>
     <div class="field"><label>Mật khẩu ${u?'(để trống nếu giữ nguyên)':'*'}</label><input class="inp" id="uP" type="password" value="${u?'':''}"></div>
     <div class="field"><label>SĐT</label><input class="inp mono" id="uT" value="${esc(u?u.phone:'')}"></div>
