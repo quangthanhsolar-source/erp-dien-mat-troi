@@ -290,6 +290,16 @@ tbody tr:active{background:var(--surface)}
   .att-desktop{display:none}
   .att-mobile{display:flex}
 }
+.att-admin-nav{display:flex;align-items:center;gap:8px}
+.att-admin-nav .att-month-label{min-width:156px;text-align:center;font-weight:800;font-size:15px;color:var(--ink)}
+.att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
+.att-admin .att-thumb{width:44px;height:44px;border-radius:10px}
+.att-admin .att-tbl{min-width:920px}
+.att-admin .att-punch{min-width:88px}
+@media(max-width:767px){
+  .att-desktop.att-admin{display:block}
+  .att-admin .att-tbl{min-width:760px}
+}
 
 /* ============ FORMS ============ */
 .field{margin-bottom:14px}
@@ -10269,11 +10279,348 @@ function attMonthDays(){
   for(let d=1;d<=n;d++) days.push(attDateKey(new Date(y,m,d)));
   return {y,m,days,today:attDateKey(now)};
 }
-function pageAttendance(){
-  if(isAdmin()){
-    return `<div class="page-head"><div class="page-title">${I.clock} Chấm công</div></div>
-    <div class="card" style="padding:24px;color:var(--muted)">Module Chấm công — nội dung sẽ bổ sung sau.</div>`;
+let attAdminCursor=null;
+let attExportBusy=false;
+function attVnYmd(){
+  try{
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const y=+(parts.find(p=>p.type==='year')||{}).value;
+    const mo=+(parts.find(p=>p.type==='month')||{}).value;
+    const d=+(parts.find(p=>p.type==='day')||{}).value;
+    if(y&&mo&&d) return {y,m:mo,d,key:y+'-'+attPad(mo)+'-'+attPad(d)};
+  }catch(e){}
+  const now=new Date();
+  const y=now.getFullYear(), mo=now.getMonth()+1, d=now.getDate();
+  return {y,m:mo,d,key:y+'-'+attPad(mo)+'-'+attPad(d)};
+}
+function attAdminYm(){
+  if(!attAdminCursor||!attAdminCursor.y||!attAdminCursor.m){
+    const t=attVnYmd();
+    attAdminCursor={y:t.y,m:t.m};
   }
+  return attAdminCursor;
+}
+function attShiftAdminMonth(delta){
+  const cur=attAdminYm();
+  let y=cur.y, m=cur.m+(delta||0);
+  while(m<1){ m+=12; y--; }
+  while(m>12){ m-=12; y++; }
+  attAdminCursor={y,m};
+  renderPage();
+}
+function attMonthDayKeys(y,m){
+  const n=new Date(y, m, 0).getDate();
+  const days=[];
+  for(let d=1;d<=n;d++) days.push(y+'-'+attPad(m)+'-'+attPad(d));
+  return days;
+}
+function attAccountName(u, rec){
+  const fromUser=u&&String(u.name||'').trim();
+  if(fromUser) return fromUser;
+  const fromRec=rec&&String(rec.name||'').trim();
+  return fromRec||'';
+}
+function attAdminAccounts(y,m){
+  const prefix=y+'-'+attPad(m)+'-';
+  const store=Array.isArray(DB.attendance)?DB.attendance:[];
+  const touched=new Set();
+  const nameFromAtt=new Map();
+  store.forEach(r=>{
+    if(!r||r.userId==null) return;
+    const id=Number(r.userId);
+    const nm=String(r.name||'').trim();
+    if(nm&&!nameFromAtt.has(id)) nameFromAtt.set(id, nm);
+    if(String(r.date||'').slice(0,prefix.length)===prefix) touched.add(id);
+  });
+  const seen=new Set();
+  const users=[];
+  (Array.isArray(DB.users)?DB.users:[]).forEach(u=>{
+    if(!u||u.id==null) return;
+    if(typeof isTombstonedUser==='function'&&isTombstonedUser(u)) return;
+    const id=Number(u.id);
+    if(seen.has(id)) return;
+    if(u.active===false && !touched.has(id)) return;
+    seen.add(id);
+    users.push(u);
+  });
+  users.sort((a,b)=>{
+    const an=attAccountName(a, {name:nameFromAtt.get(Number(a.id))||''});
+    const bn=attAccountName(b, {name:nameFromAtt.get(Number(b.id))||''});
+    const c=an.localeCompare(bn,'vi',{sensitivity:'base',numeric:true});
+    if(c) return c;
+    const e=String(a.email||'').localeCompare(String(b.email||''),'vi',{sensitivity:'base'});
+    if(e) return e;
+    return Number(a.id)-Number(b.id);
+  });
+  return {users, nameFromAtt};
+}
+function attIndexForMonth(y,m){
+  const prefix=y+'-'+attPad(m)+'-';
+  const map=new Map();
+  (Array.isArray(DB.attendance)?DB.attendance:[]).forEach(r=>{
+    if(!r||r.userId==null||!r.date) return;
+    if(String(r.date).slice(0,prefix.length)!==prefix) return;
+    map.set(Number(r.userId)+'|'+r.date, r);
+  });
+  return map;
+}
+function attAdminBuildRows(y,m){
+  const days=attMonthDayKeys(y,m);
+  const pack=attAdminAccounts(y,m);
+  const index=attIndexForMonth(y,m);
+  const rows=[];
+  days.forEach(date=>{
+    pack.users.forEach(u=>{
+      const rec=index.get(Number(u.id)+'|'+date)||null;
+      const name=attAccountName(u, rec)||pack.nameFromAtt.get(Number(u.id))||'';
+      const checkIn=rec&&rec.checkIn||'';
+      const checkOut=rec&&rec.checkOut||'';
+      rows.push({
+        date,
+        name,
+        email:String((u&&u.email)||'').trim(),
+        address:rec&&rec.address?String(rec.address):'',
+        checkIn,
+        checkOut,
+        checkInText:checkIn?attFormatTime(checkIn):'',
+        checkOutText:checkOut?attFormatTime(checkOut):'',
+        checkInImg:rec?((rec.checkInImg||rec.img)||''):'',
+        checkOutImg:rec?(rec.checkOutImg||''):'',
+        ot:checkOut?attOvertimeText(checkOut):''
+      });
+    });
+  });
+  return {rows, userCount:pack.users.length, y, m};
+}
+function attDash(v){ return v?String(v):'—'; }
+function attAdminPunchHtml(iso, img){
+  const time=iso?attFormatTime(iso):'';
+  if(!time && !img) return '<span class="att-empty">—</span>';
+  const timeHtml=time?`<div class="att-time">${esc(time)}</div>`:'';
+  const photo=img?`<div class="att-photo"><img class="att-thumb" src="${attImgSrc(img)}" alt="Ảnh chấm công" data-att-preview="1"></div>`:'';
+  return `<div class="att-punch">${timeHtml}${photo}</div>`;
+}
+function attAdminFileBase(y,m){ return 'ChamCong_'+y+'-'+attPad(m); }
+function attAdminExportMatrix(built){
+  const monthCell=attPad(built.m)+'/'+built.y;
+  return built.rows.map(r=>[
+    monthCell,
+    attFormatDay(r.date).full,
+    attDash(r.name),
+    attDash(r.email),
+    attDash(r.address),
+    attDash(r.checkInText),
+    attDash(r.checkOutText),
+    attDash(r.ot)
+  ]);
+}
+async function downloadAttAdminExcel(){
+  if(attExportBusy) return;
+  const btn=document.getElementById('attXlsx');
+  attExportBusy=true;
+  if(btn) btn.disabled=true;
+  try{
+    const cur=attAdminYm();
+    const built=attAdminBuildRows(cur.y, cur.m);
+    if(!(await ensureXlsxLib())){ toast('Không tải được thư viện Excel — kiểm tra mạng rồi thử lại','bad'); return; }
+    const header=['Tháng','Ngày','Họ và tên','Email','Địa chỉ hiện tại','Check in','Check out','Tăng ca'];
+    const aoa=[header, ...attAdminExportMatrix(built)];
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:12},{wch:14},{wch:28},{wch:36},{wch:42},{wch:12},{wch:12},{wch:18}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Cham cong');
+    const fname=attAdminFileBase(built.y, built.m)+'.xlsx';
+    XLSX.writeFile(wb, fname);
+    toast('Đã tải Excel '+fname,'ok');
+  }catch(err){
+    console.error(err);
+    toast('Lỗi xuất Excel: '+(err&&err.message||err),'bad');
+  }finally{
+    attExportBusy=false;
+    if(btn) btn.disabled=false;
+  }
+}
+function attPdfTableHtml(title, subtitle, dataRows){
+  const cols=['Tháng','Ngày','Họ và tên','Email','Địa chỉ hiện tại','Check in','Check out','Tăng ca'];
+  const head=cols.map(h=>`<th>${esc(h)}</th>`).join('');
+  const body=dataRows.length
+    ? dataRows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')
+    : '<tr><td colspan="8">Không có dữ liệu</td></tr>';
+  return `<div style="font-weight:800;font-size:18px;margin:0 0 4px">${esc(title)}</div>
+    <div style="font-size:12px;color:#64748b;margin:0 0 10px">${esc(subtitle)}</div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px">
+      <colgroup>
+        <col style="width:10%"><col style="width:11%"><col style="width:16%"><col style="width:18%">
+        <col style="width:23%"><col style="width:7%"><col style="width:7%"><col style="width:8%">
+      </colgroup>
+      <thead><tr>${head}</tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <style>
+      table th,table td{border:1px solid #e2e5e9;padding:4px 6px;vertical-align:top;word-wrap:break-word}
+      table th{background:#17181a;color:#fff;font-weight:700;text-align:left}
+      tbody tr:nth-child(even) td{background:#f7f8f9}
+    </style>`;
+}
+function attPdfPaint(doc, canvas, hostEl, margin, contentW, contentH, state){
+  const mmPerPx=contentW/canvas.width;
+  const pageHpx=contentH/mmPerPx;
+  const yScale=canvas.height/Math.max(hostEl.scrollHeight, hostEl.offsetHeight, 1);
+  const hostTop=hostEl.getBoundingClientRect().top;
+  const bottoms=[...hostEl.querySelectorAll('tr')].map(tr=>{
+    const r=tr.getBoundingClientRect();
+    return Math.round((r.bottom-hostTop)*yScale);
+  }).filter(v=>v>0);
+  const cuts=[0];
+  let limit=pageHpx;
+  bottoms.forEach(b=>{
+    if(b<=cuts[cuts.length-1]+4) return;
+    if(b>limit+2){
+      const prev=bottoms.filter(x=>x>cuts[cuts.length-1]+4 && x<=limit+2).pop();
+      const cut=prev||Math.min(canvas.height, cuts[cuts.length-1]+pageHpx);
+      if(cut>cuts[cuts.length-1]+4 && cut<canvas.height-4){
+        cuts.push(Math.round(cut));
+        limit=cut+pageHpx;
+      }
+    }
+  });
+  if(cuts[cuts.length-1]<canvas.height-2) cuts.push(canvas.height);
+  for(let p=0;p<cuts.length-1;p++){
+    if(!state.first) doc.addPage();
+    state.first=false;
+    const srcY=cuts[p];
+    const srcH=Math.max(1, cuts[p+1]-srcY);
+    const slice=document.createElement('canvas');
+    slice.width=canvas.width;
+    slice.height=srcH;
+    const ctx=slice.getContext('2d');
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,0,slice.width,slice.height);
+    ctx.drawImage(canvas,0,srcY,canvas.width,srcH,0,0,canvas.width,srcH);
+    const natH=srcH*mmPerPx;
+    const scale=natH>contentH+0.05?contentH/natH:1;
+    doc.addImage(slice.toDataURL('image/jpeg',0.95),'JPEG',margin,margin,contentW*scale,natH*scale);
+  }
+}
+async function downloadAttAdminPdf(){
+  if(attExportBusy) return;
+  const btn=document.getElementById('attPdf');
+  attExportBusy=true;
+  if(btn) btn.disabled=true;
+  let unlock=()=>{};
+  let mask=null;
+  try{
+    const cur=attAdminYm();
+    const built=attAdminBuildRows(cur.y, cur.m);
+    if(!(await ensurePdfLibs())){
+      toast('Không tải được thư viện PDF — kiểm tra mạng rồi thử lại','bad');
+      return;
+    }
+    unlock=pdfHtmlZoomLock();
+    mask=document.createElement('div');
+    mask.style.cssText='position:fixed;inset:0;background:rgba(255,255,255,.94);z-index:10040;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px';
+    mask.textContent='Đang tạo PDF…';
+    document.body.appendChild(mask);
+    const title='Chấm công — Tháng '+built.m+'/'+built.y+' — Quang Thanh Solar';
+    const matrix=attAdminExportMatrix(built);
+    const PER=16;
+    const chunks=[];
+    if(!matrix.length) chunks.push([]);
+    else for(let i=0;i<matrix.length;i+=PER) chunks.push(matrix.slice(i,i+PER));
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    const margin=8, contentW=297-margin*2, contentH=210-margin*2;
+    const state={first:true};
+    for(let i=0;i<chunks.length;i++){
+      const sub='Tháng '+built.m+' / '+built.y+' · '+built.rows.length+' dòng · trang '+(i+1)+'/'+chunks.length;
+      const host=document.createElement('div');
+      host.style.cssText='position:fixed;left:0;top:0;width:1280px;background:#fff;z-index:1;padding:16px 16px 18px;box-sizing:border-box;color:#17181a;font-family:Be Vietnam Pro,system-ui,sans-serif';
+      host.innerHTML=attPdfTableHtml(title, sub, chunks[i]);
+      document.body.appendChild(host);
+      try{
+        await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+        const cssH=Math.max(host.scrollHeight, host.offsetHeight);
+        const canvas=await html2canvas(host,{
+          scale:2,
+          backgroundColor:'#ffffff',
+          useCORS:true,
+          logging:false,
+          windowWidth:1280,
+          width:1280,
+          height:cssH,
+          scrollX:0,
+          scrollY:0,
+          x:0,
+          y:0,
+          ignoreElements:(el)=>!!(el&&(el.id==='app'||el.id==='login'))
+        });
+        attPdfPaint(doc, canvas, host, margin, contentW, contentH, state);
+      }finally{
+        host.remove();
+      }
+    }
+    const fname=attAdminFileBase(built.y, built.m)+'.pdf';
+    doc.save(fname);
+    toast('Đã tải PDF '+fname,'ok');
+  }catch(err){
+    console.error(err);
+    toast('Lỗi tạo PDF: '+(err&&err.message||err),'bad');
+  }finally{
+    attExportBusy=false;
+    if(btn) btn.disabled=false;
+    try{ unlock(); }catch(e){}
+    if(mask) mask.remove();
+  }
+}
+function pageAttendanceAdmin(){
+  const {y,m}=attAdminYm();
+  const today=attVnYmd().key;
+  const built=attAdminBuildRows(y,m);
+  const monthLabel='Tháng '+m+' / '+y;
+  const rows=built.rows;
+  const body=rows.length?rows.map(r=>{
+    const meta=attFormatDay(r.date);
+    const isToday=r.date===today;
+    return `<tr class="${isToday?'att-today':''}">
+      <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
+      <td class="att-name">${r.name?esc(r.name):'<span class="att-empty">—</span>'}</td>
+      <td>${r.address?`<div class="att-addr">${esc(r.address)}</div>`:'<span class="att-empty">—</span>'}</td>
+      <td>${attAdminPunchHtml(r.checkIn, r.checkInImg)}</td>
+      <td>${attAdminPunchHtml(r.checkOut, r.checkOutImg)}</td>
+      <td>${r.ot?`<div class="att-ot">${esc(r.ot)}</div>`:'<span class="att-empty">—</span>'}</td>
+    </tr>`;
+  }).join(''):'<tr><td colspan="6" class="empty">Không có tài khoản để hiển thị.</td></tr>';
+  return `<div class="page-head att-admin">
+      <div class="page-head-row">
+        <div>
+          <div class="page-title">${I.clock} Chấm công</div>
+          <div class="att-sub">${esc(monthLabel)} · ${built.userCount} tài khoản · ${rows.length} dòng</div>
+        </div>
+        <div class="head-actions">
+          <button type="button" class="btn btn-ghost" id="attXlsx">Tải Excel</button>
+          <button type="button" class="btn btn-primary" id="attPdf">Tải PDF</button>
+        </div>
+      </div>
+      <div class="att-admin-nav">
+        <button type="button" class="btn btn-ghost att-nav-btn" id="attPrev" aria-label="Tháng trước">‹</button>
+        <div class="att-month-label">${esc(monthLabel)}</div>
+        <button type="button" class="btn btn-ghost att-nav-btn" id="attNext" aria-label="Tháng sau">›</button>
+      </div>
+    </div>
+    <div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-tbl">
+      <thead><tr>
+        <th>Ngày</th>
+        <th>Họ và tên</th>
+        <th>Địa chỉ hiện tại</th>
+        <th>Check in</th>
+        <th>Check out</th>
+        <th>Tăng ca</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div></div>`;
+}
+function pageAttendance(){
+  if(isAdmin()) return pageAttendanceAdmin();
   const {y,m,days,today}=attMonthDays();
   const name=attEmpName()||'Nhân viên';
   const monthLabel='Tháng '+(m+1)+' / '+y;
@@ -10418,8 +10765,21 @@ async function attSendAddress(date){
     attBusy=false;
   }
 }
+function bindAttendanceAdmin(){
+  const prev=document.getElementById('attPrev');
+  const next=document.getElementById('attNext');
+  const xlsx=document.getElementById('attXlsx');
+  const pdf=document.getElementById('attPdf');
+  if(prev) prev.onclick=()=>attShiftAdminMonth(-1);
+  if(next) next.onclick=()=>attShiftAdminMonth(1);
+  if(xlsx) xlsx.onclick=()=>{ downloadAttAdminExcel(); };
+  if(pdf) pdf.onclick=()=>{ downloadAttAdminPdf(); };
+  document.querySelectorAll('.att-admin [data-att-preview]').forEach(img=>{
+    img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+  });
+}
 function bindAttendance(){
-  if(isAdmin()) return;
+  if(isAdmin()){ bindAttendanceAdmin(); return; }
   document.querySelectorAll('[data-att-in]').forEach(b=>{
     b.onclick=()=>attDoCheckIn(b.getAttribute('data-att-in'));
   });
