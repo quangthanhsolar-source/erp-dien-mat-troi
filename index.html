@@ -89,11 +89,14 @@ img{max-width:100%;height:auto}
   min-height:56px;box-shadow:var(--shadow);
 }
 .topbar .brandmark{
-  width:36px;height:36px;border-radius:11px;
-  background:var(--ink);color:var(--lime);
-  display:grid;place-items:center;flex:none;
+  width:auto;height:36px;max-width:min(168px,46vw);
+  border-radius:0;background:transparent;color:inherit;
+  display:flex;align-items:center;flex:none;padding:0;overflow:hidden;
 }
-.topbar .brandmark svg{width:18px;height:18px}
+.topbar .brandmark img{
+  height:36px;width:auto;max-width:min(168px,46vw);
+  object-fit:contain;display:block;
+}
 .topbar-title{font-size:16px;font-weight:700;flex:1;letter-spacing:-.02em}
 .topbar-sub{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .topbar-btn{
@@ -116,16 +119,12 @@ body.mob-open .sidebar{transform:none;box-shadow:4px 0 32px rgba(17,18,20,.18)}
 }
 body.mob-open .sidebar-overlay{display:block}
 .sb-head{
-  display:flex;align-items:center;gap:12px;
-  padding:18px 18px 16px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  padding:12px 16px 10px;border-bottom:1px solid var(--line);
 }
-.sb-head .brandmark{
-  width:40px;height:40px;border-radius:13px;background:var(--ink);
-  color:var(--lime);display:grid;place-items:center;flex:none;
+.sb-head .sb-logo{
+  display:block;width:100%;height:auto;object-fit:contain;
 }
-.sb-head .brandmark svg{width:20px;height:20px}
-.sb-head b{display:block;font-size:14px;font-weight:800;letter-spacing:-.01em}
-.sb-head span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em}
 .sb-nav{flex:1;overflow-y:auto;padding:10px 10px 8px}
 .nav-item{
   display:flex;align-items:center;gap:12px;
@@ -652,8 +651,8 @@ textarea.inp{height:88px;padding:12px 16px;resize:vertical;border-radius:14px}
 }
 #login .login-bg-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,12,20,.28) 0%,rgba(8,12,20,.38) 50%,rgba(8,12,20,.55) 100%)}
 #login > *:not(.login-bg){position:relative;z-index:1}
-#login .brandmark{width:52px;height:52px;border-radius:16px;margin:0 auto 14px;background:rgba(17,18,20,.55);border:1px solid rgba(255,255,255,.28)}
-#login .brandmark svg{width:24px;height:24px}
+#login .brandmark{width:auto;height:auto;max-width:100%;border-radius:0;margin:0 auto 12px;background:transparent;border:0;display:flex;align-items:center;justify-content:center}
+#login .brandmark img{height:68px;width:auto;max-width:100%;object-fit:contain;display:block}
 .brandmark{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;background:var(--ink);color:var(--lime)}
 .brandmark svg{width:28px;height:28px}
 #login h1{font-size:26px;font-weight:700;margin:0 0 16px;text-align:center;line-height:1.2;color:#fff;text-shadow:0 1px 14px rgba(0,0,0,.35);letter-spacing:.01em}
@@ -815,7 +814,7 @@ html.qt-preview-open,html.qt-preview-open body{overflow:hidden}
     <button class="topbar-btn" id="menuBtn">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
     </button>
-    <div class="brandmark" style="width:36px;height:36px;border-radius:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2"/></svg></div>
+    <div class="brandmark"><img src="assets/brand/quang-thanh-logo.png?v=1" alt="Quang Thanh Solar"></div>
     <div style="flex:1"><div class="topbar-title" id="topbarTitle">Dashboard</div></div>
     <button class="btn btn-green" id="topFab" data-go="quote-new" style="height:38px;font-size:12.5px;padding:0 14px">&plus; Tạo báo giá</button>
   </header>
@@ -3175,7 +3174,7 @@ function renderLogin(){
     <div class="login-bg-scrim"></div>
   </div>
   <div class="login-card">
-    <div class="brandmark">${I.sun}</div>
+    <div class="brandmark"><img src="assets/brand/quang-thanh-logo.png?v=1" alt="Quang Thanh Solar"></div>
     <h1>Quang Thanh Solar</h1>
     <h2 class="login-title">Đăng nhập</h2>
     <div class="login-sb login-sb-in" style="color:${SB_READY?'#86efac':'#fbbf24'}">${SB_READY?'● Đã kết nối Supabase':'○ Chưa kết nối Supabase'}</div>
@@ -3360,7 +3359,7 @@ function renderSidebar(){
       <div class="nav-sub">${g.sub.map(s=>`<button class="nav-item ${ROUTE===s.k?'active':''}" data-go="${s.k}"><span>${s.t}</span></button>`).join('')}</div></div>`;
   };
   $('#sidebar').innerHTML=`
-   <div class="sb-head"><div class="brandmark">${I.sun}</div><div><b>${esc(DB.settings.brand)}</b><span>${esc(DB.settings.short)}</span></div></div>
+   <div class="sb-head"><img class="sb-logo" src="assets/brand/quang-thanh-logo.png?v=1" alt="Quang Thanh Solar"></div>
    <nav class="sb-nav">${NAV.map(n=>n.sub?grp(n):
      `<button class="nav-item ${ROUTE===n.k?'active':''}" data-go="${n.k}">${I[n.i]}<span>${n.t}</span></button>`).join('')}</nav>
    <div class="sb-foot">
