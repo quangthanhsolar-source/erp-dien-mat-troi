@@ -10878,7 +10878,7 @@ function buildQtPdf3(pngMap){
 
   const TITLE={
     'Tấm pin NLMT':'TẤM PIN NĂNG LƯỢNG MẶT TRỜI',
-    'Biến tần':'BỘ BIẾN TẦN ( HYBRID INVERTER )',
+    'Biến tần':isInvtXgExport(quoteSelectedInv())?'BỘ BIẾN TẦN HÒA LƯỚI BÁM TẢI':'BỘ BIẾN TẦN ( HYBRID INVERTER )',
     'Phụ kiện & Giám sát':'PHỤ KIỆN & GIÁM SÁT',
     'Pin lưu trữ':'BỘ LƯU TRỮ LITHIUM ( BATTERY )',
     'Tủ điện':'THIẾT BỊ TỦ ĐIỆN & CHỐNG SÉT LAN TRUYỀN',
