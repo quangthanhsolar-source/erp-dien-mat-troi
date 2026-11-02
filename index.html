@@ -261,9 +261,15 @@ tbody tr:active{background:var(--surface)}
 .att-tbl tr.att-today{background:var(--green-l)}
 .att-tbl tr.att-future{opacity:.62}
 .att-name{font-weight:700}
-.att-addr{max-width:240px;font-size:12.5px;line-height:1.4;color:var(--ink-2);white-space:pre-wrap}
+.att-addr{max-width:280px;font-size:12.5px;line-height:1.4;color:var(--ink-2);white-space:pre-wrap}
+.att-addr-cell{display:flex;flex-direction:column;align-items:flex-start;gap:8px;max-width:280px}
+.att-map{height:32px;padding:0 12px;border-radius:999px;background:var(--ink);color:#fff;font-size:12px;font-weight:700}
+.att-map:hover{background:#000}
+.att-map:disabled{opacity:.55}
 .att-empty{color:var(--muted)}
 .att-time{font-variant-numeric:tabular-nums;font-weight:800;font-size:14px}
+.att-punch{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:108px}
+.att-ot{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .att-photo{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .att-thumb{width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f3f3f3;display:block;cursor:zoom-in}
 .att-upload{width:64px;min-height:64px;border-radius:12px;border:1px dashed #c9ccd1;background:#fafafa;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px;font-size:10px;font-weight:700}
@@ -10137,7 +10143,7 @@ function attUpsert(date, patch){
   attEnsureStore();
   let rec=attGetRecord(date);
   if(!rec){
-    rec={id:Date.now(),userId:uid,date:date,name:attEmpName(),address:'',img:'',checkIn:'',checkOut:''};
+    rec={id:Date.now(),userId:uid,date:date,name:attEmpName(),address:'',lat:null,lng:null,img:'',checkInImg:'',checkOutImg:'',checkIn:'',checkOut:''};
     DB.attendance.push(rec);
   }
   Object.assign(rec, patch||{});
@@ -10147,11 +10153,30 @@ function attUpsert(date, patch){
   saveDB();
   return rec;
 }
-function attFormatTime(iso){
-  if(!iso) return '';
+function attVnParts(iso){
+  if(!iso) return null;
   const x=new Date(iso);
-  if(isNaN(+x)) return '';
-  return attPad(x.getHours())+':'+attPad(x.getMinutes());
+  if(isNaN(+x)) return null;
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(x);
+  let h=+((parts.find(p=>p.type==='hour')||{}).value);
+  const m=+((parts.find(p=>p.type==='minute')||{}).value);
+  if(!Number.isFinite(h)||!Number.isFinite(m)) return null;
+  if(h===24) h=0;
+  return {h,m,mins:h*60+m};
+}
+function attFormatTime(iso){
+  const p=attVnParts(iso);
+  if(!p) return '';
+  return attPad(p.h)+':'+attPad(p.m);
+}
+function attOvertimeText(iso){
+  const p=attVnParts(iso);
+  if(!p||p.mins<=17*60+30) return '';
+  const ot=p.mins-17*60;
+  const h=Math.floor(ot/60), m=ot%60;
+  if(h&&m) return h+' tiếng '+m+' phút';
+  if(h) return h+' tiếng';
+  return m+' phút';
 }
 function attFormatDay(key){
   const p=String(key||'').split('-').map(Number);
@@ -10199,27 +10224,43 @@ async function attReverseGeocode(lat,lng){
     return fallback;
   }
 }
-async function attCurrentAddress(){
+async function attLocate(){
   const coords=await attGetPosition();
-  return attReverseGeocode(coords.latitude, coords.longitude);
+  const lat=coords.latitude, lng=coords.longitude;
+  const address=await attReverseGeocode(lat, lng);
+  return {address, lat, lng};
 }
-function attPhotoCell(rec, date, canEdit){
-  if(rec&&rec.img){
+function attPhotoHtml(img, date, kind, canEdit){
+  if(img){
     return `<div class="att-photo">
-      <img class="att-thumb" src="${attImgSrc(rec.img)}" alt="Ảnh chấm công" data-att-preview="1">
-      ${canEdit?`<button type="button" class="att-chg" data-att-photo="${date}">Đổi ảnh</button>`:''}
+      <img class="att-thumb" src="${attImgSrc(img)}" alt="Ảnh chấm công" data-att-preview="1">
+      ${canEdit?`<button type="button" class="att-chg" data-att-photo="${date}" data-att-kind="${kind}">Đổi ảnh</button>`:''}
     </div>`;
   }
-  if(canEdit) return `<button type="button" class="att-upload" data-att-photo="${date}" title="Tải ảnh lên">${I.img}<span>Tải ảnh</span></button>`;
-  return `<span class="att-empty">—</span>`;
+  if(!canEdit) return '';
+  return `<button type="button" class="att-upload" data-att-photo="${date}" data-att-kind="${kind}" title="Tải ảnh lên">${I.img}<span>Tải ảnh</span></button>`;
+}
+function attAddrCell(rec, date, canEdit){
+  const addr=(rec&&rec.address)||'';
+  const btn=canEdit?`<button type="button" class="att-map" data-att-map="${date}">Gửi địa chỉ</button>`:'';
+  return `<div class="att-addr-cell"><div class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</div>${btn}</div>`;
 }
 function attPunchCell(rec, date, kind, canEdit){
-  const iso=rec&&rec[kind];
-  if(iso) return `<div class="att-time">${esc(attFormatTime(iso))}</div>`;
-  if(!canEdit) return `<span class="att-empty">—</span>`;
-  if(kind==='checkOut' && !(rec&&rec.checkIn)) return `<span class="att-empty">—</span>`;
   const isIn=kind==='checkIn';
-  return `<button type="button" class="btn ${isIn?'btn-green':'btn-primary'} att-btn" data-att-${isIn?'in':'out'}="${date}">${isIn?'Check in':'Check out'}</button>`;
+  const iso=rec&&rec[kind];
+  const lockedOut=!isIn && !(rec&&rec.checkIn);
+  const img=(rec&&(isIn?(rec.checkInImg||rec.img):rec.checkOutImg))||'';
+  let timeHtml='<span class="att-empty">—</span>';
+  if(iso) timeHtml=`<div class="att-time">${esc(attFormatTime(iso))}</div>`;
+  else if(canEdit && !lockedOut){
+    timeHtml=`<button type="button" class="btn ${isIn?'btn-green':'btn-primary'} att-btn" data-att-${isIn?'in':'out'}="${date}">${isIn?'Check in':'Check out'}</button>`;
+  }
+  const photo=(canEdit||img)&&!lockedOut?attPhotoHtml(img, date, kind, canEdit):'';
+  return `<div class="att-punch">${timeHtml}${photo}</div>`;
+}
+function attOtCell(rec){
+  const t=rec&&rec.checkOut?attOvertimeText(rec.checkOut):'';
+  return t?`<div class="att-ot">${esc(t)}</div>`:'<span class="att-empty">—</span>';
 }
 function attMonthDays(){
   const now=new Date();
@@ -10243,14 +10284,13 @@ function pageAttendance(){
     const meta=attFormatDay(date);
     const isToday=date===today;
     const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
-    const addr=(rec&&rec.address)||'';
     return `<tr class="${cls.trim()}">
       <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
       <td class="att-name">${esc(name)}</td>
-      <td class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</td>
-      <td>${attPhotoCell(rec,date,can)}</td>
+      <td>${attAddrCell(rec,date,can)}</td>
       <td>${attPunchCell(rec,date,'checkIn',can)}</td>
       <td>${attPunchCell(rec,date,'checkOut',can)}</td>
+      <td>${attOtCell(rec)}</td>
     </tr>`;
   }).join('');
   const cards=days.map(date=>{
@@ -10259,14 +10299,13 @@ function pageAttendance(){
     const meta=attFormatDay(date);
     const isToday=date===today;
     const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
-    const addr=(rec&&rec.address)||'';
     return `<article class="att-card ${cls.trim()}">
       <div class="att-card-head"><b>${esc(meta.wd)} ${esc(meta.full)}</b>${isToday?'<span class="pill p-green">Hôm nay</span>':''}</div>
       <div class="att-card-row"><span>Họ và tên</span><b class="att-name">${esc(name)}</b></div>
-      <div class="att-card-row"><span>Địa chỉ hiện tại</span><div class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</div></div>
-      <div class="att-card-row"><span>Hình ảnh</span>${attPhotoCell(rec,date,can)}</div>
+      <div class="att-card-row"><span>Địa chỉ hiện tại</span>${attAddrCell(rec,date,can)}</div>
       <div class="att-card-row"><span>Check in</span>${attPunchCell(rec,date,'checkIn',can)}</div>
       <div class="att-card-row"><span>Check out</span>${attPunchCell(rec,date,'checkOut',can)}</div>
+      <div class="att-card-row"><span>Tăng ca</span>${attOtCell(rec)}</div>
     </article>`;
   }).join('');
   return `<div class="page-head">
@@ -10278,9 +10317,9 @@ function pageAttendance(){
         <th>Ngày</th>
         <th>Họ và tên</th>
         <th>Địa chỉ hiện tại</th>
-        <th>Hình ảnh</th>
         <th>Check in</th>
         <th>Check out</th>
+        <th>Tăng ca</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>
@@ -10295,11 +10334,13 @@ async function attDoCheckIn(date){
   attBusy=true;
   document.querySelectorAll('[data-att-in="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
   toast('Đang lấy địa chỉ hiện tại…');
-  let address='Không lấy được vị trí';
+  let address='Không lấy được vị trí', lat=null, lng=null;
   try{
-    try{ address=await attCurrentAddress(); }
-    catch(e){ address='Không lấy được vị trí'; }
-    attUpsert(date,{checkIn:new Date().toISOString(),address,name:attEmpName()});
+    try{
+      const loc=await attLocate();
+      address=loc.address; lat=loc.lat; lng=loc.lng;
+    }catch(e){ address='Không lấy được vị trí'; }
+    attUpsert(date,{checkIn:new Date().toISOString(),address,lat,lng,name:attEmpName()});
     toast('Đã check in','ok');
     renderPage();
   }finally{
@@ -10315,9 +10356,10 @@ function attDoCheckOut(date){
   toast('Đã check out','ok');
   renderPage();
 }
-function attPickPhoto(date){
+function attPickPhoto(date, kind){
   const inp=document.getElementById('attFile');
-  if(!inp) return;
+  if(!inp||!attCanPunch(date)) return;
+  const field=kind==='checkOut'?'checkOutImg':'checkInImg';
   inp.value='';
   inp.onchange=async ()=>{
     const f=inp.files&&inp.files[0];
@@ -10326,14 +10368,56 @@ function attPickPhoto(date){
     try{
       const dataUrl=await fileToDataUrl(f);
       const img=await compressProdImg(dataUrl, 480, 0.68);
-      attUpsert(date,{img,name:attEmpName()});
-      toast('Đã lưu ảnh chấm công','ok');
+      const patch={name:attEmpName()};
+      patch[field]=img;
+      attUpsert(date, patch);
+      toast(field==='checkOutImg'?'Đã lưu ảnh check out':'Đã lưu ảnh check in','ok');
       renderPage();
     }catch(e){
       toast('Không đọc được ảnh','bad');
     }
   };
   inp.click();
+}
+function attMapsUrl(lat, lng){
+  return 'https://www.google.com/maps?q='+encodeURIComponent(lat+','+lng);
+}
+async function attOpenMaps(url){
+  const win=window.open(url,'_blank','noopener');
+  try{ await navigator.clipboard.writeText(url); }catch(e){}
+  toast(win?'Đã gửi địa chỉ lên Google Maps':'Đã sao chép link Google Maps','ok');
+}
+async function attSendAddress(date){
+  if(attBusy||!attCanPunch(date)) return;
+  const rec=attGetRecord(date);
+  if(rec&&rec.lat!=null&&rec.lng!=null&&rec.lat!==''&&rec.lng!==''){
+    await attOpenMaps(attMapsUrl(rec.lat, rec.lng));
+    return;
+  }
+  if(rec&&rec.address&&rec.address!=='Không lấy được vị trí'){
+    await attOpenMaps('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(rec.address));
+    return;
+  }
+  const win=window.open('about:blank','_blank');
+  attBusy=true;
+  document.querySelectorAll('[data-att-map="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
+  toast('Đang lấy định vị…');
+  try{
+    const loc=await attLocate();
+    attUpsert(date,{address:loc.address,lat:loc.lat,lng:loc.lng,name:attEmpName()});
+    const url=attMapsUrl(loc.lat, loc.lng);
+    if(win) win.location.href=url;
+    else window.open(url,'_blank','noopener');
+    try{ await navigator.clipboard.writeText(url); }catch(e){}
+    toast('Đã gửi địa chỉ lên Google Maps','ok');
+    renderPage();
+  }catch(e){
+    if(win) try{ win.close(); }catch(err){}
+    toast('Không lấy được vị trí để gửi','bad');
+    renderPage();
+  }finally{
+    attBusy=false;
+  }
 }
 function bindAttendance(){
   if(isAdmin()) return;
@@ -10344,7 +10428,10 @@ function bindAttendance(){
     b.onclick=()=>attDoCheckOut(b.getAttribute('data-att-out'));
   });
   document.querySelectorAll('[data-att-photo]').forEach(b=>{
-    b.onclick=()=>attPickPhoto(b.getAttribute('data-att-photo'));
+    b.onclick=()=>attPickPhoto(b.getAttribute('data-att-photo'), b.getAttribute('data-att-kind'));
+  });
+  document.querySelectorAll('[data-att-map]').forEach(b=>{
+    b.onclick=()=>attSendAddress(b.getAttribute('data-att-map'));
   });
   document.querySelectorAll('[data-att-preview]').forEach(img=>{
     img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
