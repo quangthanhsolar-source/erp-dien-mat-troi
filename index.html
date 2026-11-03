@@ -11444,19 +11444,79 @@ function attImgSrc(img){
   const s=String(img);
   return s.startsWith('data:')?s:esc(s);
 }
+function attIsBadNetworkCentroid(lat, lng){
+  const la=Number(lat), ln=Number(lng);
+  if(!Number.isFinite(la)||!Number.isFinite(ln)) return false;
+  return Math.abs(la-10.5408333)<=0.01 && Math.abs(ln-107.2788889)<=0.01;
+}
+function attCoarseError(){
+  const err=new Error('Không có vị trí chính xác');
+  err.code=3;
+  err.coarse=true;
+  return err;
+}
 function attGetPosition(){
   return new Promise((resolve,reject)=>{
-    if(!navigator.geolocation){ reject(new Error('Trình duyệt không hỗ trợ định vị')); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos=>resolve(pos&&pos.coords),
-      err=>reject(err||new Error('Không lấy được vị trí')),
-      {enableHighAccuracy:true, timeout:20000, maximumAge:0}
-    );
+    if(!navigator.geolocation||typeof navigator.geolocation.watchPosition!=='function'){
+      reject(new Error('Trình duyệt không hỗ trợ định vị'));
+      return;
+    }
+    const ACCEPT_M=100;
+    const MAX_M=300;
+    const WAIT_MS=22000;
+    let watchId=null;
+    let settled=false;
+    let best=null;
+    let timer=null;
+    function clearWatch(){
+      if(timer){ clearTimeout(timer); timer=null; }
+      if(watchId!=null&&typeof navigator.geolocation.clearWatch==='function'){
+        const id=watchId;
+        watchId=null;
+        try{ navigator.geolocation.clearWatch(id); }catch(e){}
+      }
+    }
+    function finish(err, coords){
+      if(settled) return;
+      settled=true;
+      clearWatch();
+      if(err) reject(err);
+      else resolve(coords);
+    }
+    function consider(pos){
+      if(settled||!pos||!pos.coords) return;
+      const lat=Number(pos.coords.latitude);
+      const lng=Number(pos.coords.longitude);
+      const acc=Number(pos.coords.accuracy);
+      if(!Number.isFinite(lat)||!Number.isFinite(lng)||!Number.isFinite(acc)||acc<0) return;
+      if(acc>ACCEPT_M && attIsBadNetworkCentroid(lat, lng)) return;
+      if(!best||acc<best.accuracy) best={accuracy:acc, coords:pos.coords};
+      if(best.accuracy<=ACCEPT_M) finish(null, best.coords);
+    }
+    function onError(err){
+      if(settled) return;
+      const code=err&&typeof err.code==='number'?err.code:0;
+      if(code===1) finish(err||new Error('Không lấy được vị trí'));
+    }
+    function onTimeout(){
+      if(settled) return;
+      if(best&&best.accuracy<=MAX_M) finish(null, best.coords);
+      else finish(attCoarseError());
+    }
+    try{
+      watchId=navigator.geolocation.watchPosition(consider, onError, {enableHighAccuracy:true, maximumAge:0, timeout:25000});
+    }catch(e){
+      finish(e||new Error('Không lấy được vị trí'));
+      return;
+    }
+    if(settled){ clearWatch(); return; }
+    timer=setTimeout(onTimeout, WAIT_MS);
   });
 }
 function attGeoErrorMessage(err){
+  if(err&&err.coarse) return 'Máy tính hoặc trình duyệt không trả vị trí chính xác. Hãy bật định vị chính xác (Dịch vụ định vị của Windows và quyền vị trí của trang) rồi thử lại';
   const code=err&&typeof err.code==='number'?err.code:0;
-  if(code===1) return 'Bạn đã từ chối quyền vị trí. Không lưu địa chỉ đoán — hãy bật định vị GPS rồi thử lại';
+  if(code===1) return 'Bạn đã từ chối quyền vị trí. Không lưu địa chỉ — hãy bật quyền vị trí rồi thử lại';
   if(code===3) return 'Hết thời gian chờ GPS. Không lưu địa chỉ đoán — hãy ra nơi thoáng rồi thử lại';
   if(code===2) return 'Máy không trả được vị trí GPS. Không lưu địa chỉ đoán';
   if(/không hỗ trợ/i.test(String(err&&err.message||''))) return 'Trình duyệt không hỗ trợ định vị. Không lưu địa chỉ đoán';
@@ -11558,7 +11618,9 @@ async function attReverseGeocode(lat, lng){
 async function attLocate(){
   const coords=await attGetPosition();
   const lat=Number(coords&&coords.latitude), lng=Number(coords&&coords.longitude);
+  const acc=Number(coords&&coords.accuracy);
   if(!Number.isFinite(lat)||!Number.isFinite(lng)) throw new Error('Không lấy được toạ độ GPS');
+  if(!Number.isFinite(acc)||acc>300||(acc>100&&attIsBadNetworkCentroid(lat, lng))) throw attCoarseError();
   let address='';
   try{ address=await attReverseGeocode(lat, lng); }catch(e){ address=''; }
   if(!address) address='Đã gửi toạ độ';
@@ -12163,7 +12225,8 @@ async function attDoCheckIn(date){
       attUpsert(date,{checkIn:new Date().toISOString(),address:loc.address,lat:loc.lat,lng:loc.lng,name:attEmpName()});
       toast('Đã check in','ok');
     }catch(e){
-      attUpsert(date,{checkIn:new Date().toISOString(),name:attEmpName()});
+      const code=e&&typeof e.code==='number'?e.code:0;
+      if(!(code===1||(e&&e.coarse))) attUpsert(date,{checkIn:new Date().toISOString(),name:attEmpName()});
       toast(attGeoErrorMessage(e),'bad');
     }
     renderPage();
