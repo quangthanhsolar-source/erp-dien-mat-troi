@@ -1293,17 +1293,79 @@ function isTelesalesRosterName(name){
     return key===want || key.endsWith(want) || key.includes(want);
   });
 }
+/** Bỏ dấu, hoa/thường, khoảng trắng thừa: "Ky thuat" và "Kỹ Thuật" là một. */
+function roleFold(s){
+  return String(s||'')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/đ/g,'d')
+    .replace(/[_./-]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+const ROLE_ALIAS={
+  'admin':'admin','quan ly':'manager','manager':'manager',
+  'nhan vien kd':'sales','sales':'sales','telesales':'telesales',
+  'ky thuat':'kythuat','kythuat':'kythuat',
+  'ky thuat truong':'kythuat_truong','kythuat truong':'kythuat_truong',
+  'lead telesales':'lead_telesales',
+  'ke toan':'ketoan','ketoan':'ketoan',
+  'phap ly':'phaply','phaply':'phaply',
+  'kho':'kho'
+};
+const ROLE_ALIAS_COMPACT={
+  admin:'admin',quanly:'manager',manager:'manager',nhanvienkd:'sales',sales:'sales',
+  telesales:'telesales',kythuat:'kythuat',kythuattruong:'kythuat_truong',
+  leadtelesales:'lead_telesales',ketoan:'ketoan',phaply:'phaply',kho:'kho'
+};
+function roleIdFromText(raw){
+  if(raw==null) return '';
+  const direct=String(raw).trim();
+  if(ROLE[direct]) return direct;
+  const folded=roleFold(direct);
+  if(!folded) return '';
+  if(ROLE_ALIAS[folded]) return ROLE_ALIAS[folded];
+  return ROLE_ALIAS_COMPACT[folded.replace(/ /g,'')]||'';
+}
+function accountMappedRole(u){
+  if(!u) return '';
+  const map=DB&&DB.settings&&DB.settings.userAccountRoleByEmail;
+  if(!map||typeof map!=='object'||Array.isArray(map)) return '';
+  const em=String(u.email||'').trim().toLowerCase();
+  if(!em||map[em]==null||map[em]==='') return '';
+  return roleIdFromText(map[em]);
+}
+function directoryRole(u){
+  if(!u||!Array.isArray(DB.users)) return '';
+  const em=String(u.email||'').trim().toLowerCase();
+  let row=null;
+  if(em) row=DB.users.find(x=>x&&x!==u&&String(x.email||'').trim().toLowerCase()===em)||null;
+  if(!row&&u.id!=null){
+    const id=Number(u.id);
+    if(Number.isFinite(id)) row=DB.users.find(x=>x&&x!==u&&Number(x.id)===id)||null;
+  }
+  if(!row) return '';
+  const id=roleIdFromText(row.role);
+  if(!id||id==='sales') return '';
+  return id;
+}
 /**
- * Vai trò hiệu lực: roster 7 telesale được coi là Telesales dù DB vẫn để sales
- * (không bắt buộc migration Supabase).
+ * Vai trò hiệu lực trên app (nhãn tiếng Việt / settings), không phải enum Supabase
+ * đã gộp về sales. Roster 7 telesale vẫn là Telesales dù cột role còn để sales.
  */
 function effectiveUserRole(u){
   u=u||ME;
   if(!u) return 'sales';
-  if(u.role==='admin'||u.role==='manager') return u.role;
-  if(u.role&&ROLE[u.role]&&u.role!=='sales') return u.role;
+  const fromField=roleIdFromText(u.role);
+  if(fromField==='admin'||fromField==='manager') return fromField;
+  if(fromField&&fromField!=='sales') return fromField;
   if(isTelesalesRosterName(u.name)) return 'telesales';
-  return normalizeAppRole(u.role);
+  const mapped=accountMappedRole(u);
+  if(mapped) return mapped;
+  const listed=directoryRole(u);
+  if(listed) return listed;
+  return fromField||'sales';
 }
 function roleMeta(u){
   return ROLE[effectiveUserRole(u)]||ROLE.sales;
@@ -1349,13 +1411,7 @@ function userAccountNameKey(s){
 }
 function userAccountPhoneKey(s){ return String(s||'').replace(/\D/g,''); }
 function userAccountRoleKey(label){
-  const k=userAccountNameKey(label);
-  const map={
-    'admin':'admin','quản lý':'manager','nhân viên kd':'sales','telesales':'telesales',
-    'kỹ thuật':'kythuat','kỹ thuật trưởng':'kythuat_truong','pháp lý':'phaply',
-    'lead telesales':'lead_telesales','kế toán':'ketoan','kho':'kho'
-  };
-  return map[k]||'';
+  return roleIdFromText(label);
 }
 function isUserAccountSeedId(id){
   const n=Number(id);
@@ -2715,8 +2771,7 @@ function resolveLocalUserByEmail(email){
   const u=(DB.users||[]).find(x=>x.email&&String(x.email).toLowerCase()===mail);
   if(!u) return null;
   if(u.active===false) return null;
-  const role=normalizeAppRole(u.role);
-  return {...u, role};
+  return {...u, role:effectiveUserRole(u)};
 }
 
 /* ---- Sync theo bảng Supabase (products/customers/quotes/...) ---- */
@@ -3804,6 +3859,15 @@ function dropUiLayer(name, fromPop){
     setTimeout(()=>{histBusy=false;},80);
   }
 }
+window.addEventListener('hashchange',()=>{
+  if(histBusy||!ME) return;
+  const r=routeFromUrl();
+  if(!r){
+    if(!routeAllowed('dashboard')) go(defaultRouteForRole(),{replace:true});
+    return;
+  }
+  if(!routeAllowed(r)) go(defaultRouteForRole(),{replace:true});
+});
 window.addEventListener('popstate',()=>{
   if(histBusy) return;
   if(uiLayers.length){
@@ -3841,14 +3905,15 @@ async function enterApp(u, opt){
     renderLogin();
     return;
   }
-  const role=normalizeAppRole(u.role);
+  const role=effectiveUserRole(u);
   ME={...u, role};
   saveAppSession(ME);
   window._warnedLocalOnly=false;
   $('#login').style.display='none';
   $('#app').style.display='block';
   // Hiện UI ngay với dữ liệu local — đồng bộ cloud chạy nền
-  const r=opt.route||routeFromUrl()||'dashboard';
+  let r=opt.route||routeFromUrl()||'';
+  if(!r||!routeAllowed(r)) r=defaultRouteForRole();
   go(r,{replace:true});
   if(SB_READY&&SB_USER){
     startLiveSync();
@@ -3873,6 +3938,7 @@ async function enterApp(u, opt){
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
     const userN=applyUserAccountSeedOnce();
+    refreshSessionRole();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
     try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
     const attSync=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
@@ -3926,6 +3992,7 @@ async function enterApp(u, opt){
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
     const userN=applyUserAccountSeedOnce();
+    refreshSessionRole();
     const brandFixedOffline=normalizeCatalogBrands();
     if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||userN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
     const ordAdded=await ensureExcelOrders();
@@ -4124,7 +4191,73 @@ const NAV=[
  {k:'users',t:'Nhân sự',i:'users'},
  {k:'settings',t:'Cài đặt',i:'gear'},
 ];
+const TECH_ROLES={kythuat:1,kythuat_truong:1};
+/** Cùng menu và cùng trang với Telesales — không thêm, không bớt. */
+const TELESALES_MENU_ROLES={telesales:1,lead_telesales:1,ketoan:1,phaply:1,kho:1};
+function isTechRole(role){
+  return !!TECH_ROLES[role||effectiveUserRole(ME)];
+}
+function defaultRouteForRole(role){
+  role=role||effectiveUserRole(ME);
+  return TECH_ROLES[role]?'attendance':'dashboard';
+}
+function routeAllowed(r, role){
+  role=role||effectiveUserRole(ME);
+  if(!TECH_ROLES[role]) return true;
+  return r==='attendance'||r==='assets';
+}
+function navModelForRole(role){
+  role=role||effectiveUserRole(ME);
+  if(TECH_ROLES[role]){
+    return NAV.filter(n=>n.k==='attendance'||n.k==='assets').map(n=>{
+      if(n.k!=='attendance'||!Array.isArray(n.sub)) return n;
+      return Object.assign({}, n, {sub:n.sub.filter(s=>s.k==='attendance')});
+    });
+  }
+  if(TELESALES_MENU_ROLES[role]) return NAV;
+  return NAV;
+}
+function renderBottomNav(){
+  const nav=document.getElementById('bottomNav');
+  if(!nav) return;
+  if(!renderBottomNav.full) renderBottomNav.full=nav.innerHTML;
+  const tech=isTechRole();
+  const mode=tech?'tech':'full';
+  if(nav.getAttribute('data-mode')!==mode){
+    nav.innerHTML=tech
+      ?`<button class="bn-item" data-go="attendance">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
+      <span>Check-In</span><div class="bn-dot"></div>
+    </button>
+    <button class="bn-item" data-go="assets">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span>Tài sản</span><div class="bn-dot"></div>
+    </button>`
+      :renderBottomNav.full;
+    nav.setAttribute('data-mode', mode);
+    nav.querySelectorAll('[data-go]').forEach(b=>{ b.onclick=()=>go(b.dataset.go); });
+  }
+  nav.querySelectorAll('.bn-item').forEach(b=>{
+    b.classList.toggle('active', !!(b.dataset&&b.dataset.go===ROUTE));
+  });
+}
+function refreshSessionRole(){
+  if(!ME) return;
+  const role=effectiveUserRole(ME);
+  const roleChanged=ME.role!==role;
+  if(roleChanged){
+    ME.role=role;
+    try{ saveAppSession(ME); }catch(e){}
+  }
+  if(!routeAllowed(ROUTE)){
+    renderSidebar();
+    go(defaultRouteForRole(),{replace:true});
+    return;
+  }
+  if(roleChanged) renderSidebar();
+}
 function renderSidebar(){
+  const items=navModelForRole();
   const grp=g=>{
     const on=OPEN[g.k]||(g.sub||[]).some(s=>s.k===ROUTE);
     return `<div class="nav-group ${on?'open':''}">
@@ -4133,7 +4266,7 @@ function renderSidebar(){
   };
   $('#sidebar').innerHTML=`
    <div class="sb-head"><img class="sb-logo" src="assets/brand/quang-thanh-logo.png?v=1" alt="Quang Thanh Solar"></div>
-   <nav class="sb-nav">${NAV.map(n=>n.sub?grp(n):
+   <nav class="sb-nav">${items.map(n=>n.sub?grp(n):
      `<button class="nav-item ${ROUTE===n.k?'active':''}" data-go="${n.k}">${I[n.i]}<span>${n.t}</span></button>`).join('')}</nav>
    <div class="sb-foot">
      <div class="sb-user"><button type="button" class="avatar" id="sbAvatar" title="Đổi ảnh đại diện">${userAvatarInner(ME)}</button><div><b>${esc(ME.name)}</b><span>${roleMeta(ME).t}</span></div></div>
@@ -4156,6 +4289,7 @@ function renderSidebar(){
     e.target.value='';
     if(file) await setMyAvatarFromFile(file);
   };
+  renderBottomNav();
   $('#btnLogout').onclick=async()=>{
     stopLiveSync();
     const lastMail=(ME&&ME.email)||loadRememberEmail();
@@ -4173,6 +4307,7 @@ function go(r, opt){
   if(!r) return;
   if(r==='quote-list') r='dashboard';
   if(r==='dev-pump') r='dev-inverter';
+  if(!routeAllowed(r)) r=defaultRouteForRole();
   ROUTE=r;
   devSelected.clear();userSelected.clear();
   document.body.classList.remove('mob-open');
@@ -13485,6 +13620,13 @@ function bindAssets(){
   });
 }
 function renderPage(){
+  if(ME&&!routeAllowed(ROUTE)){
+    const next=defaultRouteForRole();
+    if(ROUTE!==next){
+      go(next,{replace:true});
+      return;
+    }
+  }
   const m=$('#main');
   switch(ROUTE){
     case 'dashboard': m.innerHTML=pageDashboard();bindQuoteList();break;
@@ -13522,7 +13664,7 @@ function renderPage(){
   document.querySelectorAll('.bn-item').forEach(b=>b.classList.toggle('active',b.dataset&&b.dataset.go===ROUTE));
   // Ẩn top fab trên trang tạo báo giá
   const tbFab=document.getElementById('topFab');
-  if(tbFab) tbFab.style.display=ROUTE==='quote-new'?'none':'';
+  if(tbFab) tbFab.style.display=(isTechRole()||ROUTE==='quote-new')?'none':'';
 }
 
 /* ---------------- INIT ---------------- */
