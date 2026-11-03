@@ -3768,6 +3768,7 @@ function resetQuoteNumbersToFormula(qt){
     else if(r.pkAdd) seeds.push({kind:'pk',id:+r.mountId});
   });
   qt._pendingExtras=seeds;
+  qt._pendingManualPk=(qt.phuKien||[]).filter(isManualPkRow).map(manualPkPayload);
   qt.items=[];
   qt.qtyKeep={};
   qt._panelQty=null;
@@ -4011,7 +4012,7 @@ function applyQuoteSectionExVat(rows){
 const ONG_NHUA_MIN_PRICE=1000000;
 function applyOngNhuaFloor(rows){
   (rows||[]).forEach(r=>{
-    if(!r||!/Ống nhựa/i.test(String(r.name||''))) return;
+    if(!r||r.manualPk||!/Ống nhựa/i.test(String(r.name||''))) return;
     r.minPrice=ONG_NHUA_MIN_PRICE;
     if(+r.price<ONG_NHUA_MIN_PRICE) r.price=ONG_NHUA_MIN_PRICE;
   });
@@ -4148,7 +4149,7 @@ function pkAddDisplayName(m){
 }
 function isPkAddRow(r){ return !!(r&&r.pkAdd); }
 function isWireClampRow(r){
-  return !!(r&&!r.pkAdd&&/Kẹp cố định dây tấm pin/i.test(String(r.name||'')));
+  return !!(r&&!r.pkAdd&&!r.manualPk&&/Kẹp cố định dây tấm pin/i.test(String(r.name||'')));
 }
 function pkAddIdsOnQuote(){
   const ids=new Set();
@@ -4259,21 +4260,131 @@ function addPkCatalogExtra(id){
   QT.phuKien.splice(at,0,row);
   renderPage();
 }
+/** Dòng phụ kiện gõ tay, nằm dưới VI.4 (Ống nhựa). Không lấy từ catalog. */
+const QT_PK_MANUAL_KEY='qts_erp_quote_pk_manual_v1';
+function isManualPkRow(r){ return !!(r&&r.manualPk); }
+function manualPkPayload(r){
+  return {
+    name:String(r&&r.name||''),
+    unit:String(r&&r.unit||''),
+    qty:+(r&&r.qty)||0,
+    price:+(r&&r.price)||0,
+    priceEntered:!!(r&&r.priceEntered),
+    manualPk:true
+  };
+}
+function manualPkFromSaved(s){
+  s=s||{};
+  return {
+    name:String(s.name||''),
+    unit:String(s.unit||''),
+    qty:+s.qty||0,
+    price:+s.price||0,
+    minPrice:0,
+    priceEntered:!!s.priceEntered,
+    manualPk:true,
+    exVat92:true,
+    qtyManual:true,
+    priceManual:true
+  };
+}
+function persistManualPk(){
+  try{
+    const rows=(QT&&QT.phuKien||[]).filter(isManualPkRow).map(manualPkPayload);
+    localStorage.setItem(QT_PK_MANUAL_KEY, JSON.stringify(rows));
+  }catch(e){}
+}
+function loadManualPk(){
+  try{
+    const raw=localStorage.getItem(QT_PK_MANUAL_KEY);
+    const rows=raw?JSON.parse(raw):[];
+    return Array.isArray(rows)?rows.filter(r=>r&&(r.manualPk||r.name!=null||r.price!=null)).map(manualPkFromSaved):[];
+  }catch(e){ return []; }
+}
+function manualPkShowsOnOutput(r){
+  if(!isManualPkRow(r)) return true;
+  const name=String(r.name||'').trim();
+  const qty=+r.qty||0;
+  const price=+r.price||0;
+  if(!name && qty===0) return false;
+  if(!(price>0) && !r.priceEntered) return false;
+  return true;
+}
+function qtManualPkAnchor(){
+  const rows=QT&&QT.phuKien||[];
+  return rows.findIndex(r=>r&&!isManualPkRow(r)&&/Ống nhựa/i.test(String(r.name||'')));
+}
+function manualPkInsertAt(){
+  const rows=QT&&QT.phuKien||[];
+  let at=qtManualPkAnchor();
+  if(at<0) at=rows.length-1;
+  at+=1;
+  while(at<rows.length&&isManualPkRow(rows[at])) at++;
+  return at;
+}
+function qtManualPkInline(){
+  return `<div class="qt-mount-add"><button type="button" data-add-manual-pk>+ Thêm</button></div>`;
+}
+function qtManualPkFallback(kind){
+  const a=qtManualPkAnchor();
+  if(a>=0 && !qtOmitRow('pk', a)) return '';
+  if(kind==='desk') return `<tr><td colspan="6" style="padding:4px 8px 8px">${qtManualPkInline()}</td></tr>`;
+  return `<div style="padding:4px 0 8px">${qtManualPkInline()}</div>`;
+}
+function pkManualNameHtml(r, ri){
+  return `<span class="qt-omit-name">${qtOmitBtnRow('pk',ri)}<span class="qt-omit-txt" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%">
+    <input class="qt-pk-name" type="text" data-pk-name="${ri}" value="${esc(r.name)}" placeholder="Tên phụ kiện" autocomplete="off" style="flex:1;min-width:140px;height:30px;font-size:12.5px;font-weight:600;border:1px solid var(--line);border-radius:8px;padding:0 8px;background:#fff">
+    <span style="color:var(--muted);font-size:11px">/</span>
+    <input class="qt-pk-unit" type="text" data-pk-unit="${ri}" value="${esc(r.unit)}" placeholder="ĐVT" autocomplete="off" style="width:64px;height:30px;font-size:12px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:0 6px;background:#fff">
+  </span></span>`;
+}
+function pkProductCell(r, ri, mode){
+  const adds=`${ri===qtMountAddAnchor()?qtMountAddInline():''}${ri===qtPkAddAnchor()?qtPkAddInline():''}${ri===qtManualPkAnchor()?qtManualPkInline():''}`;
+  if(isManualPkRow(r)) return pkManualNameHtml(r,ri)+adds;
+  if(mode==='mobi'){
+    return `<span class="qt-omit-name">${qtOmitBtnRow('pk',ri)}<span class="qt-omit-txt">${esc(r.name)}<span style="color:var(--muted);font-weight:400"> / ${esc(r.unit)}</span></span></span>${adds}`;
+  }
+  return `<span class="qt-omit-name">${qtOmitBtnRow('pk',ri)}<span class="qt-omit-txt">${esc(r.name)} <span style="color:var(--muted);font-size:11px">/ ${esc(r.unit)}</span></span></span>${adds}`;
+}
+function restoreManualPkRows(){
+  if(!QT||!QT.phuKien) return;
+  if(QT.phuKien.some(isManualPkRow)) return;
+  let saved=Array.isArray(QT._pendingManualPk)?QT._pendingManualPk.map(manualPkFromSaved):null;
+  QT._pendingManualPk=null;
+  if(!saved){
+    if(QT._manualPkRestored) return;
+    saved=loadManualPk();
+  }
+  QT._manualPkRestored=true;
+  saved.forEach(row=>{ if(row) QT.phuKien.push(row); });
+}
+function addManualPkRow(){
+  if(!QT||!QT.phuKien) return;
+  const row=manualPkFromSaved({name:'',unit:'Cái',qty:0,price:0,priceEntered:false});
+  const at=manualPkInsertAt();
+  shiftPkOmitInsert(at);
+  QT.phuKien.splice(at,0,row);
+  persistManualPk();
+  renderPage();
+  const nodes=document.querySelectorAll(`[data-pk-name="${at}"]`);
+  const vis=[...nodes].find(el=>el.getClientRects().length)||nodes[0];
+  if(vis) vis.focus();
+}
 function isQtPieceMountTab(){
   return !!(QT&&(QT.tab==='ctv'||QT.tab==='dealer'));
 }
 const BAT_Z_PIECE_PRICE=25000;
 const CLAMP_PIECE_PRICE=12000;
 function isBatZRow(r){
-  if(!r) return false;
+  if(!r||r.manualPk) return false;
   if(+r.mountId===8006) return true;
   return /^bát z$/i.test(String(r.name||'').trim());
 }
 function isCombinedClampRow(r){
-  return !!(r&&/Kẹp nhôm biên và giữa/i.test(String(r.name||'')));
+  return !!(r&&!r.manualPk&&/Kẹp nhôm biên và giữa/i.test(String(r.name||'')));
 }
 function isSplitClampRow(r){
-  if(!r) return false;
+  if(!r||r.manualPk) return false;
   if(r.clampKind==='end'||r.clampKind==='mid') return true;
   const n=String(r.name||'').trim();
   return n==='Kẹp biên'||n==='Kẹp giữa';
@@ -4303,8 +4414,8 @@ function splitCombinedClamp(){
   const idx=QT.phuKien.findIndex(isCombinedClampRow);
   if(idx<0) return;
   const qty=QT.phuKien[idx].qty;
-  const hasEnd=QT.phuKien.some(r=>r&&(r.clampKind==='end'||String(r.name||'').trim()==='Kẹp biên'));
-  const hasMid=QT.phuKien.some(r=>r&&(r.clampKind==='mid'||String(r.name||'').trim()==='Kẹp giữa'));
+  const hasEnd=QT.phuKien.some(r=>r&&!r.manualPk&&(r.clampKind==='end'||String(r.name||'').trim()==='Kẹp biên'));
+  const hasMid=QT.phuKien.some(r=>r&&!r.manualPk&&(r.clampKind==='mid'||String(r.name||'').trim()==='Kẹp giữa'));
   if(hasEnd&&hasMid){
     removePkRowsAt([idx]);
     return;
@@ -4392,15 +4503,15 @@ function applyQuoteQtyFormulas(c){
   setBy(QT.ngoaivi,/Dây cáp DC màu đỏ/i,r=>setQty(r,dcQty));
   setBy(QT.ngoaivi,/Dây cáp DC màu đen/i,r=>setQty(r,dcQty));
   (QT.phuKien||[]).forEach(r=>{
-    if(!r||isPkAddRow(r)) return;
+    if(!r||isPkAddRow(r)||isManualPkRow(r)) return;
     const mount=r.mountId!=null||/^(Bát Z|Rail nhôm|Khung sắt)$/i.test(String(r.name||'').trim());
     if(!mount) return;
     if(isQtPieceMountTab()&&isBatZRow(r)) return;
     setQty(r, csQty);
   });
-  if(!isQtPieceMountTab()) setBy(QT.phuKien,/Kẹp nhôm biên và giữa/i,r=>setQty(r,kepQty));
-  setBy(QT.phuKien,/Kẹp cố định dây tấm pin/i,r=>setQty(r,kepQty));
-  (QT.phuKien||[]).forEach(r=>{ if(isPkAddRow(r)) setQty(r,kepQty); });
+  if(!isQtPieceMountTab()) setBy(QT.phuKien,/Kẹp nhôm biên và giữa/i,r=>{ if(!isManualPkRow(r)) setQty(r,kepQty); });
+  setBy(QT.phuKien,/Kẹp cố định dây tấm pin/i,r=>{ if(!isManualPkRow(r)) setQty(r,kepQty); });
+  (QT.phuKien||[]).forEach(r=>{ if(isPkAddRow(r)&&!isManualPkRow(r)) setQty(r,kepQty); });
   setBy(QT.nhanCong,/Lắp đặt pin và vận hành/i,r=>{
     setQty(r, 1);
     const prevBasis=r.laborBasis!=null&&r.laborBasis!==''?+r.laborBasis:null;
@@ -4548,6 +4659,7 @@ function ensureQuoteAccessory(forceDefault){
   else if(forceDefault && !QT.acc) QT.acc=list[0].id;
 }
 function qtPriceFloor(itOrRow){
+  if(itOrRow&&itOrRow.manualPk) return null;
   const m=itOrRow&&itOrRow.minPrice!=null?+itOrRow.minPrice:NaN;
   return Number.isFinite(m)?m:null;
 }
@@ -4935,6 +5047,7 @@ function buildItems(){
   }
   syncPkAddRows();
   restorePendingQuoteExtras();
+  restoreManualPkRows();
   seedQuoteRowMinPrice(QT.phuKien);
   if(!QT.nhanCong) QT.nhanCong=[
     {name:'Lắp đặt pin và vận hành hết vòng đời hệ thống',unit:'Hệ',qty:1,price:quoteLaborInstallPrice(c),minPrice:quoteLaborInstallPrice(c),
@@ -5288,14 +5401,14 @@ function pageQuoteNew(){
       </td></tr>
       ${(qtMountAddAnchor()<0&&mountAddChoices().length)?`<tr><td colspan="6" style="padding:4px 8px 8px">${qtMountAddInline()}</td></tr>`:''}
       ${(qtPkAddAnchor()<0&&pkAddChoices().length)?`<tr><td colspan="6" style="padding:4px 8px 8px">${qtPkAddInline()}</td></tr>`:''}
-      ${qtVisibleRows(QT.phuKien,'pk').map(({r,i:ri},visI,vis)=>`<tr style="height:38px">
+      ${qtVisibleRows(QT.phuKien,'pk').map(({r,i:ri},visI,vis)=>`<tr style="height:${isManualPkRow(r)?'auto':'38px'}">
         <td class="mono" style="color:var(--muted);font-size:12px;padding:4px 8px">${visI+1}</td>
-        <td style="font-size:12.5px;padding:4px 8px"><span class="qt-omit-name">${qtOmitBtnRow('pk',ri)}<span class="qt-omit-txt">${esc(r.name)} <span style="color:var(--muted);font-size:11px">/ ${esc(r.unit)}</span></span></span>${ri===qtMountAddAnchor()?qtMountAddInline():''}${ri===qtPkAddAnchor()?qtPkAddInline():''}</td>
+        <td style="font-size:12.5px;padding:4px 8px">${pkProductCell(r,ri,'desk')}</td>
         ${visI===0?`<td style="padding:3px 4px;text-align:center;vertical-align:middle" rowspan="${vis.length}">${sectionThumbHtml(it,'_PK')}</td>`:''}
         <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="number" min="0" value="${r.qty}" data-pk-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
         <td style="padding:3px 4px;text-align:right">${qtPkPriceInput(r, ri, 'width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px')}</td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px" data-pk-line="${ri}">${vnd(r.qty*r.price)}</td>
-      </tr>`).join('')}`:it._nv?`
+      </tr>`).join('')}${qtManualPkFallback('desk')}`:it._nv?`
       <tr><td colspan="6" style="padding:6px 0 2px">
         <div class="qt-sec-head" style="background:var(--ink);border-radius:12px;display:flex;align-items:center;padding:7px 12px;gap:8px">
           <span class="mono" style="color:#d4f85c;font-weight:700;font-size:12px;min-width:28px">${toRoman(i+1)}</span>
@@ -5392,11 +5505,11 @@ function buildQtList(){
         ${(qtPkAddAnchor()<0&&pkAddChoices().length)?`<div style="padding:4px 0 8px">${qtPkAddInline()}</div>`:''}
         ${qtVisibleRows(QT.phuKien,'pk').map(({r,i:ri})=>`
         <div style="display:grid;grid-template-columns:1fr 52px 90px 72px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)">
-          <div style="font-size:12px;font-weight:600;color:var(--ink-2)"><span class="qt-omit-name">${qtOmitBtnRow('pk',ri)}<span class="qt-omit-txt">${esc(r.name)}<span style="color:var(--muted);font-weight:400"> / ${esc(r.unit)}</span></span></span>${ri===qtMountAddAnchor()?qtMountAddInline():''}${ri===qtPkAddAnchor()?qtPkAddInline():''}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--ink-2)">${pkProductCell(r,ri,'mobi')}</div>
           <input class="qt-qty" type="number" min="0" value="${r.qty}" data-pk-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
           ${qtPkPriceInput(r, ri, 'width:88px;height:32px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 6px')}
           <div style="text-align:right;font-size:12px;font-weight:600;color:var(--ink)" data-pk-line="${ri}">${vnd(r.qty*r.price)}</div>
-        </div>`).join('')}
+        </div>`).join('')}${qtManualPkFallback('mobi')}
       </div>
     </div>`;
     if(it._nv) return `
@@ -5663,8 +5776,9 @@ function bindQuote(){
     if(pm){
       const i=+pm[1];
       const row=QT.phuKien&&QT.phuKien[i];
-      if(isExtraMountRow(row)||isPkAddRow(row)){
+      if(isExtraMountRow(row)||isPkAddRow(row)||isManualPkRow(row)){
         removePkRowsAt([i]);
+        if(isManualPkRow(row)) persistManualPk();
         renderPage();
         return;
       }
@@ -5674,6 +5788,7 @@ function bindQuote(){
   });
   $('#main').querySelectorAll('[data-add-mount]').forEach(b=>b.onclick=()=>{ addExtraMount(+b.dataset.addMount); });
   $('#main').querySelectorAll('[data-add-pk]').forEach(b=>b.onclick=()=>{ addPkCatalogExtra(+b.dataset.addPk); });
+  $('#main').querySelectorAll('[data-add-manual-pk]').forEach(b=>b.onclick=()=>{ addManualPkRow(); });
   const omitRestore=$('#qtOmitRestore');
   if(omitRestore) omitRestore.onclick=()=>{QT.omitSecs={};QT.omitRows={};renderPage();};
   const rg=$('#fRegion');if(rg) rg.onchange=()=>{QT.region=rg.value;renderPage();};
@@ -5842,8 +5957,9 @@ function bindQuote(){
       markQuoteQtyManual(QT.phuKien[i]);
       mirrorQtyInputs(`[data-pk-q="${i}"]`, QT.phuKien[i].qty, inp);
       const row=QT.phuKien[i];
-      if(row&&/Kẹp nhôm biên và giữa/i.test(row.name||'')){
+      if(row&&!isManualPkRow(row)&&/Kẹp nhôm biên và giữa/i.test(row.name||'')){
         QT.phuKien.forEach((r,j)=>{
+          if(isManualPkRow(r)) return;
           if(/Kẹp cố định dây tấm pin/i.test(r.name||'')){
             r.qty=row.qty;
             markQuoteQtyManual(r);
@@ -5851,7 +5967,29 @@ function bindQuote(){
           }
         });
       }
+      if(isManualPkRow(row)) persistManualPk();
       refreshPk();
+    });
+    const mirrorPkText=(sel, value, except)=>{
+      document.querySelectorAll(sel).forEach(el=>{ if(el!==except) el.value=value; });
+    };
+    $('#main').querySelectorAll('[data-pk-name]').forEach(inp=>inp.oninput=()=>{
+      if(!QT.phuKien) return;
+      const i=+inp.dataset.pkName;
+      const r=QT.phuKien[i];
+      if(!r) return;
+      r.name=inp.value;
+      mirrorPkText(`[data-pk-name="${i}"]`, r.name, inp);
+      persistManualPk();
+    });
+    $('#main').querySelectorAll('[data-pk-unit]').forEach(inp=>inp.oninput=()=>{
+      if(!QT.phuKien) return;
+      const i=+inp.dataset.pkUnit;
+      const r=QT.phuKien[i];
+      if(!r) return;
+      r.unit=inp.value;
+      mirrorPkText(`[data-pk-unit="${i}"]`, r.unit, inp);
+      persistManualPk();
     });
     $('#main').querySelectorAll('[data-pk-p]').forEach(inp=>bindQtMoneyPrice(inp,{
       getFloor:()=>{
@@ -5862,6 +6000,12 @@ function bindQuote(){
         const r=QT.phuKien&&QT.phuKien[+inp.dataset.pkP];
         if(!r||r.priceLock) return;
         r.price=v;
+        if(isManualPkRow(r)){
+          r.priceEntered=true;
+          r.exVat92=true;
+          markQuotePriceManual(r);
+          persistManualPk();
+        }
       },
       refresh:refreshPk
     }));
@@ -12377,7 +12521,7 @@ function buildQtPdf3(pngMap){
   // Nhóm items
   const groups=[]; let cur=null;
   items.forEach(it=>{
-    if(it._pk){groups.push({t:'sub',it,rows:qtVisibleRows(QT.phuKien,'pk').map(x=>x.r),key:'Phụ kiện'});cur=null;return;}
+    if(it._pk){groups.push({t:'sub',it,rows:qtVisibleRows(QT.phuKien,'pk').map(x=>x.r).filter(manualPkShowsOnOutput),key:'Phụ kiện'});cur=null;return;}
     if(it._nv){groups.push({t:'sub',it,rows:qtVisibleRows(QT.ngoaivi,'nv').map(x=>x.r),key:'Ngoại vi'});cur=null;return;}
     if(it._nc){groups.push({t:'sub',it,rows:qtVisibleRows(QT.nhanCong,'nc').map(x=>x.r),key:'Nhân công'});cur=null;return;}
     if(it._disc){
