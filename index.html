@@ -1228,16 +1228,23 @@ const ROLE={
   admin:{t:'Admin',c:'p-red'},
   manager:{t:'Quản lý',c:'p-yellow'},
   sales:{t:'Nhân viên KD',c:'p-blue'},
-  telesales:{t:'Telesales',c:'p-green'}
+  telesales:{t:'Telesales',c:'p-green'},
+  kythuat:{t:'Kỹ Thuật',c:'p-orange'},
+  kythuat_truong:{t:'Kỹ Thuật Trưởng',c:'p-red'},
+  lead_telesales:{t:'Lead Telesales',c:'p-green'},
+  ketoan:{t:'Kế Toán',c:'p-yellow'},
+  phaply:{t:'Pháp Lý',c:'p-gray'},
+  kho:{t:'Kho',c:'p-orange'}
 };
-const APP_ROLES=['admin','manager','sales','telesales'];
+const APP_ROLES=['admin','manager','sales','telesales','kythuat','kythuat_truong','lead_telesales','ketoan','phaply','kho'];
 function normalizeAppRole(role){
   return APP_ROLES.includes(role)?role:'sales';
 }
-/** Role ghi lên Supabase: map telesales → sales khi chưa có migration constraint. */
+/** Role ghi lên Supabase: cột role chỉ nhận admin/manager/sales/telesales. Vai trò mới giữ ở máy và trong settings. */
 function cloudSafeRole(role){
   const r=normalizeAppRole(role);
-  return r==='telesales'?'sales':r;
+  if(r==='admin'||r==='manager'||r==='sales') return r;
+  return 'sales';
 }
 /** Danh sách chuyển sang Telesales (khớp tên trên Người dùng). */
 const TELESALES_ROSTER=[
@@ -1273,7 +1280,8 @@ function effectiveUserRole(u){
   u=u||ME;
   if(!u) return 'sales';
   if(u.role==='admin'||u.role==='manager') return u.role;
-  if(u.role==='telesales'||isTelesalesRosterName(u.name)) return 'telesales';
+  if(u.role&&ROLE[u.role]&&u.role!=='sales') return u.role;
+  if(isTelesalesRosterName(u.name)) return 'telesales';
   return normalizeAppRole(u.role);
 }
 function roleMeta(u){
@@ -1281,6 +1289,176 @@ function roleMeta(u){
 }
 /** Giữ tương thích call-site cũ — không ghi đè role lên DB. */
 function ensureTelesalesRoles(){ return 0; }
+/* Danh sách tài khoản bổ sung — gộp một lần theo email / SĐT / tên, không xóa user cũ. */
+const USER_ACCOUNT_REV='excel-2026-11-03-danh-sach-tai-khoan';
+const USER_ACCOUNT_ID_BASE=9000000;
+const USER_ACCOUNT_SEED=[
+  {name:'Đào Thị Thúy An',phone:'0775410321',email:'andtt@gmail.com',pass:'0775410321',role:'Telesales'},
+  {name:'Võ Minh Chiến',phone:'0364778170',email:'chienvm@gmail.com',pass:'0364778170',role:'Kỹ Thuật'},
+  {name:'Nguyễn Thành Đạt',phone:'0866124537',email:'datnt@gmail.com',pass:'0866124537',role:'Kỹ Thuật'},
+  {name:'Lê Anh Duy',phone:'0989225375',email:'duyla@gmail.com',pass:'0989225375',role:'Kỹ Thuật'},
+  {name:'Nguyễn Thị Ngọc Mai',phone:'0836904071',email:'maintn@gmail.com',pass:'0836904071',role:'Telesales'},
+  {name:'Huỳnh Minh Phát',phone:'0762815122',email:'phathm@gmail.com',pass:'0762815122',role:'Kỹ Thuật Trưởng'},
+  {name:'Hồ Văn Phúc',phone:'0981438382',email:'phuchv@gmail.com',pass:'0981438382',role:'Kỹ Thuật'},
+  {name:'Trần Văn Qúi',phone:'0366462190',email:'quitv@gmail.com',pass:'0366462190',role:'Kỹ Thuật'},
+  {name:'Nguyễn Anh Sơn',phone:'0914161269',email:'sonna@gmail.com',pass:'0914161269',role:'Kỹ Thuật'},
+  {name:'Nguyễn Bá Thành',phone:'0961222983',email:'thanhnb@gmail.com',pass:'0961222983',role:'Kỹ Thuật'},
+  {name:'Nguyễn Anh Thơ',phone:'0399452251',email:'thona@gmail.com',pass:'0399452251',role:'Kỹ Thuật Trưởng'},
+  {name:'Nguyễn Thanh Tùng',phone:'0989808132',email:'tungnt@gmail.com',pass:'0989808132',role:'Kỹ Thuật Trưởng'},
+  {name:'Lê Trịnh Thanh Dương',phone:'0702661206',email:'duongltt@gmail.com',pass:'0702661206',role:'Pháp Lý'},
+  {name:'Phan Thị Ánh Kiều',phone:'0919084692',email:'kieupta@gmail.com',pass:'0919084692',role:'Lead Telesales'},
+  {name:'Huỳnh Nguyễn Cường',phone:'0935688227',email:'cuonghn@gmail.com',pass:'0935688227',role:'Kỹ Thuật'},
+  {name:'Phan Thị Thanh Thảo',phone:'0986425862',email:'thaoptt@gmail.com',pass:'0986425862',role:'Kế Toán'},
+  {name:'Trần Thục Đoan',phone:'0353980542',email:'doantt@gmail.com',pass:'0353980542',role:'Kế Toán'},
+  {name:'Lê Đinh Thanh Tuyền',phone:'0906962499',email:'tuyenldt@gmail.com',pass:'0906962499',role:'Kế Toán'},
+  {name:'Lê Văn Phúc',phone:'0797494605',email:'phuclv@gmail.com',pass:'0797494605',role:'Kỹ Thuật'},
+  {name:'Trương Minh Khánh',phone:'0909815407',email:'khanhtm@gmail.com',pass:'0909815407',role:'Kỹ Thuật'},
+  {name:'Trần Quyết Thắng',phone:'0906899810',email:'thangtq@gmail.com',pass:'0906899810',role:'Kho'},
+  {name:'Phan Nguyễn Duy Đông',phone:'0384848171',email:'dongpnd@gmail.com',pass:'0384848171',role:'Kỹ Thuật'},
+  {name:'Nguyễn Hữu Tiên',phone:'0903757025',email:'tiennh@gmail.com',pass:'0903757025',role:'Nhân viên KD'},
+  {name:'Huỳnh Quốc Đạt',phone:'0355829420',email:'dathq@gmail.com',pass:'0355829420',role:'Kỹ Thuật'},
+  {name:'Nguyễn Thị Mai Uyên',phone:'0919202984',email:'uyenntm@gmail.com',pass:'0919202984',role:'Kỹ Thuật'},
+  {name:'Lê Phan Hoài Nhân',phone:'0944044157',email:'nhanlph@gmail.com',pass:'0944044157',role:'Kỹ Thuật'},
+  {name:'Nguyễn Duy Thanh',phone:'0855445797',email:'thanhnd@gmail.com',pass:'0855445797',role:'Kỹ Thuật'},
+  {name:'Nguyễn Thanh Hải',phone:'0876707598',email:'haint@gmail.com',pass:'0876707598',role:'Kỹ Thuật'}
+];
+let USER_ACCOUNT_LAST={created:0,updated:0,skipped:0,tempPass:[]};
+function userAccountNameKey(s){
+  return String(s||'').normalize('NFC').toLowerCase().replace(/thúy/g,'thuý').replace(/\s+/g,' ').trim();
+}
+function userAccountPhoneKey(s){ return String(s||'').replace(/\D/g,''); }
+function userAccountRoleKey(label){
+  const k=userAccountNameKey(label);
+  const map={
+    'admin':'admin','quản lý':'manager','nhân viên kd':'sales','telesales':'telesales',
+    'kỹ thuật':'kythuat','kỹ thuật trưởng':'kythuat_truong','pháp lý':'phaply',
+    'lead telesales':'lead_telesales','kế toán':'ketoan','kho':'kho'
+  };
+  return map[k]||'';
+}
+function isUserAccountSeedId(id){
+  const n=Number(id);
+  return n>USER_ACCOUNT_ID_BASE&&n<=USER_ACCOUNT_ID_BASE+99;
+}
+function allocUserAccountId(preferred){
+  const used=new Set((DB.users||[]).map(u=>Number(u.id)));
+  const want=Number(preferred)||0;
+  if(want&&!used.has(want)) return want;
+  let n=Math.max(USER_ACCOUNT_ID_BASE, Number(DB.seq&&DB.seq.u)||0, 0);
+  used.forEach(id=>{ if(id>n) n=id; });
+  do{ n+=1; }while(used.has(n));
+  return n;
+}
+function ensureAccountRoleMap(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!DB.settings.userAccountRoleByEmail||typeof DB.settings.userAccountRoleByEmail!=='object'||Array.isArray(DB.settings.userAccountRoleByEmail)){
+    DB.settings.userAccountRoleByEmail={};
+  }
+  return DB.settings.userAccountRoleByEmail;
+}
+function rememberAccountRole(email, role, prevEmail){
+  const extended=role&&role!=='admin'&&role!=='manager'&&role!=='sales'&&role!=='telesales';
+  let map=DB.settings&&DB.settings.userAccountRoleByEmail;
+  if(!map||typeof map!=='object'||Array.isArray(map)){
+    if(!extended) return;
+    map=ensureAccountRoleMap();
+  }
+  const next=String(email||'').trim().toLowerCase();
+  const prev=String(prevEmail||'').trim().toLowerCase();
+  if(prev&&prev!==next) delete map[prev];
+  if(next&&ROLE[role]) map[next]=role;
+}
+function applyAccountRoleMap(){
+  const map=DB.settings&&DB.settings.userAccountRoleByEmail;
+  if(!map||typeof map!=='object') return 0;
+  let n=0;
+  (DB.users||[]).forEach(u=>{
+    if(!u) return;
+    const em=String(u.email||'').trim().toLowerCase();
+    const want=em&&map[em];
+    if(!want||!ROLE[want]||u.role===want) return;
+    u.role=want;
+    n++;
+  });
+  return n;
+}
+function accountMatchPool(used){
+  return (DB.users||[]).filter(u=>u&&!isTombstonedUser(u)&&!used.has(Number(u.id)));
+}
+function applyUserAccountSeedOnce(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!Array.isArray(DB.users)) DB.users=[];
+  let changed=0;
+  if(DB.settings.userAccountRev!==USER_ACCOUNT_REV){
+    const map=ensureAccountRoleMap();
+    const used=new Set();
+    const stats={created:0,updated:0,skipped:0,tempPass:[]};
+    USER_ACCOUNT_SEED.forEach((row,i)=>{
+      const name=String(row.name||'').replace(/\s+/g,' ').trim();
+      const nameKey=userAccountNameKey(name);
+      if(!nameKey||nameKey==='họ và tên'||nameKey==='ho va ten'||nameKey==='stt'){ stats.skipped++; return; }
+      const email=String(row.email||'').trim();
+      const phone=String(row.phone||'').trim();
+      const pass=String(row.pass==null?'':row.pass).trim();
+      const role=userAccountRoleKey(row.role)||(ROLE[row.role]?row.role:'');
+      const emailKey=email.toLowerCase();
+      const phoneKey=userAccountPhoneKey(phone);
+      const pool=accountMatchPool(used);
+      const emailHits=emailKey?pool.filter(u=>String(u.email||'').trim().toLowerCase()===emailKey):[];
+      const phoneHits=phoneKey?pool.filter(u=>userAccountPhoneKey(u.phone)===phoneKey):[];
+      const nameHits=nameKey?pool.filter(u=>userAccountNameKey(u.name)===nameKey):[];
+      const preferReal=list=>(list||[]).find(u=>!isUserAccountSeedId(u.id))||null;
+      let hit=preferReal(emailHits)||preferReal(phoneHits)||preferReal(nameHits)||emailHits[0]||phoneHits[0]||nameHits[0]||null;
+      if(hit&&isUserAccountSeedId(hit.id)){
+        const real=preferReal(phoneHits)||preferReal(nameHits)||preferReal(emailHits);
+        if(real) hit=real;
+      }
+      if(hit&&used.has(Number(hit.id))){ stats.skipped++; return; }
+      if(hit){
+        DB.users=DB.users.filter(u=>{
+          if(!u||u===hit) return true;
+          if(!isUserAccountSeedId(u.id)) return true;
+          const sameE=emailKey&&String(u.email||'').trim().toLowerCase()===emailKey;
+          const sameP=phoneKey&&userAccountPhoneKey(u.phone)===phoneKey;
+          const sameN=nameKey&&userAccountNameKey(u.name)===nameKey;
+          return !(sameE||sameP||sameN);
+        });
+        used.add(Number(hit.id));
+        if(name) hit.name=name;
+        if(email) hit.email=email;
+        if(phone) hit.phone=phone;
+        if(role&&ROLE[role]) hit.role=role;
+        if(pass) hit.pass=pass;
+        if(typeof forgetDeletedUser==='function') forgetDeletedUser(hit.email, hit.id);
+        const em=String(hit.email||'').trim().toLowerCase();
+        if(em&&hit.role) map[em]=hit.role;
+        stats.updated++;
+        changed++;
+        return;
+      }
+      const id=allocUserAccountId(USER_ACCOUNT_ID_BASE+i+1);
+      const nu={
+        id,name,email,phone,
+        role:(role&&ROLE[role])?role:'sales',
+        active:true,
+        pass:pass||'123456'
+      };
+      if(!pass) stats.tempPass.push(name);
+      DB.users.push(nu);
+      used.add(id);
+      if(typeof forgetDeletedUser==='function') forgetDeletedUser(email, id);
+      if(emailKey) map[emailKey]=nu.role;
+      stats.created++;
+      changed++;
+    });
+    if(!DB.seq||typeof DB.seq!=='object') DB.seq={q:0,t:0,u:0,p:0};
+    bumpUserSeq();
+    DB.settings.userAccountRev=USER_ACCOUNT_REV;
+    USER_ACCOUNT_LAST=stats;
+  }
+  applyAccountRoleMap();
+  return changed;
+}
 const SALES_PERM_DEFAULTS={
   viewAllOrders:true,
   editAnyOrder:false,
@@ -1317,7 +1495,7 @@ function salesHasPerm(key){
 }
 function isSalesRole(){
   const r=effectiveUserRole(ME);
-  return r==='sales'||r==='telesales';
+  return r!=='admin'&&r!=='manager';
 }
 function isTelesalesRole(){ return effectiveUserRole(ME)==='telesales'; }
 function isAdmin(){ return effectiveUserRole(ME)==='admin'; }
@@ -1399,7 +1577,7 @@ function canViewOrder(q){
 function canViewCrmRow(r){
   if(!ME) return false;
   const role=effectiveUserRole(ME);
-  if(role!=='sales') return true; // admin, manager, telesales
+  if(role==='admin'||role==='manager'||role==='telesales'||role==='lead_telesales') return true;
   if(crmIsUnassigned(r&&r.owner)) return true;
   return orderStaffNameKey(r&&r.owner)===orderStaffNameKey(ME.name);
 }
@@ -2262,7 +2440,8 @@ const _brandNormBoot=normalizeCatalogBrands();
 const _exVatBoot=applyEquipPricesExVatOnce();
 const _seedPriceBoot=applySeedCatalogPricesOnce();
 const _assetSheetBoot=applyAssetSheetOnce();
-if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0){ try{ saveDB(); }catch(e){} }
+const _userSeedBoot=applyUserAccountSeedOnce();
+if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0||_userSeedBoot>0){ try{ saveDB(); }catch(e){} }
 // Gán lại ảnh thật từ PIMG sau khi load localStorage
 applyPimgToDB();
 try{ if(typeof pruneTombstonedUsersLocal==='function') pruneTombstonedUsersLocal(); }catch(e){}
@@ -2941,6 +3120,7 @@ async function pullDBFromSupabase(){
     }
     const pending=snap?mergeUnsyncedLocal(snap, prevBase):{n:0,keys:{quotes:[],products:[],stock:[],trans:[],users:[],crm:[],customers:[],suppliers:[]}};
     applyAssetSheetOnce();
+    const userSeedN=applyUserAccountSeedOnce();
     const remoteAssetBook=bundle.settings&&bundle.settings.data&&bundle.settings.data._assets;
     const remoteHasAssetRows=!!(remoteAssetBook&&Array.isArray(remoteAssetBook.rows)&&remoteAssetBook.rows.length>=ASSET_SHEET_ROWS.length);
     captureSyncBase();
@@ -2959,12 +3139,17 @@ async function pullDBFromSupabase(){
       if(p&&p.id!=null&&!idsBeforeSeed.has(String(p.id))) pending.keys.products.push(String(p.id));
     }));
     localOnly.forEach(u=>{ if(u&&u.id!=null) pending.keys.users.push(String(u.id)); });
+    if(userSeedN>0&&_syncBase){
+      _syncBase.users={};
+      _syncBase.settings='';
+      persistSyncBase();
+    }
     dropSyncBaseKeys(pending.keys);
     if(pending.n>0){
       _saveDB();
       return 'local-pending';
     }
-    if(localOnly.length){
+    if(localOnly.length||userSeedN>0){
       _saveDB();
       return 'users-sync';
     }
@@ -3359,7 +3544,7 @@ async function sbEnsureProfile(user, meta){
     id:user.id,
     email:user.email,
     full_name:(meta&&meta.name)||user.user_metadata?.full_name||user.email,
-    role:(meta&&meta.role)||user.app_metadata?.role||'admin',
+    role:(()=>{ const raw=(meta&&meta.role)||user.app_metadata?.role||'admin'; return (raw==='admin'||raw==='manager'||raw==='sales'||raw==='telesales')?raw:'sales'; })(),
     phone:(meta&&meta.phone)||'',
     active:true
   };
@@ -3474,6 +3659,7 @@ async function enterApp(u, opt){
     const exVatN=applyEquipPricesExVatOnce();
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
+    const userN=applyUserAccountSeedOnce();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
     try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
     const attSync=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
@@ -3484,7 +3670,7 @@ async function enterApp(u, opt){
     ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||assetSync||attSync){
+    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||userN>0||assetSync||attSync){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
       if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
@@ -3526,13 +3712,14 @@ async function enterApp(u, opt){
     const exVatN=applyEquipPricesExVatOnce();
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
+    const userN=applyUserAccountSeedOnce();
     const brandFixedOffline=normalizeCatalogBrands();
-    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
+    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||userN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
     if(ordAdded>0||ordPruned>0) _saveDB();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
-    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0) renderPage();
+    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||userN>0) renderPage();
   }
 }
 
@@ -11006,6 +11193,7 @@ function userModal(u){
       // Roster telesale: giữ quyền Telesales theo tên; cloud lưu sales nếu chưa migration.
       let role=normalizeAppRole($('#uR').value);
       if(isTelesalesRosterName(n)) role='telesales';
+      const prevEmail=u?u.email:'';
       if(u){
         forgetDeletedUser(e,u.id);
         Object.assign(u,{name:n,email:e,phone:$('#uT').value,role,pass:p||u.pass});
@@ -11013,6 +11201,7 @@ function userModal(u){
         forgetDeletedUser(e,null);
         DB.users.push({id:++DB.seq.u,name:n,email:e,phone:$('#uT').value,role,active:true,pass:p});
       }
+      rememberAccountRole(e, role, prevEmail);
       const ok=await saveUsersDB();
       // Ép Auth Supabase dùng đúng mật khẩu mới — mật khẩu cũ không còn đăng nhập được
       if(ok && SB_READY && (p||(u&&u.pass))){
