@@ -300,6 +300,21 @@ tbody tr:active{background:var(--surface)}
 .att-ot{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .att-photo{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .att-thumb{width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f3f3f3;display:block;cursor:zoom-in}
+/* Ảnh check-in/out khi mở: phóng kín gần hết màn hình. max-width/% không phóng JPEG ~480px. */
+.att-photo-lightbox{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.82);
+  display:flex;align-items:center;justify-content:center;
+  cursor:zoom-out;box-sizing:border-box;
+}
+.att-photo-lightbox img{
+  width:92vw;height:92vh;
+  max-width:92vw;max-height:92vh;
+  object-fit:contain;
+  flex:none;
+  cursor:default;
+  background:transparent;
+}
 .att-upload{width:64px;min-height:64px;border-radius:12px;border:1px dashed #c9ccd1;background:#fafafa;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px;font-size:10px;font-weight:700}
 .att-upload svg{width:18px;height:18px}
 .att-upload:hover,.att-chg:hover{background:var(--lime);color:var(--ink);border-color:transparent}
@@ -12457,7 +12472,7 @@ function bindAttendanceAdmin(){
     if(list&&sel) list.scrollTop=Math.max(0, sel.offsetTop-(list.clientHeight-sel.offsetHeight)/2);
   }
   document.querySelectorAll('.att-admin [data-att-preview]').forEach(img=>{
-    img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+    img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
   });
 }
 function bindAttendance(){
@@ -12475,8 +12490,45 @@ function bindAttendance(){
     b.onclick=()=>attSendAddress(b.getAttribute('data-att-map'));
   });
   document.querySelectorAll('[data-att-preview]').forEach(img=>{
-    img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
+    img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
   });
+}
+/** Ảnh chấm công dùng viewer riêng: phóng kín viewport, không dùng lightbox CRM (chỉ max-width nên ảnh ~480px nằm nhỏ giữa màn). */
+function openAttPhotoPreview(src){
+  if(!src) return;
+  let box=document.getElementById('attPhotoLightbox');
+  if(!box){
+    box=document.createElement('div');
+    box.id='attPhotoLightbox';
+    box.className='att-photo-lightbox';
+    box.onclick=()=>box.remove();
+    document.body.appendChild(box);
+  }
+  const cover=typeof qtPreviewCover==='function'?qtPreviewCover():1;
+  box.style.zoom=cover!==1?String(cover):'';
+  box.innerHTML='<img alt="Ảnh chấm công">';
+  const img=box.querySelector('img');
+  if(!img) return;
+  img.onclick=e=>e.stopPropagation();
+  const fit=()=>{
+    const nw=img.naturalWidth||0, nh=img.naturalHeight||0;
+    if(!nw||!nh) return;
+    const z=parseFloat(getComputedStyle(document.documentElement).zoom);
+    const htmlZ=(z>0)?z:1;
+    const net=(cover>0?cover:1)*htmlZ;
+    const maxW=(window.innerWidth*0.92)/(net||1);
+    const maxH=(window.innerHeight*0.92)/(net||1);
+    const s=Math.min(maxW/nw, maxH/nh);
+    if(!(s>0)) return;
+    img.style.width=(nw*s)+'px';
+    img.style.height=(nh*s)+'px';
+    img.style.maxWidth='92vw';
+    img.style.maxHeight='92vh';
+    img.style.objectFit='contain';
+  };
+  img.onload=fit;
+  img.src=src;
+  if(img.complete) fit();
 }
 /* ---------------- KẾ HOẠCH CÔNG TÁC ---------------- */
 const WP_IMG_CAP=8;
