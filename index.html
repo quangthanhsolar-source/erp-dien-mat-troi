@@ -312,8 +312,10 @@ tbody tr:active{background:var(--surface)}
   .att-desktop{display:none}
   .att-mobile{display:flex}
 }
-.att-admin-nav{display:flex;align-items:center;gap:8px}
+.att-admin-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .att-admin-nav .att-month-label{min-width:156px;text-align:center;font-weight:800;font-size:15px;color:var(--ink)}
+.att-admin-nav .att-day-label{min-width:168px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.att-mode-btn{height:40px;padding:0 16px;flex:none}
 .att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
 .tbl-card.att-admin{overflow:auto;-webkit-overflow-scrolling:touch}
 .tbl-card.att-admin .tbl-wrap{overflow:visible}
@@ -10700,12 +10702,46 @@ function attMatrixNameCell(mem, dups){
   const title=showMail?label+' · '+email:(email&&email!==label?label+' · '+email:label);
   return `<td class="att-mx-name" title="${esc(title)}"><span class="att-mx-who">${esc(label)}</span>${showMail?`<span class="att-mx-mail">${esc(email)}</span>`:''}</td>`;
 }
+let attAdminMode='matrix';
+let attAdminDay='';
+function attAddDays(key, delta){
+  const p=String(key||'').split('-').map(Number);
+  const dt=new Date(Date.UTC(p[0]||1970, (p[1]||1)-1, (p[2]||1)+(delta||0)));
+  return dt.getUTCFullYear()+'-'+attPad(dt.getUTCMonth()+1)+'-'+attPad(dt.getUTCDate());
+}
+function attAdminSelectedDay(){
+  if(!attAdminDay||!/^\d{4}-\d{2}-\d{2}$/.test(attAdminDay)) attAdminDay=attVnYmd().key;
+  return attAdminDay;
+}
+function attAdminRecord(userId, date){
+  const id=Number(userId);
+  if(!Number.isFinite(id)) return null;
+  return (Array.isArray(DB.attendance)?DB.attendance:[]).find(r=>r&&Number(r.userId)===id&&r.date===date)||null;
+}
+function attAdminOpenDetail(){
+  attAdminMode='day';
+  attAdminSelectedDay();
+  renderPage();
+}
+function attAdminOpenMatrix(){
+  attAdminMode='matrix';
+  renderPage();
+}
+function attShiftAdminDay(delta){
+  attAdminDay=attAddDays(attAdminSelectedDay(), delta||0);
+  attAdminMode='day';
+  renderPage();
+}
 function pageAttendanceAdmin(){
+  if(attAdminMode==='day') return pageAttendanceAdminDay();
+  return pageAttendanceAdminMatrix();
+}
+function pageAttendanceAdminMatrix(){
   const {y,m}=attAdminYm();
   const today=attVnYmd().key;
   const built=attAdminBuildMatrix(y,m);
   const monthLabel='Tháng '+m+' / '+y;
-  const head=`<div class="page-head att-admin">
+  const head=`<div class="page-head att-admin" data-att-admin-view="matrix">
       <div class="page-head-row">
         <div>
           <div class="page-title">${I.clock} Chấm công</div>
@@ -10720,6 +10756,7 @@ function pageAttendanceAdmin(){
         <button type="button" class="btn btn-ghost att-nav-btn" id="attPrev" aria-label="Tháng trước">‹</button>
         <div class="att-month-label">${esc(monthLabel)}</div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attNext" aria-label="Tháng sau">›</button>
+        <button type="button" class="btn btn-ghost att-mode-btn" id="attDetailTab">Xem chi tiết</button>
       </div>
     </div>`;
   if(!built.members.length){
@@ -10745,6 +10782,63 @@ function pageAttendanceAdmin(){
         ${headDays}
       </tr></thead>
       <tbody>${body}</tbody>
+    </table></div></div>`;
+}
+function pageAttendanceAdminDay(){
+  const date=attAdminSelectedDay();
+  const today=attVnYmd().key;
+  const meta=attFormatDay(date);
+  const isToday=date===today;
+  const pack=attAdminAccounts();
+  const members=pack.users.map(u=>{
+    const id=Number(u.id);
+    const name=attAccountName(u, {name:pack.nameFromAtt.get(id)||''});
+    const email=String((u&&u.email)||'').trim();
+    return {id, name, email, active:u.active!==false};
+  });
+  const dayLabel=meta.wd+' '+meta.full;
+  const head=`<div class="page-head att-admin" data-att-admin-view="day">
+      <div class="page-head-row">
+        <div>
+          <div class="page-title">${I.clock} Chấm công</div>
+          <div class="att-sub">Chi tiết · ${esc(dayLabel)} · ${members.length} tài khoản</div>
+        </div>
+      </div>
+      <div class="att-admin-nav">
+        <button type="button" class="btn btn-ghost att-mode-btn" id="attMatrixTab">Xem tháng</button>
+        <button type="button" class="btn btn-ghost att-nav-btn" id="attDayPrev" aria-label="Ngày trước">‹</button>
+        <div class="att-month-label att-day-label">${esc(dayLabel)}${isToday?' <span class="pill p-green">Hôm nay</span>':''}</div>
+        <button type="button" class="btn btn-ghost att-nav-btn" id="attDayNext" aria-label="Ngày sau">›</button>
+      </div>
+    </div>`;
+  if(!members.length){
+    return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Chưa có tài khoản nào trong hệ thống.</div></div>`;
+  }
+  const dups=attMatrixDupLabels(members);
+  const rows=members.map(mem=>{
+    const rec=attAdminRecord(mem.id, date);
+    const label=attMemberLabel(mem);
+    const email=String(mem.email||'').trim();
+    const showMail=!!email && email!==label && (dups.get(label)||0)>1;
+    return `<tr data-uid="${mem.id}" data-date="${esc(date)}">
+      <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span></td>
+      <td class="att-name">${esc(label)}${showMail?`<div class="att-mx-mail">${esc(email)}</div>`:''}</td>
+      <td>${attAddrCell(rec, date, false)}</td>
+      <td>${attPunchCell(rec, date, 'checkIn', false)}</td>
+      <td>${attPunchCell(rec, date, 'checkOut', false)}</td>
+      <td>${attOtCell(rec)}</td>
+    </tr>`;
+  }).join('');
+  return head+`<div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-tbl att-admin-day" data-att-detail="1">
+      <thead><tr>
+        <th>Ngày</th>
+        <th>Họ và tên</th>
+        <th>Địa chỉ hiện tại</th>
+        <th>Check in</th>
+        <th>Check out</th>
+        <th>Tăng ca</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
     </table></div></div>`;
 }
 function pageAttendance(){
@@ -10902,10 +10996,18 @@ function bindAttendanceAdmin(){
   const next=document.getElementById('attNext');
   const xlsx=document.getElementById('attXlsx');
   const pdf=document.getElementById('attPdf');
+  const detail=document.getElementById('attDetailTab');
+  const matrix=document.getElementById('attMatrixTab');
+  const dayPrev=document.getElementById('attDayPrev');
+  const dayNext=document.getElementById('attDayNext');
   if(prev) prev.onclick=()=>attShiftAdminMonth(-1);
   if(next) next.onclick=()=>attShiftAdminMonth(1);
   if(xlsx) xlsx.onclick=()=>{ downloadAttAdminExcel(); };
   if(pdf) pdf.onclick=()=>{ downloadAttAdminPdf(); };
+  if(detail) detail.onclick=()=>attAdminOpenDetail();
+  if(matrix) matrix.onclick=()=>attAdminOpenMatrix();
+  if(dayPrev) dayPrev.onclick=()=>attShiftAdminDay(-1);
+  if(dayNext) dayNext.onclick=()=>attShiftAdminDay(1);
   document.querySelectorAll('.att-admin [data-att-preview]').forEach(img=>{
     img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
   });
