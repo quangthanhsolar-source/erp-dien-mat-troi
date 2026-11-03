@@ -319,10 +319,18 @@ tbody tr:active{background:var(--surface)}
   .att-desktop{display:none}
   .att-mobile{display:flex}
 }
-.att-admin-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.att-admin-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
 .att-admin-nav .att-month-label{min-width:156px;text-align:center;font-weight:800;font-size:15px;color:var(--ink)}
 .att-admin-nav .att-day-label{min-width:168px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .att-mode-btn{height:40px;padding:0 16px;flex:none}
+/* Xem chi tiết: hành động chính, cùng màu lime với mục menu đang chọn, nằm bên phải hàng tháng */
+.att-admin-nav .att-detail-go{margin-left:auto;flex:0 0 auto;background:var(--lime);color:var(--ink);font-weight:800}
+.att-admin-nav .att-detail-go:active{background:var(--lime-d)}
+.att-admin-day a.att-addr-link{display:inline-block;max-width:320px;color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px;word-break:break-word;cursor:pointer}
+@media(max-width:767px){
+  .att-admin-nav .att-month-label{min-width:0}
+  .att-admin-nav .att-detail-go{min-height:40px}
+}
 .att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
 .tbl-card.att-admin{overflow:auto;-webkit-overflow-scrolling:touch}
 .tbl-card.att-admin .tbl-wrap{overflow:visible}
@@ -345,20 +353,32 @@ tbody tr:active{background:var(--surface)}
 .wp-matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
 .wp-matrix th,.wp-matrix td{background:var(--surface);border-bottom:1px solid var(--line-2);vertical-align:middle}
 .wp-matrix thead th{position:sticky;top:0;z-index:2;background:var(--surface);text-align:center;font-size:12px;font-weight:700;color:var(--ink);padding:8px 4px}
-.wp-matrix thead tr:nth-child(2) th{top:34px;z-index:2;font-size:11px;font-weight:700;color:var(--ink-2);padding:6px 4px}
+.wp-matrix thead tr:nth-child(2) th{top:34px;z-index:2;font-size:11px;font-weight:700;color:var(--ink-2);padding:6px 4px;white-space:nowrap}
 .wp-matrix .wp-name{position:sticky;left:0;z-index:3;text-align:left;min-width:148px;width:172px;max-width:220px;padding:8px 12px;background:var(--surface);box-shadow:1px 0 0 var(--line)}
 .wp-matrix thead .wp-name{z-index:5;top:0}
 .wp-matrix th.wp-day{padding:8px 4px}
-.wp-matrix th.wp-slot,.wp-matrix td.wp-cell{min-width:112px;width:124px;padding:4px}
-.wp-in{width:100%;min-width:100px;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:13px;background:#fff;color:var(--ink)}
+.wp-matrix th.wp-slot,.wp-matrix td.wp-cell{min-width:156px;width:176px;padding:6px}
+.wp-matrix td.wp-cell{vertical-align:top}
+.wp-edit{display:flex;flex-direction:column;gap:4px;min-width:140px}
+.wp-lab{font-size:10px;font-weight:700;line-height:1.2;color:var(--muted)}
+.wp-read{font-size:13px;line-height:1.35;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.wp-in{width:100%;min-width:0;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 8px;font-size:13px;background:#fff;color:var(--ink)}
 .wp-in[readonly]{background:transparent;border-color:transparent;color:var(--ink);cursor:default}
 .wp-in:focus{outline:none;border-color:var(--ink);background:#fff}
+.wp-imgs{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;margin-top:2px}
+.wp-shot{position:relative;width:52px;height:52px;flex:0 0 auto}
+.wp-thumb{display:block;width:52px;height:52px;padding:0;border:none;background:transparent;cursor:zoom-in;border-radius:8px}
+.wp-thumb img{width:52px;height:52px;object-fit:cover;border-radius:8px;display:block;border:1px solid var(--line);background:#f3f3f3}
+.wp-shot-x{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:none;background:#111;color:#fff;font-size:14px;line-height:1;padding:0;cursor:pointer;z-index:1}
+.wp-up{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 10px;border-radius:8px;border:1px dashed var(--line);background:#fff;color:var(--ink);font-size:12px;font-weight:700;cursor:pointer}
+.wp-up input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .wp-matrix th.wp-today,.wp-matrix td.wp-today{background:var(--green-l)}
 @media(max-width:767px){
   .wp-matrix .wp-name{min-width:128px;width:140px;max-width:148px}
   .wp-matrix .wp-name .att-mx-who,.wp-matrix .wp-name .att-mx-mail{max-width:116px}
-  .wp-matrix th.wp-slot,.wp-matrix td.wp-cell{min-width:104px;width:112px}
+  .wp-matrix th.wp-slot,.wp-matrix td.wp-cell{min-width:150px;width:164px}
   .wp-in{height:36px;font-size:14px}
+  .wp-up{min-height:36px;font-size:13px}
 }
 .asset-card{overflow:hidden}
 .asset-card .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -408,6 +428,20 @@ textarea.inp{height:88px;padding:12px 16px;resize:vertical;border-radius:14px}
 .chk-col{width:44px;text-align:center;vertical-align:middle}
 .chk-col input{width:16px;height:16px;accent-color:var(--ink);cursor:pointer}
 .page-head .head-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+/* Nhân sự: sĩ số bên phải tiêu đề; hai nút hành động gọn trên một hàng */
+.users-title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;min-width:0}
+.users-title-block{min-width:0;flex:1 1 auto}
+.users-title-block .page-title{overflow-wrap:anywhere}
+.users-headcount{flex:0 0 auto;align-self:flex-end;margin:0 0 2px;padding-bottom:1px;font-family:'Archivo',system-ui,sans-serif;font-size:16px;font-weight:700;letter-spacing:-.03em;line-height:1.1;color:var(--ink);white-space:nowrap}
+.users-head .users-actions{display:flex;flex-wrap:nowrap;align-items:center;gap:8px;width:100%;max-width:100%}
+.users-head .users-actions .btn{flex:1 1 0;min-width:0;height:36px;min-height:36px;padding:0 10px;font-size:12.5px;gap:5px;white-space:nowrap}
+.users-head .users-actions .btn svg{width:14px;height:14px;flex:none}
+@media(min-width:768px){
+  .users-headcount{font-size:18px;margin-bottom:4px}
+  .users-head .users-actions{width:auto;gap:8px}
+  .users-head .users-actions .btn{flex:0 0 auto;height:45px;min-height:45px;padding:0 14px;font-size:13px;gap:6px}
+  .users-head .users-actions .btn svg{width:15px;height:15px}
+}
 .btn-ghost{background:var(--surface);color:var(--ink-2)}
 .btn-ghost:active{background:var(--surface-2)}
 .btn-block{width:100%}
@@ -3042,6 +3076,7 @@ async function pushDBToSupabase(){
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
     const wpPlansChanged=!!(_syncBase&&_syncBase.workPlans!==syncHash(wpPlansPayload()));
     const assetsChanged=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
+    try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
     const attChanged=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
     const hasCrmOverrides=!!(DB.settings&&DB.settings.crmOverrides&&Object.keys(DB.settings.crmOverrides).length);
     // Luôn đẩy settings khi có CRM override (ghi chú/ảnh/trạng thái…) để không mất sau reload
@@ -3393,6 +3428,7 @@ async function enterApp(u, opt){
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
+    try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
     const attSync=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
     const brandFixed=normalizeCatalogBrands();
     applyPimgToDB();
@@ -10803,13 +10839,22 @@ async function saveUsersDB(){
   toast('Chưa đăng nhập Supabase — chỉ lưu trên máy này, reload máy khác sẽ không thấy','bad');
   return false;
 }
+/** Sĩ số công ty: mọi vai trò, bỏ tài khoản đã xóa (tombstone). Không theo bộ lọc bảng. */
+function companyStaffCount(){
+  return (Array.isArray(DB.users)?DB.users:[]).filter(u=>u&&!isTombstonedUser(u)).length;
+}
 function pageUsers(){
   pruneTombstonedUsersLocal();
   const canMut=canManageUsers();
   const nSel=[...userSelected].filter(id=>DB.users.some(u=>String(u.id)===String(id))).length;
   const allOn=DB.users.length>0&&DB.users.every(u=>userSelected.has(String(u.id)));
-  return `<div class="page-head"><div class="page-title">Quản lý người dùng</div>
-    ${canMut?`<div class="head-actions">
+  const headN=companyStaffCount();
+  return `<div class="page-head users-head">
+    <div class="users-title-row">
+      <div class="users-title-block"><div class="page-title">Quản lý người dùng</div></div>
+      <div class="users-headcount" id="usersHeadcount" data-users-headcount="${headN}">${headN} nhân sự</div>
+    </div>
+    ${canMut?`<div class="head-actions users-actions">
       <button class="btn btn-danger" id="uDelSel" ${nSel?'':'disabled'}>${I.trash} Xóa tài khoản (${nSel})</button>
       <button class="btn btn-primary" id="uAdd">${I.plus} Thêm người dùng</button>
     </div>`:''}</div>
@@ -11058,7 +11103,7 @@ function attDateKey(d){
   return x.getFullYear()+'-'+attPad(x.getMonth()+1)+'-'+attPad(x.getDate());
 }
 const ATT_PHOTO_INLINE_MAX=12000;
-const ATT_PHOTO_BUDGET=280000;
+const ATT_PHOTO_BUDGET=900000;
 function attPhotoEmpty(v){
   return v==null||v==='';
 }
@@ -11150,7 +11195,9 @@ function attFingerprint(list){
     lng:r.lng==null?'':r.lng,
     checkIn:r.checkIn||'',
     checkOut:r.checkOut||'',
-    updatedAt:r.updatedAt||''
+    updatedAt:r.updatedAt||'',
+    inPhoto:(r.checkInImg||r.img||r.checkInThumb)?1:0,
+    outPhoto:(r.checkOutImg||r.checkOutThumb)?1:0
   }));
 }
 function attScalarsOnly(list){
@@ -11185,7 +11232,7 @@ function attArchiveLocalPhotos(){
     });
   });
 }
-async function attHydratePhotosFromIdb(){
+async function attHydratePhotosFromIdb(opt){
   if(typeof crmSurveyIdbGet!=='function') return 0;
   const list=Array.isArray(DB.attendance)?DB.attendance:[];
   let n=0;
@@ -11193,56 +11240,126 @@ async function attHydratePhotosFromIdb(){
     if(!r||r.userId==null||!r.date) continue;
     for(const pair of [['checkInImg','in'],['checkOutImg','out']]){
       const field=pair[0], kind=pair[1];
-      if(typeof r[field]==='string'&&r[field].startsWith('data:')&&r[field].length>80) continue;
+      const cur=typeof r[field]==='string'?r[field]:'';
+      if(cur.startsWith('data:')&&cur.length>ATT_PHOTO_INLINE_MAX) continue;
       try{
         const hit=await crmSurveyIdbGet('att', attPhotoIdbId(r.userId, r.date, kind));
-        if(hit&&typeof hit.dataUrl==='string'&&hit.dataUrl.startsWith('data:')){
-          r[field]=hit.dataUrl;
+        const data=hit&&typeof hit.dataUrl==='string'?hit.dataUrl:'';
+        if(data.startsWith('data:image')&&data.length>cur.length){
+          r[field]=data;
           n++;
         }
       }catch(e){}
     }
   }
-  if(n>0&&typeof ROUTE!=='undefined'&&ROUTE==='attendance'&&typeof renderPage==='function'){
+  if(n>0&&!(opt&&opt.silent)&&typeof ROUTE!=='undefined'&&ROUTE==='attendance'&&typeof renderPage==='function'){
     try{ renderPage(); }catch(e){}
   }
   return n;
 }
-async function attThumbForSync(dataUrl){
+async function attLoadPhotoSource(r, kind){
+  const fields=kind==='out'?['checkOutImg','checkOutThumb']:['checkInImg','img','checkInThumb'];
+  let best='';
+  fields.forEach(f=>{
+    const v=r&&typeof r[f]==='string'?r[f]:'';
+    if(v.startsWith('data:image')&&v.length>best.length) best=v;
+  });
+  if(best.length>ATT_PHOTO_INLINE_MAX) return best;
+  try{
+    if(typeof crmSurveyIdbGet==='function'&&r&&r.userId!=null&&r.date){
+      const hit=await crmSurveyIdbGet('att', attPhotoIdbId(r.userId, r.date, kind==='out'?'out':'in'));
+      const data=hit&&typeof hit.dataUrl==='string'?hit.dataUrl:'';
+      if(data.startsWith('data:image')&&data.length>best.length) return data;
+    }
+  }catch(e){}
+  return best;
+}
+/** JPEG đủ xem (cạnh dài ~480px) để máy admin khác vẫn thấy ảnh. Ảnh đã nhỏ thì giữ nguyên. */
+async function attCompressViewable(dataUrl){
   if(typeof dataUrl!=='string'||!dataUrl.startsWith('data:image')) return '';
   if(dataUrl.length<=ATT_PHOTO_INLINE_MAX) return dataUrl;
+  if(typeof compressProdImg!=='function') return '';
+  const qualities=[0.62,0.48,0.38];
+  let last='';
+  for(let i=0;i<qualities.length;i++){
+    try{
+      const t=await compressProdImg(dataUrl, 480, qualities[i]);
+      if(typeof t==='string'&&t.startsWith('data:image')){
+        last=t;
+        if(t.length<=120000) return t;
+      }
+    }catch(e){}
+  }
+  if(last&&last.startsWith('data:image')&&last.length<=160000) return last;
   try{
-    if(typeof compressProdImg!=='function') return '';
-    const t=await compressProdImg(dataUrl, 72, 0.46);
+    const s=await compressProdImg(dataUrl, 160, 0.5);
+    if(typeof s==='string'&&s.startsWith('data:image')&&s.length<=ATT_PHOTO_INLINE_MAX) return s;
+  }catch(e){}
+  return '';
+}
+async function attCompressTiny(dataUrl){
+  if(typeof dataUrl!=='string'||!dataUrl.startsWith('data:image')) return '';
+  if(dataUrl.length<=ATT_PHOTO_INLINE_MAX) return dataUrl;
+  if(typeof compressProdImg!=='function') return '';
+  try{
+    const t=await compressProdImg(dataUrl, 96, 0.5);
     if(typeof t==='string'&&t.startsWith('data:image')&&t.length<=ATT_PHOTO_INLINE_MAX) return t;
   }catch(e){}
   return '';
 }
+async function attThumbForSync(dataUrl){
+  return attCompressViewable(dataUrl);
+}
 async function attAttendancePayload(){
+  try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
   const rows=attNormalizeList(DB.attendance);
   const prepared=[];
   for(const r of rows){
-    let inImg='';
-    let outImg='';
-    try{ inImg=await attThumbForSync(r.checkInImg||r.img||r.checkInThumb||''); }catch(e){ inImg=''; }
-    try{ outImg=await attThumbForSync(r.checkOutImg||r.checkOutThumb||''); }catch(e){ outImg=''; }
-    prepared.push({r, inImg, outImg});
+    let inSrc='', outSrc='';
+    try{ inSrc=await attLoadPhotoSource(r,'in'); }catch(e){ inSrc=''; }
+    try{ outSrc=await attLoadPhotoSource(r,'out'); }catch(e){ outSrc=''; }
+    let inView='', outView='', inTiny='', outTiny='';
+    try{ inView=await attCompressViewable(inSrc); }catch(e){ inView=''; }
+    try{ outView=await attCompressViewable(outSrc); }catch(e){ outView=''; }
+    if(inSrc&&(!inView||inView.length>ATT_PHOTO_INLINE_MAX)){
+      try{ inTiny=await attCompressTiny(inSrc); }catch(e){ inTiny=''; }
+    }
+    if(outSrc&&(!outView||outView.length>ATT_PHOTO_INLINE_MAX)){
+      try{ outTiny=await attCompressTiny(outSrc); }catch(e){ outTiny=''; }
+    }
+    prepared.push({r, inView, outView, inTiny, outTiny});
   }
   const order=prepared.slice().sort((a,b)=>{
     const ta=Date.parse(a.r.updatedAt)||Date.parse(a.r.checkIn)||0;
     const tb=Date.parse(b.r.updatedAt)||Date.parse(b.r.checkIn)||0;
     return tb-ta;
   });
-  const allow=new Set();
-  let used=0;
+  const choice=new Map();
+  const VIEW_BUDGET=650000;
+  const THUMB_BUDGET=ATT_PHOTO_BUDGET-VIEW_BUDGET;
+  let viewUsed=0, thumbUsed=0;
+  const takeView=img=>{
+    if(!img||img.length<=ATT_PHOTO_INLINE_MAX) return '';
+    if(viewUsed+img.length>VIEW_BUDGET) return '';
+    viewUsed+=img.length;
+    return img;
+  };
+  const takeTiny=img=>{
+    if(!img||img.length>ATT_PHOTO_INLINE_MAX) return '';
+    if(thumbUsed+img.length>THUMB_BUDGET) return '';
+    thumbUsed+=img.length;
+    return img;
+  };
   order.forEach(item=>{
-    const n=(item.inImg||'').length+(item.outImg||'').length;
-    if(!n||used+n>ATT_PHOTO_BUDGET) return;
-    allow.add(item.r.userId+'|'+item.r.date);
-    used+=n;
+    const inSmall=item.inTiny||(item.inView&&item.inView.length<=ATT_PHOTO_INLINE_MAX?item.inView:'');
+    const outSmall=item.outTiny||(item.outView&&item.outView.length<=ATT_PHOTO_INLINE_MAX?item.outView:'');
+    const inn=takeView(item.inView)||takeTiny(inSmall);
+    const out=takeView(item.outView)||takeTiny(outSmall);
+    choice.set(item.r.userId+'|'+item.r.date,{inn,out});
   });
   return prepared.map(item=>{
     const r=item.r;
+    const pick=choice.get(r.userId+'|'+r.date)||{inn:'',out:''};
     const o={
       id:r.id,
       userId:r.userId,
@@ -11255,10 +11372,8 @@ async function attAttendancePayload(){
       checkOut:r.checkOut||'',
       updatedAt:r.updatedAt||''
     };
-    if(allow.has(r.userId+'|'+r.date)){
-      if(item.inImg) o.checkInImg=item.inImg;
-      if(item.outImg) o.checkOutImg=item.outImg;
-    }
+    if(pick.inn) o.checkInImg=pick.inn;
+    if(pick.out) o.checkOutImg=pick.out;
     return o;
   });
 }
@@ -11857,7 +11972,7 @@ function pageAttendanceAdminMatrix(){
         <button type="button" class="btn btn-ghost att-nav-btn" id="attPrev" aria-label="Tháng trước">‹</button>
         <div class="att-month-label">${esc(monthLabel)}</div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attNext" aria-label="Tháng sau">›</button>
-        <button type="button" class="btn btn-ghost att-mode-btn" id="attDetailTab">Xem chi tiết</button>
+        <button type="button" class="btn btn-green att-mode-btn att-detail-go" id="attDetailTab">Xem chi tiết</button>
       </div>
     </div>`;
   if(!built.members.length){
@@ -11884,6 +11999,45 @@ function pageAttendanceAdminMatrix(){
       </tr></thead>
       <tbody>${body}</tbody>
     </table></div></div>`;
+}
+/* att-admin-detail: maps-lightbox */
+function attCoordText(v){
+  if(v==null) return '';
+  if(typeof v==='string'){
+    const s=v.trim();
+    if(!s||!/^-?\d+(?:\.\d+)?$/.test(s)) return '';
+    return s;
+  }
+  const n=Number(v);
+  return Number.isFinite(n)?String(n):'';
+}
+function attAdminMapsHref(rec){
+  if(!rec) return '';
+  const la=attCoordText(rec.lat), ln=attCoordText(rec.lng);
+  if(la&&ln) return 'https://www.google.com/maps?q='+la+','+ln;
+  const addr=String(rec.address||'').trim();
+  if(addr) return 'https://www.google.com/maps?q='+encodeURIComponent(addr);
+  return '';
+}
+function attAdminAddrHtml(rec){
+  const addr=String(rec&&rec.address||'').trim();
+  if(!addr) return '<span class="att-empty">—</span>';
+  const href=attAdminMapsHref(rec);
+  if(!href) return `<div class="att-addr">${esc(addr)}</div>`;
+  return `<a class="att-addr att-addr-link" data-att-maps="1" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(addr)}</a>`;
+}
+function attAdminPhotoSrc(rec, kind){
+  if(!rec) return '';
+  const isIn=kind!=='checkOut';
+  return (isIn?(rec.checkInImg||rec.img||rec.checkInThumb):(rec.checkOutImg||rec.checkOutThumb))||'';
+}
+function attAdminPunchHtml(rec, kind){
+  const iso=rec&&rec[kind];
+  const img=attAdminPhotoSrc(rec, kind);
+  if(!iso&&!img) return '<span class="att-empty">—</span>';
+  const time=iso?`<div class="att-time">${esc(attFormatTime(iso))}</div>`:'';
+  const photo=img?`<div class="att-photo"><img class="att-thumb" src="${attImgSrc(img)}" alt="${kind==='checkOut'?'Ảnh check out':'Ảnh check in'}" data-att-preview="1"></div>`:'';
+  return `<div class="att-punch">${time}${photo}</div>`;
 }
 function pageAttendanceAdminDay(){
   const date=attAdminSelectedDay();
@@ -11924,13 +12078,13 @@ function pageAttendanceAdminDay(){
     return `<tr data-uid="${mem.id}" data-date="${esc(date)}">
       <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span></td>
       <td class="att-name">${esc(label)}${showMail?`<div class="att-mx-mail">${esc(email)}</div>`:''}</td>
-      <td>${attAddrCell(rec, date, false)}</td>
-      <td>${attPunchCell(rec, date, 'checkIn', false)}</td>
-      <td>${attPunchCell(rec, date, 'checkOut', false)}</td>
+      <td>${attAdminAddrHtml(rec)}</td>
+      <td>${attAdminPunchHtml(rec, 'checkIn')}</td>
+      <td>${attAdminPunchHtml(rec, 'checkOut')}</td>
       <td>${attOtCell(rec)}</td>
     </tr>`;
   }).join('');
-  return head+`<div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-tbl att-admin-day" data-att-detail="1">
+  return head+`<div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-tbl att-admin-day" data-att-detail="1" data-att-detail-maps="1">
       <thead><tr>
         <th>Ngày</th>
         <th>Họ và tên</th>
@@ -12132,29 +12286,88 @@ function bindAttendance(){
   });
 }
 /* ---------------- KẾ HOẠCH CÔNG TÁC ---------------- */
+const WP_IMG_CAP=8;
+const WP_THUMB_MAX=12000;
+function wpNormalizeImgs(list){
+  if(!Array.isArray(list)) return [];
+  const out=[];
+  const seen=new Set();
+  list.forEach(im=>{
+    if(!im||typeof im!=='object') return;
+    const id=String(im.id||'').replace(/[^\w]/g,'').slice(0,40);
+    if(id.length<4||seen.has(id)) return;
+    seen.add(id);
+    let thumb='';
+    if(typeof im.thumb==='string'&&im.thumb.startsWith('data:image/')&&im.thumb.length<=WP_THUMB_MAX) thumb=im.thumb;
+    out.push({
+      id,
+      name:String(im.name||'anh.jpg').replace(/[\r\n]/g,'').slice(0,80),
+      mime:String(im.mime||'image/jpeg').slice(0,60),
+      size:Math.max(0, Math.round(Number(im.size)||0)),
+      thumb
+    });
+  });
+  return out.slice(0, WP_IMG_CAP);
+}
+function wpImgSig(list){
+  return wpNormalizeImgs(list).map(im=>im.id+':'+(im.thumb?im.thumb.length:0)).join(',');
+}
+/** Ảnh đầy đủ nằm IndexedDB (cùng kho CRM). JSON kế hoạch chỉ giữ id + thumb nhỏ để máy admin khác xem được. */
 function wpNormalizePlanMap(src){
   const out={};
   if(!src||typeof src!=='object'||Array.isArray(src)) return out;
   Object.keys(src).forEach(k=>{
     if(!/^\d+\|\d{4}-\d{2}-\d{2}\|(am|pm)$/.test(k)) return;
     const raw=src[k];
-    let v='', t=0;
+    let v='', t=0, hasImgs=false, imgs=[];
     if(typeof raw==='string') v=raw;
     else if(raw&&typeof raw==='object'){
       v=raw.v==null?'':String(raw.v);
       t=Number(raw.t)||0;
+      hasImgs=Array.isArray(raw.imgs);
+      if(hasImgs) imgs=wpNormalizeImgs(raw.imgs);
     }else return;
     v=v.replace(/\s+/g,' ').trim().slice(0,80);
-    out[k]={v, t};
+    if(!v&&!hasImgs) return;
+    if(!v&&hasImgs&&!imgs.length&&!t) return;
+    const cell={v, t};
+    if(hasImgs) cell.imgs=imgs;
+    out[k]=cell;
   });
   return out;
+}
+function wpCopyImgs(list){
+  return wpNormalizeImgs(list).map(im=>Object.assign({}, im));
+}
+function wpPreferThumbs(primary, secondary){
+  const list=wpCopyImgs(primary);
+  const sec=new Map(wpCopyImgs(secondary).map(im=>[im.id, im]));
+  list.forEach(im=>{
+    if(im.thumb) return;
+    const o=sec.get(im.id);
+    if(o&&o.thumb) im.thumb=o.thumb;
+  });
+  return list;
 }
 function wpMergePlans(local, remote){
   const out=wpNormalizePlanMap(local);
   const incoming=wpNormalizePlanMap(remote);
   Object.keys(incoming).forEach(k=>{
     const a=out[k], b=incoming[k];
-    if(!a||(Number(b.t)||0)>=(Number(a.t)||0)) out[k]=b;
+    if(!a){ out[k]=b; return; }
+    const aT=Number(a.t)||0, bT=Number(b.t)||0;
+    const preferB=bT>=aT;
+    const newer=preferB?b:a;
+    const cell={v:String(newer.v||''), t:Math.max(aT, bT)};
+    const aImgs=Array.isArray(a.imgs)?a.imgs:null;
+    const bImgs=Array.isArray(b.imgs)?b.imgs:null;
+    if(aImgs&&bImgs) cell.imgs=wpPreferThumbs(preferB?bImgs:aImgs, preferB?aImgs:bImgs);
+    else if(aImgs||bImgs) cell.imgs=wpCopyImgs(aImgs||bImgs);
+    if(!cell.v&&!(cell.imgs&&cell.imgs.length)&&!(aImgs&&bImgs)){
+      delete out[k];
+      return;
+    }
+    out[k]=cell;
   });
   return out;
 }
@@ -12199,6 +12412,11 @@ function wpCellText(uid, date, slot){
   if(!rec) return '';
   return typeof rec==='string'?rec:String(rec.v||'');
 }
+function wpCellImgs(uid, date, slot){
+  const rec=(DB.workPlans||{})[wpCellKey(uid, date, slot)];
+  if(!rec||typeof rec!=='object'||!Array.isArray(rec.imgs)) return [];
+  return rec.imgs;
+}
 function wpSetCell(uid, date, slot, text){
   if(!wpCanEditRow(uid)) return;
   const key=wpCellKey(uid, date, slot);
@@ -12208,8 +12426,132 @@ function wpSetCell(uid, date, slot, text){
   const prevV=prev?String(prev.v||''):'';
   if(v===prevV) return;
   if(!v&&!prev) return;
-  DB.workPlans[key]={v, t:Date.now()};
+  const cell={v, t:Date.now()};
+  if(prev&&Array.isArray(prev.imgs)) cell.imgs=wpNormalizeImgs(prev.imgs);
+  if(!cell.v&&!(cell.imgs&&cell.imgs.length)){
+    if(prev&&Array.isArray(prev.imgs)) DB.workPlans[key]={v:'', t:Date.now(), imgs:[]};
+    else delete DB.workPlans[key];
+    saveDB();
+    return;
+  }
+  DB.workPlans[key]=cell;
   saveDB();
+}
+async function wpThumbForSync(dataUrl){
+  const tries=[[320,0.55],[200,0.5],[96,0.46],[64,0.4]];
+  for(let i=0;i<tries.length;i++){
+    try{
+      const t=await compressProdImg(dataUrl, tries[i][0], tries[i][1]);
+      if(typeof t==='string'&&t.startsWith('data:image/')&&t.length>32&&t.length<=WP_THUMB_MAX) return t;
+    }catch(e){}
+  }
+  return '';
+}
+async function wpOpenImage(id){
+  const safe=String(id||'').replace(/[^\w]/g,'');
+  if(!safe) return;
+  let src='';
+  try{
+    if(typeof crmSurveyIdbGet==='function'){
+      const hit=await crmSurveyIdbGet('wp', safe);
+      if(hit&&typeof hit.dataUrl==='string'&&hit.dataUrl.startsWith('data:image')) src=hit.dataUrl;
+    }
+  }catch(e){}
+  if(!src){
+    const img=document.querySelector('[data-wp-view="'+safe+'"] img');
+    src=img&&img.getAttribute('src')||'';
+  }
+  if(!src){ toast('Không tìm thấy ảnh trên máy này','bad'); return; }
+  if(typeof openCrmSurveyPreview==='function') openCrmSurveyPreview(src);
+}
+async function wpAddImages(uid, date, slot, fileList){
+  if(!wpCanEditRow(uid)) return;
+  const files=[...fileList].filter(Boolean);
+  if(!files.length) return;
+  const key=wpCellKey(uid, date, slot);
+  DB.workPlans=wpNormalizePlanMap(DB.workPlans);
+  const prev=DB.workPlans[key]||{v:'', t:0};
+  let imgs=Array.isArray(prev.imgs)?wpCopyImgs(prev.imgs):[];
+  let added=0;
+  for(const f of files){
+    if(imgs.length>=WP_IMG_CAP){
+      toast('Mỗi buổi tối đa '+WP_IMG_CAP+' ảnh','bad');
+      break;
+    }
+    const mime=f.type||'';
+    const isImg=typeof crmSurveyIsImageMime==='function'?crmSurveyIsImageMime(mime, f.name):String(mime).startsWith('image/');
+    if(!isImg){ toast('«'+(f.name||'file')+'» không phải ảnh','bad'); continue; }
+    if(f.size>CRM_SURVEY_MAX_BYTES){ toast('«'+(f.name||'ảnh')+'» quá lớn (tối đa 8MB)','bad'); continue; }
+    let dataUrl='';
+    try{ dataUrl=await fileToDataUrl(f); }catch(e){ toast('Không đọc được «'+(f.name||'ảnh')+'»','bad'); continue; }
+    try{
+      const compressed=await compressProdImg(dataUrl, 1280, 0.68);
+      if(compressed&&String(compressed).startsWith('data:image')) dataUrl=compressed;
+    }catch(e){}
+    if(!String(dataUrl).startsWith('data:image')){ toast('Không đọc được «'+(f.name||'ảnh')+'»','bad'); continue; }
+    const thumb=await wpThumbForSync(dataUrl);
+    const id=(typeof crmNewSurveyFileId==='function'?crmNewSurveyFileId():('wp'+Date.now().toString(36))).replace(/[^\w]/g,'').slice(0,40);
+    try{
+      await crmSurveyIdbPut('wp', id, {name:f.name||'anh.jpg', mime:'image/jpeg', kind:'image', dataUrl, size:dataUrl.length});
+    }catch(e){
+      toast('Không lưu được ảnh vào bộ nhớ máy','bad');
+      continue;
+    }
+    imgs.push({id, name:String(f.name||'anh.jpg').slice(0,80), mime:'image/jpeg', size:dataUrl.length, thumb:thumb||''});
+    added++;
+  }
+  if(!added) return;
+  if(typeof wpFlushText==='function') wpFlushText();
+  DB.workPlans=wpNormalizePlanMap(DB.workPlans);
+  const latest=DB.workPlans[key];
+  const v=latest&&latest.v!=null?String(latest.v):String(prev.v||'');
+  DB.workPlans[key]={v, t:Date.now(), imgs:wpNormalizeImgs(imgs)};
+  saveDB();
+  toast(added>1?('Đã thêm '+added+' ảnh'):'Đã thêm ảnh','ok');
+  renderPage();
+}
+async function wpDeleteImage(uid, date, slot, imgId){
+  if(!wpCanEditRow(uid)) return;
+  const id=String(imgId||'').replace(/[^\w]/g,'');
+  if(!id) return;
+  const key=wpCellKey(uid, date, slot);
+  DB.workPlans=wpNormalizePlanMap(DB.workPlans);
+  const prev=DB.workPlans[key];
+  if(!prev||!Array.isArray(prev.imgs)) return;
+  const imgs=prev.imgs.filter(im=>im.id!==id);
+  if(typeof wpFlushText==='function') wpFlushText();
+  const latest=DB.workPlans[key]||prev;
+  DB.workPlans[key]={v:String(latest.v||''), t:Date.now(), imgs:wpNormalizeImgs(imgs)};
+  saveDB();
+  try{ await crmSurveyIdbDel('wp', id); }catch(e){}
+  renderPage();
+}
+async function wpHydrateThumbs(){
+  const map=DB.workPlans;
+  if(!map||typeof map!=='object') return;
+  let changed=false;
+  const keys=Object.keys(map);
+  for(let i=0;i<keys.length;i++){
+    const cell=map[keys[i]];
+    if(!cell||!Array.isArray(cell.imgs)) continue;
+    for(let j=0;j<cell.imgs.length;j++){
+      const im=cell.imgs[j];
+      if(!im||im.thumb) continue;
+      try{
+        const hit=await crmSurveyIdbGet('wp', im.id);
+        const data=hit&&typeof hit.dataUrl==='string'?hit.dataUrl:'';
+        if(!data.startsWith('data:image')) continue;
+        const btn=document.querySelector('[data-wp-view="'+im.id+'"] img');
+        if(btn&&!btn.getAttribute('src')) btn.src=data;
+        const thumb=await wpThumbForSync(data);
+        if(thumb){ im.thumb=thumb; changed=true; }
+      }catch(e){}
+    }
+  }
+  if(changed){
+    DB.workPlans=wpNormalizePlanMap(DB.workPlans);
+    saveDB();
+  }
 }
 let wpCursor=null;
 function wpYm(){
@@ -12234,12 +12576,25 @@ function wpNameCell(u, dups){
   const title=showMail?label+' · '+email:label;
   return `<td class="wp-name" title="${esc(title)}"><span class="att-mx-who">${esc(label)}</span>${showMail?`<span class="att-mx-mail">${esc(email)}</span>`:''}</td>`;
 }
+function wpImgsHtml(u, date, slot, can){
+  const imgs=wpCellImgs(u.id, date, slot);
+  const shots=imgs.map(im=>{
+    const src=im.thumb||'';
+    const srcAttr=src?` src="${src}"`:'';
+    const x=can?`<button type="button" class="wp-shot-x" data-wp-del="${esc(im.id)}" data-wp-uid="${Number(u.id)}" data-wp-date="${esc(date)}" data-wp-slot="${slot}" aria-label="Xóa ảnh">×</button>`:'';
+    return `<div class="wp-shot"><button type="button" class="wp-thumb" data-wp-view="${esc(im.id)}" title="${esc(im.name||'Xem ảnh')}"><img${srcAttr} alt="${esc(im.name||'Ảnh')}"></button>${x}</div>`;
+  }).join('');
+  const up=can?`<label class="wp-up">Ảnh<input type="file" accept="image/*" multiple data-wp-file="1" data-wp-uid="${Number(u.id)}" data-wp-date="${esc(date)}" data-wp-slot="${slot}" aria-label="Tải ảnh"></label>`:'';
+  if(!shots&&!up) return '';
+  return `<div class="wp-imgs" data-wp-imgs="1">${shots}${up}</div>`;
+}
 function wpPlanInput(u, date, slot){
   const can=wpCanEditRow(u.id);
   const v=wpCellText(u.id, date, slot);
   const who=String(u.name||'').trim()||'Nhân viên KD';
   const when=slot==='pm'?'Buổi chiều':'Buổi sáng';
-  return `<input class="wp-in" type="text" maxlength="80" autocomplete="off" aria-label="${esc(who+' '+date+' '+when)}" data-wp-uid="${Number(u.id)}" data-wp-date="${esc(date)}" data-wp-slot="${slot}" value="${esc(v)}"${can?' placeholder="Đi đâu"':' readonly tabindex="-1"'}>`;
+  const input=`<input class="wp-in" type="text" maxlength="80" autocomplete="off" aria-label="${esc(who+' '+date+' '+when)}" data-wp-uid="${Number(u.id)}" data-wp-date="${esc(date)}" data-wp-slot="${slot}" value="${esc(v)}"${can?' placeholder="Đi đâu"':' readonly tabindex="-1"'}>`;
+  return `<div class="wp-edit">${input}${wpImgsHtml(u, date, slot, can)}</div>`;
 }
 function pageWorkPlan(){
   const {y,m}=wpYm();
@@ -12249,9 +12604,9 @@ function pageWorkPlan(){
   const users=wpVisibleKdUsers();
   const monthLabel='Tháng '+m+' / '+y;
   const hint=role==='sales'
-    ?'Ghi nơi đi làm buổi sáng và buổi chiều. Chỉ sửa được dòng của bạn.'
+    ?'Ghi chữ và tải ảnh cho buổi sáng, buổi chiều. Chỉ sửa được dòng của bạn. Mỗi ảnh tối đa 8MB.'
     :(role==='admin'
-      ?'Xem kế hoạch đi làm của Nhân viên KD.'
+      ?'Xem chữ và ảnh kế hoạch đi làm của Nhân viên KD.'
       :'Kế hoạch công tác của Nhân viên KD.');
   const head=`<div class="page-head att-admin" data-wp-plan="1">
       <div class="page-head-row">
@@ -12297,12 +12652,17 @@ function pageWorkPlan(){
     </table></div></div>`;
 }
 let wpSaveTimer=null;
+function wpFlushText(){
+  document.querySelectorAll('input.wp-in[data-wp-uid]').forEach(inp=>{
+    wpSetCell(inp.getAttribute('data-wp-uid'), inp.getAttribute('data-wp-date'), inp.getAttribute('data-wp-slot'), inp.value);
+  });
+}
 function bindWorkPlan(){
   const prev=document.getElementById('wpPrev');
   const next=document.getElementById('wpNext');
   if(prev) prev.onclick=()=>wpShiftMonth(-1);
   if(next) next.onclick=()=>wpShiftMonth(1);
-  document.querySelectorAll('[data-wp-uid]').forEach(inp=>{
+  document.querySelectorAll('input.wp-in[data-wp-uid]').forEach(inp=>{
     const commit=()=>wpSetCell(inp.getAttribute('data-wp-uid'), inp.getAttribute('data-wp-date'), inp.getAttribute('data-wp-slot'), inp.value);
     inp.addEventListener('input', ()=>{
       if(wpSaveTimer) clearTimeout(wpSaveTimer);
@@ -12311,6 +12671,34 @@ function bindWorkPlan(){
     inp.addEventListener('change', commit);
     inp.addEventListener('blur', commit);
   });
+  document.querySelectorAll('[data-wp-file]').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const files=[...(inp.files||[])];
+      const uid=inp.getAttribute('data-wp-uid');
+      const date=inp.getAttribute('data-wp-date');
+      const slot=inp.getAttribute('data-wp-slot');
+      inp.value='';
+      wpFlushText();
+      wpAddImages(uid, date, slot, files).catch(e=>{
+        console.warn('wp image', e);
+        toast('Không tải được ảnh','bad');
+      });
+    });
+  });
+  document.querySelectorAll('[data-wp-del]').forEach(btn=>{
+    btn.addEventListener('click', ev=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      wpFlushText();
+      wpDeleteImage(btn.getAttribute('data-wp-uid'), btn.getAttribute('data-wp-date'), btn.getAttribute('data-wp-slot'), btn.getAttribute('data-wp-del')).catch(e=>{
+        console.warn('wp del', e);
+      });
+    });
+  });
+  document.querySelectorAll('[data-wp-view]').forEach(btn=>{
+    btn.addEventListener('click', ()=>wpOpenImage(btn.getAttribute('data-wp-view')));
+  });
+  wpHydrateThumbs().catch(()=>{});
 }
 let assetQ='';
 function assetFilteredRows(book){
