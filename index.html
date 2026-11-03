@@ -332,6 +332,37 @@ tbody tr:active{background:var(--surface)}
   .att-admin-nav .att-detail-go{min-height:40px}
 }
 .att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
+/* att-day-pick: dropdown chọn ngày trên Xem chi tiết (admin) */
+.att-day-pick{position:relative;display:flex;align-items:center;justify-content:center}
+.att-admin-nav .att-day-chip{cursor:pointer;border-radius:999px;padding:4px 10px;background:transparent;line-height:1.2}
+.att-admin-nav .att-day-chip:hover,.att-admin-nav .att-day-chip[aria-expanded="true"]{background:var(--surface)}
+.att-day-panel{
+  position:absolute;top:calc(100% + 8px);left:0;z-index:40;
+  width:248px;max-width:min(248px,calc(100vw - 40px));
+  display:flex;flex-direction:column;overflow:hidden;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  box-shadow:var(--lift);
+}
+.att-day-panel-nav{
+  display:flex;align-items:center;gap:4px;flex:none;
+  padding:8px 8px 6px;border-bottom:1px solid var(--line-2);background:var(--panel);
+}
+.att-day-panel-month{flex:1;text-align:center;font-weight:800;font-size:13px;color:var(--ink);letter-spacing:-.01em}
+.att-day-panel-nav .att-nav-btn{width:32px;min-width:32px;height:32px;padding:0;font-size:18px;line-height:1}
+.att-day-panel-list{overflow-y:auto;max-height:248px;padding:4px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.att-day-row{
+  width:100%;display:flex;align-items:center;gap:8px;
+  min-height:34px;padding:4px 8px;border-radius:10px;
+  background:transparent;color:var(--ink);text-align:left;
+}
+.att-day-row:hover{background:var(--surface)}
+.att-day-row.is-on{background:var(--green-l);box-shadow:inset 0 0 0 2px var(--lime)}
+.att-day-row .att-wd{display:inline-block;min-width:26px;font-size:10px}
+.att-day-row .att-day{font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.att-day-row .pill{margin-left:auto;padding:2px 8px;font-size:10px}
+@media(max-width:767px){
+  .att-day-panel{left:auto;right:0}
+}
 .tbl-card.att-admin{overflow:auto;-webkit-overflow-scrolling:touch}
 .tbl-card.att-admin .tbl-wrap{overflow:visible}
 .att-matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
@@ -11982,6 +12013,8 @@ function attMatrixNameCell(mem, dups){
 }
 let attAdminMode='matrix';
 let attAdminDay='';
+let attDayPickOpen=false;
+let attDayPickYm=null;
 function attAddDays(key, delta){
   const p=String(key||'').split('-').map(Number);
   const dt=new Date(Date.UTC(p[0]||1970, (p[1]||1)-1, (p[2]||1)+(delta||0)));
@@ -11998,17 +12031,85 @@ function attAdminRecord(userId, date){
 }
 function attAdminOpenDetail(){
   attAdminMode='day';
+  attDayPickOpen=false;
+  attDayPickYm=null;
   attAdminSelectedDay();
   renderPage();
 }
 function attAdminOpenMatrix(){
   attAdminMode='matrix';
+  attDayPickOpen=false;
+  attDayPickYm=null;
   renderPage();
 }
 function attShiftAdminDay(delta){
   attAdminDay=attAddDays(attAdminSelectedDay(), delta||0);
   attAdminMode='day';
+  attDayPickOpen=false;
+  attDayPickYm=null;
   renderPage();
+}
+function attAdminToggleDayPick(){
+  if(attDayPickOpen){
+    attDayPickOpen=false;
+    attDayPickYm=null;
+  }else{
+    const p=String(attAdminSelectedDay()).split('-').map(Number);
+    attDayPickYm={y:p[0], m:p[1]};
+    attDayPickOpen=true;
+  }
+  renderPage();
+}
+function attShiftDayPickMonth(delta){
+  const base=attDayPickYm||(()=>{
+    const p=String(attAdminSelectedDay()).split('-').map(Number);
+    return {y:p[0], m:p[1]};
+  })();
+  let y=base.y, m=base.m+(delta||0);
+  while(m<1){ m+=12; y--; }
+  while(m>12){ m-=12; y++; }
+  attDayPickYm={y, m};
+  attDayPickOpen=true;
+  renderPage();
+}
+function attAdminPickDay(key){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(key||''))) return;
+  attAdminDay=String(key);
+  attAdminMode='day';
+  attDayPickOpen=false;
+  attDayPickYm=null;
+  renderPage();
+}
+function attCloseDayPick(rerender){
+  if(window._attDayPickCloser){
+    document.removeEventListener('click', window._attDayPickCloser);
+    window._attDayPickCloser=null;
+  }
+  const was=attDayPickOpen;
+  attDayPickOpen=false;
+  attDayPickYm=null;
+  if(rerender&&was&&document.getElementById('attDayPanel')) renderPage();
+}
+function attDayPickPanelHtml(selected, today){
+  if(!attDayPickOpen) return '';
+  const ym=attDayPickYm||(()=>{
+    const p=String(selected||'').split('-').map(Number);
+    return {y:p[0], m:p[1]};
+  })();
+  const rows=attMonthDayKeys(ym.y, ym.m).map(k=>{
+    const dm=attFormatDay(k);
+    const on=k===selected;
+    const tod=k===today;
+    return `<button type="button" class="att-day-row${on?' is-on':''}" role="option" aria-selected="${on?'true':'false'}" data-att-pick="${esc(k)}"><span class="att-wd">${esc(dm.wd)}</span><span class="att-day">${esc(dm.full)}</span>${tod?'<span class="pill p-green">Hôm nay</span>':''}</button>`;
+  }).join('');
+  return `<div class="att-day-panel" id="attDayPanel" data-att-day-pick="1" role="listbox" aria-label="Chọn ngày">
+        <div class="att-day-panel-nav">
+          <button type="button" class="btn btn-ghost att-nav-btn" id="attPickPrev" aria-label="Tháng trước">‹</button>
+          <div class="att-day-panel-month">Tháng ${ym.m} / ${ym.y}</div>
+          <button type="button" class="btn btn-ghost att-nav-btn" id="attPickNext" aria-label="Tháng sau">›</button>
+        </div>
+        <div class="att-day-panel-list" id="attDayPanelList">${rows}</div>
+      </div>`;
 }
 function pageAttendanceAdmin(){
   if(attAdminMode==='day') return pageAttendanceAdminDay();
@@ -12124,7 +12225,10 @@ function pageAttendanceAdminDay(){
       <div class="att-admin-nav">
         <button type="button" class="btn btn-ghost att-mode-btn" id="attMatrixTab">Xem tháng</button>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attDayPrev" aria-label="Ngày trước">‹</button>
-        <div class="att-month-label att-day-label">${esc(dayLabel)}${isToday?' <span class="pill p-green">Hôm nay</span>':''}</div>
+        <div class="att-day-pick" id="attDayPick" data-att-day-pick="1">
+          <button type="button" class="att-month-label att-day-label att-day-chip" id="attDayChip" aria-haspopup="listbox" aria-expanded="${attDayPickOpen?'true':'false'}">${esc(dayLabel)}${isToday?' <span class="pill p-green">Hôm nay</span>':''}</button>
+          ${attDayPickPanelHtml(date, today)}
+        </div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attDayNext" aria-label="Ngày sau">›</button>
       </div>
     </div>`;
@@ -12326,6 +12430,32 @@ function bindAttendanceAdmin(){
   if(matrix) matrix.onclick=()=>attAdminOpenMatrix();
   if(dayPrev) dayPrev.onclick=()=>attShiftAdminDay(-1);
   if(dayNext) dayNext.onclick=()=>attShiftAdminDay(1);
+  if(window._attDayPickCloser){
+    document.removeEventListener('click', window._attDayPickCloser);
+    window._attDayPickCloser=null;
+  }
+  const dayChip=document.getElementById('attDayChip');
+  const dayPanel=document.getElementById('attDayPanel');
+  const pickPrev=document.getElementById('attPickPrev');
+  const pickNext=document.getElementById('attPickNext');
+  if(dayChip) dayChip.onclick=e=>{ e.stopPropagation(); attAdminToggleDayPick(); };
+  if(pickPrev) pickPrev.onclick=e=>{ e.stopPropagation(); attShiftDayPickMonth(-1); };
+  if(pickNext) pickNext.onclick=e=>{ e.stopPropagation(); attShiftDayPickMonth(1); };
+  document.querySelectorAll('[data-att-pick]').forEach(b=>{
+    b.onclick=e=>{ e.stopPropagation(); attAdminPickDay(b.getAttribute('data-att-pick')); };
+  });
+  if(dayPanel){
+    dayPanel.onclick=e=>e.stopPropagation();
+    window._attDayPickCloser=ev=>{
+      const box=document.getElementById('attDayPick');
+      if(box&&box.contains(ev.target)) return;
+      attCloseDayPick(true);
+    };
+    document.addEventListener('click', window._attDayPickCloser);
+    const list=document.getElementById('attDayPanelList');
+    const sel=list&&list.querySelector('.att-day-row.is-on');
+    if(list&&sel) list.scrollTop=Math.max(0, sel.offsetTop-(list.clientHeight-sel.offsetHeight)/2);
+  }
   document.querySelectorAll('.att-admin [data-att-preview]').forEach(img=>{
     img.onclick=()=>openCrmSurveyPreview(img.getAttribute('src'));
   });
