@@ -359,6 +359,18 @@ tbody tr:active{background:var(--surface)}
   .wp-matrix th.wp-slot,.wp-matrix td.wp-cell{min-width:104px;width:112px}
   .wp-in{height:36px;font-size:14px}
 }
+.asset-card{overflow:hidden}
+.asset-card .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.asset-tbl{width:max-content;min-width:100%}
+.asset-tbl th{text-transform:none;letter-spacing:.04em;color:var(--ink)}
+.asset-tbl th,.asset-tbl td{white-space:nowrap}
+.asset-tbl td.asset-name{white-space:normal;min-width:168px;max-width:280px;font-weight:700}
+.asset-tbl th.num,.asset-tbl td.num{text-align:center;font-variant-numeric:tabular-nums;min-width:68px}
+.asset-tbl td.empty{white-space:normal;text-align:center}
+@media(max-width:767px){
+  .asset-tbl th,.asset-tbl td{padding:10px 8px}
+  .asset-tbl td.asset-name{min-width:150px}
+}
 
 /* ============ FORMS ============ */
 .field{margin-bottom:14px}
@@ -1116,6 +1128,7 @@ const DB={
  crm:[],
  attendance:[],
  workPlans:{},
+ assets:null,
  contracts:[],
  quotes:[
   {code:'BG-00006',cus:'Tô Hữu Đức',phone:'0328431227',addr:'TP. Hồ Chí Minh',total:97416000,status:'draft',nv:'Admin Quang Thanh',date:'2026-06-12T09:10'},
@@ -1624,6 +1637,125 @@ function applySeedCatalogPricesOnce(){
   DB.settings.pricesExVat92=true;
   return n;
 }
+/* Bảng cấp đồ nghề — tên kỹ thuật viên là chữ, không gắn user id. */
+const ASSET_SHEET_REV='excel-2026-11-03-bang-cap-do-nghe';
+const ASSET_SHEET_TITLE='BẢNG CẤP ĐỒ NGHỀ';
+const ASSET_HOLDER_NAMES=['PHÁT','DUY','C.ANH','H.ANH','THÀNH','PHÚC','SƠN','VAN ĐỎ','VP'];
+const ASSET_SHEET_COLS=['STT','ĐỒ NGHỀ','ĐVT'].concat(ASSET_HOLDER_NAMES,['TỔNG']);
+const ASSET_SHEET_ROWS=[
+  {stt:1,name:'Đồng hồ đo điện',unit:'Cái',qty:[1,1,1,1,0,0,0,0,0]},
+  {stt:2,name:'Máy khoan pin',unit:'Cái',qty:[0,1,1,1,2,1,1,1,1]},
+  {stt:3,name:'Cục pin',unit:'Cái',qty:[0,1,1,1,3,3,2,2,2]},
+  {stt:4,name:'Sạc',unit:'Cái',qty:[0,1,1,1,1,1,1,0,1]},
+  {stt:5,name:'Mũi khoét sắt Ø22, Ø27, Ø34',unit:'Bộ',qty:[1,1,1,1,1,1,0,0,1]},
+  {stt:6,name:'Tua vít',unit:'Cái',qty:[1,1,1,1,1,0,0,0,1]},
+  {stt:7,name:'Bút thử điện',unit:'Cái',qty:[1,1,1,1,1,1,0,0,1]},
+  {stt:8,name:'Kiềm chữ A',unit:'Cái',qty:[1,1,1,1,0,0,0,0,1]},
+  {stt:9,name:'Kiềm cắt dây',unit:'Cái',qty:[1,1,1,1,1,1,0,0,1]},
+  {stt:10,name:'Kiềm tuốt dây',unit:'Cái',qty:[0,0,0,0,0,0,0,0,1]},
+  {stt:11,name:'Kiềm mỏ quạ',unit:'Cái',qty:[0,0,0,0,1,1,0,0,0]},
+  {stt:12,name:'Kiềm bấm MC4',unit:'Cái',qty:[1,1,1,0,0,0,0,0,1]},
+  {stt:13,name:'Kiềm bấm cosse',unit:'Cái',qty:[1,1,1,1,1,0,0,0,1]},
+  {stt:14,name:'Kiềm bấm cosse pin',unit:'Cái',qty:[1,0,1,1,0,0,0,0,1]},
+  {stt:15,name:'Kiềm bấm cosse mạng',unit:'Cái',qty:[1,1,1,1,0,0,0,0,1]},
+  {stt:16,name:'Bộ lục giác',unit:'Bộ',qty:[1,1,1,1,0,0,0,0,1]},
+  {stt:17,name:'Kéo cắt ống',unit:'Cái',qty:[1,1,1,1,0,0,1,0,1]},
+  {stt:18,name:'Lò xo bẻ ống Ø25',unit:'Cái',qty:[0,0,0,0,0,0,0,0,1]},
+  {stt:19,name:'Cờ lê 8,10,13',unit:'Bộ',qty:[1,1,1,1,0,0,0,0,1]},
+  {stt:20,name:'Điếu 8,10,13',unit:'Bộ',qty:[1,1,1,1,0,0,1,0,1]},
+  {stt:21,name:'Dao rọc giấy',unit:'Cái',qty:[0,0,0,0,0,0,0,0,1]},
+  {stt:22,name:'Thước 10m',unit:'Cái',qty:[1,1,1,1,0,1,0,0,1]},
+  {stt:23,name:'Búa nhỏ',unit:'Cái',qty:[0,1,1,1,1,1,0,0,1]},
+  {stt:24,name:'Thước thủy nhỏ',unit:'Cái',qty:[0,1,1,1,1,1,0,0,1]},
+  {stt:25,name:'Máy cắt pin',unit:'Cái',qty:[0,1,0,0,1,1,0,0,1]},
+  {stt:26,name:'Túi đồ nghề',unit:'Cái',qty:[0,1,1,1,1,1,0,0,0]}
+];
+function assetQtyMap(row){
+  const src=row&&row.qty&&typeof row.qty==='object'?row.qty:{};
+  const out={};
+  ASSET_HOLDER_NAMES.forEach((name,i)=>{
+    let n=src[name];
+    if(n==null&&Array.isArray(row&&row.qty)) n=row.qty[i];
+    out[name]=Number(n)||0;
+  });
+  return out;
+}
+function assetSheetSeed(){
+  const holders=ASSET_HOLDER_NAMES.map(name=>({name,userId:null}));
+  const rows=ASSET_SHEET_ROWS.map(r=>{
+    const qty={};
+    let total=0;
+    ASSET_HOLDER_NAMES.forEach((name,i)=>{
+      const n=Number(r.qty[i])||0;
+      qty[name]=n;
+      total+=n;
+    });
+    return {stt:r.stt,name:r.name,unit:r.unit,qty,total};
+  });
+  return {title:ASSET_SHEET_TITLE,columns:ASSET_SHEET_COLS.slice(),holders,rows};
+}
+function assetRowsSame(a,b){
+  if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length) return false;
+  for(let i=0;i<a.length;i++){
+    const x=a[i], y=b[i];
+    if(!x||!y) return false;
+    if(Number(x.stt)!==Number(y.stt)) return false;
+    if(String(x.name||'').trim()!==String(y.name||'').trim()) return false;
+    if(String(x.unit||'').trim()!==String(y.unit||'').trim()) return false;
+    const qx=assetQtyMap(x), qy=assetQtyMap(y);
+    for(let k=0;k<ASSET_HOLDER_NAMES.length;k++){
+      const name=ASSET_HOLDER_NAMES[k];
+      if(qx[name]!==qy[name]) return false;
+    }
+  }
+  return true;
+}
+function assetNormalizeHolders(list, seedHolders){
+  if(!Array.isArray(list)||!list.length) return seedHolders.map(h=>({name:h.name,userId:null}));
+  return list.map(h=>({
+    name:String((h&&h.name)||'').trim(),
+    userId:(h&&h.userId!=null&&String(h.userId)!=='')?h.userId:null
+  }));
+}
+function applyAssetSheetOnce(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  const REV=ASSET_SHEET_REV;
+  const seed=assetSheetSeed();
+  let cur=DB.assets;
+  if(!cur||typeof cur!=='object'||Array.isArray(cur)||!Array.isArray(cur.rows)||!cur.rows.length){
+    DB.assets=seed;
+    DB.settings.assetSheetRev=REV;
+    return seed.rows.length;
+  }
+  if(!cur.title) cur.title=seed.title;
+  if(!Array.isArray(cur.columns)||cur.columns.length!==seed.columns.length) cur.columns=seed.columns.slice();
+  cur.holders=assetNormalizeHolders(cur.holders, seed.holders);
+  DB.assets=cur;
+  if(DB.settings.assetSheetRev!==REV){
+    DB.settings.assetSheetRev=REV;
+    if(!assetRowsSame(cur.rows, seed.rows)) return 0;
+  }
+  return 0;
+}
+function assetSheetPayload(){
+  const seeded=applyAssetSheetOnce();
+  if(seeded){ /* rows just filled — payload below reads DB.assets */ }
+  const a=DB.assets;
+  if(!a||typeof a!=='object'||!Array.isArray(a.rows)) return null;
+  const holders=assetNormalizeHolders(a.holders, assetSheetSeed().holders);
+  const rows=a.rows.map(r=>{
+    const qty=assetQtyMap(r);
+    let total=0;
+    ASSET_HOLDER_NAMES.forEach(name=>{ total+=Number(qty[name])||0; });
+    return {stt:Number(r.stt)||0,name:String(r.name||''),unit:String(r.unit||''),qty,total};
+  });
+  return {
+    title:a.title||ASSET_SHEET_TITLE,
+    columns:(Array.isArray(a.columns)&&a.columns.length)?a.columns.slice():ASSET_SHEET_COLS.slice(),
+    holders,
+    rows
+  };
+}
 function applyEquipPricesExVatOnce(){
   // Giá thiết bị trước VAT 8%: chia 1.08 một lần (tránh trừ lại khi đã có flag)
   // Trước đây trừ sai bằng ×0.92 → nếu đã ×0.92 thì quy đổi: (giá/0.92)/1.08
@@ -1959,7 +2091,7 @@ let userSelected=new Set();
 
 /* ---- Persist danh mục thiết bị & dữ liệu nghiệp vụ ---- */
 const DB_STORE_KEY='qts_erp_db_v1';
-const DB_PERSIST_KEYS=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services','stock','trans','quotes','customers','crm','attendance','workPlans','contracts','suppliers','users','settings','seq','deletedProductCodes','deletedUserIds','deletedUserEmails','deletedCrmIds','deletedQuoteCodes','deletedSupplierIds'];
+const DB_PERSIST_KEYS=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services','stock','trans','quotes','customers','crm','attendance','workPlans','assets','contracts','suppliers','users','settings','seq','deletedProductCodes','deletedUserIds','deletedUserEmails','deletedCrmIds','deletedQuoteCodes','deletedSupplierIds'];
 function cloneDBForLocalStorage(){
   // Không ghi data URL ảnh vào DB chính (đã nằm PIMG override / RAM / Supabase)
   const prodKeys=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services'];
@@ -2042,7 +2174,8 @@ const _seedAddedBoot=mergeSeedCatalog();
 const _brandNormBoot=normalizeCatalogBrands();
 const _exVatBoot=applyEquipPricesExVatOnce();
 const _seedPriceBoot=applySeedCatalogPricesOnce();
-if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0){ try{ saveDB(); }catch(e){} }
+const _assetSheetBoot=applyAssetSheetOnce();
+if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0){ try{ saveDB(); }catch(e){} }
 // Gán lại ảnh thật từ PIMG sau khi load localStorage
 applyPimgToDB();
 try{ if(typeof pruneTombstonedUsersLocal==='function') pruneTombstonedUsersLocal(); }catch(e){}
@@ -2423,6 +2556,10 @@ function sbBundleToPayload(bundle){
       data.workPlans=raw._workPlans;
       delete raw._workPlans;
     }
+    if(raw._assets&&typeof raw._assets==='object'&&!Array.isArray(raw._assets)){
+      data.assets=raw._assets;
+      delete raw._assets;
+    }
     data.settings=raw;
   }
   if(bundle.seq){
@@ -2553,7 +2690,7 @@ function persistSyncBase(){
   try{ if(_syncBase) localStorage.setItem(SYNC_BASE_KEY, JSON.stringify(_syncBase)); }catch(e){}
 }
 function captureSyncBase(){
-  const base={quotes:{},products:{},stock:{},trans:{},users:{},crm:{},customers:{},suppliers:{},settings:syncHash(DB.settings||{}),workPlans:syncHash(wpPlansPayload())};
+  const base={quotes:{},products:{},stock:{},trans:{},users:{},crm:{},customers:{},suppliers:{},settings:syncHash(DB.settings||{}),workPlans:syncHash(wpPlansPayload()),assets:syncHash(assetSheetPayload())};
   (DB.quotes||[]).forEach(q=>{ if(q&&q.code) base.quotes[String(q.code)]=syncHash(q); });
   SB_PRODUCT_KEYS.forEach(k=>{
     (DB[k]||[]).forEach(p=>{ if(p&&p.id!=null) base.products[String(p.id)]=syncHash(p); });
@@ -2708,7 +2845,14 @@ async function pullDBFromSupabase(){
       bumpUserSeq();
     }
     const pending=snap?mergeUnsyncedLocal(snap, prevBase):{n:0,keys:{quotes:[],products:[],stock:[],trans:[],users:[],crm:[],customers:[],suppliers:[]}};
+    applyAssetSheetOnce();
+    const remoteAssetBook=bundle.settings&&bundle.settings.data&&bundle.settings.data._assets;
+    const remoteHasAssetRows=!!(remoteAssetBook&&Array.isArray(remoteAssetBook.rows)&&remoteAssetBook.rows.length>=ASSET_SHEET_ROWS.length);
     captureSyncBase();
+    if(!remoteHasAssetRows&&_syncBase){
+      _syncBase.assets='';
+      persistSyncBase();
+    }
     SB_PRODUCT_KEYS.forEach(k=>(DB[k]||[]).forEach(p=>{
       if(p&&p.id!=null&&!idsBeforeSeed.has(String(p.id))) pending.keys.products.push(String(p.id));
     }));
@@ -2876,9 +3020,10 @@ async function pushDBToSupabase(){
 
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
     const wpPlansChanged=!!(_syncBase&&_syncBase.workPlans!==syncHash(wpPlansPayload()));
+    const assetsChanged=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
     const hasCrmOverrides=!!(DB.settings&&DB.settings.crmOverrides&&Object.keys(DB.settings.crmOverrides).length);
     // Luôn đẩy settings khi có CRM override (ghi chú/ảnh/trạng thái…) để không mất sau reload
-    if(settingsChanged||wpPlansChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
+    if(settingsChanged||wpPlansChanged||assetsChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
     try{
       const {data:curWp}=await sb.from('erp_settings').select('data').eq('id','main').maybeSingle();
       const remoteWp=curWp&&curWp.data&&curWp.data._workPlans;
@@ -2925,7 +3070,8 @@ async function pushDBToSupabase(){
         _deletedUserIds:Array.isArray(DB.deletedUserIds)?DB.deletedUserIds:[],
         _deletedUserEmails:Array.isArray(DB.deletedUserEmails)?DB.deletedUserEmails:[],
         _contracts:Array.isArray(DB.contracts)?DB.contracts:[],
-        _workPlans:wpPlansPayload()
+        _workPlans:wpPlansPayload(),
+        _assets:assetSheetPayload()
       },
       updated_at:now
     });
@@ -3219,6 +3365,8 @@ async function enterApp(u, opt){
     const restored=mergeSeedCatalog();
     const exVatN=applyEquipPricesExVatOnce();
     const seedPriceN=applySeedCatalogPricesOnce();
+    const assetN=applyAssetSheetOnce();
+    const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
     const brandFixed=normalizeCatalogBrands();
     applyPimgToDB();
     const ordAdded=await ensureExcelOrders();
@@ -3226,7 +3374,7 @@ async function enterApp(u, opt){
     ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0){
+    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||assetSync){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
       if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
@@ -3267,13 +3415,14 @@ async function enterApp(u, opt){
     const restored=mergeSeedCatalog();
     const exVatN=applyEquipPricesExVatOnce();
     const seedPriceN=applySeedCatalogPricesOnce();
+    const assetN=applyAssetSheetOnce();
     const brandFixedOffline=normalizeCatalogBrands();
-    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
+    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
     if(ordAdded>0||ordPruned>0) _saveDB();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
-    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0) renderPage();
+    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0) renderPage();
   }
 }
 
@@ -10381,6 +10530,7 @@ async function pushUsersToSupabase(){
         _deletedProductCodes:Array.isArray(DB.deletedProductCodes)?DB.deletedProductCodes:(prev._deletedProductCodes||[]),
         _contracts:Array.isArray(DB.contracts)?DB.contracts:(prev._contracts||[]),
         _workPlans:(DB.workPlans=wpMergePlans(prev._workPlans, DB.workPlans)),
+        _assets:assetSheetPayload()||prev._assets||null,
         _pimgOverrides:(()=>{
           const o=loadPimgOverrides()||{};
           const slim={};
@@ -11718,9 +11868,62 @@ function bindWorkPlan(){
     inp.addEventListener('blur', commit);
   });
 }
+let assetQ='';
+function assetFilteredRows(book){
+  const rows=book&&Array.isArray(book.rows)?book.rows:[];
+  const q=String(assetQ||'').trim().toLocaleLowerCase('vi');
+  if(!q) return rows;
+  const names=(Array.isArray(book.columns)&&book.columns.length>4)?book.columns.slice(3,-1):ASSET_HOLDER_NAMES;
+  return rows.filter(r=>{
+    const qty=assetQtyMap(r);
+    const bits=[r&&r.stt, r&&r.name, r&&r.unit];
+    names.forEach(name=>{
+      const n=Number(qty[name])||0;
+      if(n>0) bits.push(name, n);
+    });
+    bits.push(r&&r.total);
+    return bits.filter(x=>x!=null&&String(x)!=='').join(' ').toLocaleLowerCase('vi').includes(q);
+  });
+}
 function pageAssets(){
+  applyAssetSheetOnce();
+  const book=(DB.assets&&typeof DB.assets==='object'&&Array.isArray(DB.assets.rows)&&DB.assets.rows.length)?DB.assets:assetSheetSeed();
+  const cols=(Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
+  const holderNames=cols.slice(3,-1);
+  const all=Array.isArray(book.rows)?book.rows:[];
+  const rows=assetFilteredRows(book);
+  const head=cols.map((label,i)=>{
+    const cls=[];
+    if(i>=3) cls.push('num');
+    if(i>=3&&i<cols.length-1) cls.push('asset-holder');
+    return `<th class="${cls.join(' ')}" scope="col">${esc(label)}</th>`;
+  }).join('');
+  const body=rows.length?rows.map(r=>{
+    const qty=assetQtyMap(r);
+    let total=0;
+    const holderCells=holderNames.map(name=>{
+      const n=Number(qty[name])||0;
+      total+=n;
+      return `<td class="num mono">${n}</td>`;
+    }).join('');
+    return `<tr>
+      <td class="mono">${esc(r.stt)}</td>
+      <td class="asset-name">${esc(r.name)}</td>
+      <td>${esc(r.unit)}</td>
+      ${holderCells}
+      <td class="num mono"><b>${total}</b></td>
+    </tr>`;
+  }).join(''):`<tr><td class="empty" colspan="${cols.length}">${all.length?'Không có đồ nghề khớp bộ lọc.':'Không có dòng dữ liệu trong bảng cấp đồ nghề.'}</td></tr>`;
   return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div></div>
-    <div class="card" style="padding:24px;color:var(--muted)">Module Quản lý tài sản — nội dung sẽ bổ sung sau.</div>`;
+    <div class="page-sub" style="margin:-8px 0 14px">${esc(book.title||ASSET_SHEET_TITLE)}</div>
+    <div class="search">${I.search}<input class="inp" id="assetQ" placeholder="Lọc đồ nghề, đơn vị, kỹ thuật viên..." value="${esc(assetQ)}" autocomplete="off"></div>
+    <div class="tbl-card asset-card"><div class="tbl-wrap"><table class="asset-tbl" data-asset-rows="${all.length}">
+      <thead><tr>${head}</tr></thead>
+      <tbody>${body}</tbody>
+    </table></div></div>`;
+}
+function bindAssets(){
+  bindSearchInput('assetQ', v=>{ assetQ=v; renderPage(); });
 }
 function renderPage(){
   const m=$('#main');
@@ -11739,7 +11942,7 @@ function renderPage(){
     case 'suppliers': m.innerHTML=pageSuppliers();bindSuppliers();break;
     case 'attendance': m.innerHTML=pageAttendance();bindAttendance();break;
     case 'work-plan': m.innerHTML=pageWorkPlan();bindWorkPlan();break;
-    case 'assets': m.innerHTML=pageAssets();break;
+    case 'assets': m.innerHTML=pageAssets();bindAssets();break;
     case 'users': m.innerHTML=pageUsers();bindUsers();break;
     case 'settings': m.innerHTML=pageSettings();bindSettings();break;
     default: m.innerHTML=pageDashboard();
