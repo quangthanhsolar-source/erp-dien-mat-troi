@@ -297,12 +297,21 @@ tbody tr:active{background:var(--surface)}
 .att-admin-nav{display:flex;align-items:center;gap:8px}
 .att-admin-nav .att-month-label{min-width:156px;text-align:center;font-weight:800;font-size:15px;color:var(--ink)}
 .att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
-.att-admin .att-thumb{width:44px;height:44px;border-radius:10px}
-.att-admin .att-tbl{min-width:920px}
-.att-admin .att-punch{min-width:88px}
+.tbl-card.att-admin{overflow:auto;-webkit-overflow-scrolling:touch}
+.tbl-card.att-admin .tbl-wrap{overflow:visible}
+.att-matrix{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
+.att-matrix th,.att-matrix td{text-align:center;padding:8px 2px;min-width:32px;width:32px;border-bottom:1px solid var(--line-2);background:var(--surface);font-variant-numeric:tabular-nums}
+.att-matrix thead th{position:sticky;top:0;z-index:2;background:var(--surface);font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0;text-transform:none;padding:10px 2px;border-bottom:1px solid var(--line)}
+.att-matrix .att-mx-name{position:sticky;left:0;z-index:3;text-align:left;min-width:156px;width:180px;max-width:220px;padding:8px 12px;background:var(--surface);box-shadow:1px 0 0 var(--line)}
+.att-matrix thead .att-mx-name{z-index:4;text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+.att-mx-who{display:block;font-weight:700;font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:196px}
+.att-mx-mail{display:block;margin-top:2px;font-weight:500;font-size:10.5px;line-height:1.25;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:196px}
+.att-mx-tick{font-weight:800;font-size:16px;line-height:1;color:var(--ink)}
+.att-matrix th.att-mx-today,.att-matrix td.att-mx-today{background:var(--green-l)}
 @media(max-width:767px){
   .att-desktop.att-admin{display:block}
-  .att-admin .att-tbl{min-width:760px}
+  .att-matrix .att-mx-name{min-width:140px;width:152px}
+  .att-mx-who,.att-mx-mail{max-width:128px}
 }
 
 /* ============ FORMS ============ */
@@ -10318,17 +10327,15 @@ function attAccountName(u, rec){
   const fromRec=rec&&String(rec.name||'').trim();
   return fromRec||'';
 }
-function attAdminAccounts(y,m){
-  const prefix=y+'-'+attPad(m)+'-';
+function attAdminAccounts(){
   const store=Array.isArray(DB.attendance)?DB.attendance:[];
-  const touched=new Set();
   const nameFromAtt=new Map();
   store.forEach(r=>{
     if(!r||r.userId==null) return;
     const id=Number(r.userId);
+    if(!Number.isFinite(id)) return;
     const nm=String(r.name||'').trim();
     if(nm&&!nameFromAtt.has(id)) nameFromAtt.set(id, nm);
-    if(String(r.date||'').slice(0,prefix.length)===prefix) touched.add(id);
   });
   const seen=new Set();
   const users=[];
@@ -10336,8 +10343,7 @@ function attAdminAccounts(y,m){
     if(!u||u.id==null) return;
     if(typeof isTombstonedUser==='function'&&isTombstonedUser(u)) return;
     const id=Number(u.id);
-    if(seen.has(id)) return;
-    if(u.active===false && !touched.has(id)) return;
+    if(!Number.isFinite(id)||seen.has(id)) return;
     seen.add(id);
     users.push(u);
   });
@@ -10352,6 +10358,31 @@ function attAdminAccounts(y,m){
   });
   return {users, nameFromAtt};
 }
+function attDayNum(key){
+  const n=Number(String(key||'').slice(-2));
+  return Number.isFinite(n)?n:0;
+}
+function attHasCheckIn(rec){
+  return !!(rec&&String(rec.checkIn||'').trim());
+}
+function attMemberLabel(mem){
+  const name=String(mem&&mem.name||'').trim();
+  const email=String(mem&&mem.email||'').trim();
+  return name||email||'—';
+}
+function attAdminBuildMatrix(y,m){
+  const days=attMonthDayKeys(y,m);
+  const pack=attAdminAccounts();
+  const index=attIndexForMonth(y,m);
+  const members=pack.users.map(u=>{
+    const id=Number(u.id);
+    const name=attAccountName(u, {name:pack.nameFromAtt.get(id)||''});
+    const email=String((u&&u.email)||'').trim();
+    const marks=days.map(date=>attHasCheckIn(index.get(id+'|'+date)||null));
+    return {id, name, email, marks, active:u.active!==false};
+  });
+  return {members, days, y, m, userCount:members.length};
+}
 function attIndexForMonth(y,m){
   const prefix=y+'-'+attPad(m)+'-';
   const map=new Map();
@@ -10362,55 +10393,23 @@ function attIndexForMonth(y,m){
   });
   return map;
 }
-function attAdminBuildRows(y,m){
-  const days=attMonthDayKeys(y,m);
-  const pack=attAdminAccounts(y,m);
-  const index=attIndexForMonth(y,m);
-  const rows=[];
-  days.forEach(date=>{
-    pack.users.forEach(u=>{
-      const rec=index.get(Number(u.id)+'|'+date)||null;
-      const name=attAccountName(u, rec)||pack.nameFromAtt.get(Number(u.id))||'';
-      const checkIn=rec&&rec.checkIn||'';
-      const checkOut=rec&&rec.checkOut||'';
-      rows.push({
-        date,
-        name,
-        email:String((u&&u.email)||'').trim(),
-        address:rec&&rec.address?String(rec.address):'',
-        checkIn,
-        checkOut,
-        checkInText:checkIn?attFormatTime(checkIn):'',
-        checkOutText:checkOut?attFormatTime(checkOut):'',
-        checkInImg:rec?((rec.checkInImg||rec.img)||''):'',
-        checkOutImg:rec?(rec.checkOutImg||''):'',
-        ot:checkOut?attOvertimeText(checkOut):''
-      });
-    });
-  });
-  return {rows, userCount:pack.users.length, y, m};
-}
-function attDash(v){ return v?String(v):'—'; }
-function attAdminPunchHtml(iso, img){
-  const time=iso?attFormatTime(iso):'';
-  if(!time && !img) return '<span class="att-empty">—</span>';
-  const timeHtml=time?`<div class="att-time">${esc(time)}</div>`:'';
-  const photo=img?`<div class="att-photo"><img class="att-thumb" src="${attImgSrc(img)}" alt="Ảnh chấm công" data-att-preview="1"></div>`:'';
-  return `<div class="att-punch">${timeHtml}${photo}</div>`;
-}
 function attAdminFileBase(y,m){ return 'ChamCong_'+y+'-'+attPad(m); }
-function attAdminExportMatrix(built){
-  const monthCell=attPad(built.m)+'/'+built.y;
-  return built.rows.map(r=>[
-    monthCell,
-    attFormatDay(r.date).full,
-    attDash(r.name),
-    attDash(r.email),
-    attDash(r.address),
-    attDash(r.checkInText),
-    attDash(r.checkOutText),
-    attDash(r.ot)
+function attMatrixDupLabels(members){
+  const counts=new Map();
+  (members||[]).forEach(mem=>{
+    const label=attMemberLabel(mem);
+    counts.set(label,(counts.get(label)||0)+1);
+  });
+  return counts;
+}
+function attAdminExcelAoa(built){
+  const header=['Thành viên','Email',...built.days.map(d=>String(attDayNum(d)))];
+  const rows=(built.members||[]).map(mem=>[
+    attMemberLabel(mem),
+    String(mem.email||''),
+    ...mem.marks.map(on=>on?'✓':'')
   ]);
+  return [header,...rows];
 }
 async function downloadAttAdminExcel(){
   if(attExportBusy) return;
@@ -10419,16 +10418,29 @@ async function downloadAttAdminExcel(){
   if(btn) btn.disabled=true;
   try{
     const cur=attAdminYm();
-    const built=attAdminBuildRows(cur.y, cur.m);
-    if(!(await ensureXlsxLib())){ toast('Không tải được thư viện Excel — kiểm tra mạng rồi thử lại','bad'); return; }
-    const header=['Tháng','Ngày','Họ và tên','Email','Địa chỉ hiện tại','Check in','Check out','Tăng ca'];
-    const aoa=[header, ...attAdminExportMatrix(built)];
-    const ws=XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:12},{wch:14},{wch:28},{wch:36},{wch:42},{wch:12},{wch:12},{wch:18}];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Cham cong');
+    const built=attAdminBuildMatrix(cur.y, cur.m);
+    if(!(await ensureExcelJsLib())){ toast('Không tải được thư viện Excel — kiểm tra mạng rồi thử lại','bad'); return; }
+    const aoa=attAdminExcelAoa(built);
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet('Cham cong',{views:[{state:'frozen',xSplit:2,ySplit:1}]});
+    aoa.forEach(row=>ws.addRow(row));
+    ws.getColumn(1).width=28;
+    ws.getColumn(2).width=36;
+    built.days.forEach((_,i)=>{ ws.getColumn(i+3).width=4; });
+    ws.getRow(1).font={bold:true};
+    ws.eachRow(row=>{
+      row.eachCell((cell,col)=>{ if(col>=3) cell.alignment={horizontal:'center',vertical:'middle'}; });
+    });
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const fname=attAdminFileBase(built.y, built.m)+'.xlsx';
-    XLSX.writeFile(wb, fname);
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=fname;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2500);
     toast('Đã tải Excel '+fname,'ok');
   }catch(err){
     console.error(err);
@@ -10438,25 +10450,35 @@ async function downloadAttAdminExcel(){
     if(btn) btn.disabled=false;
   }
 }
-function attPdfTableHtml(title, subtitle, dataRows){
-  const cols=['Tháng','Ngày','Họ và tên','Email','Địa chỉ hiện tại','Check in','Check out','Tăng ca'];
-  const head=cols.map(h=>`<th>${esc(h)}</th>`).join('');
-  const body=dataRows.length
-    ? dataRows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')
-    : '<tr><td colspan="8">Không có dữ liệu</td></tr>';
-  return `<div style="font-weight:800;font-size:18px;margin:0 0 4px">${esc(title)}</div>
-    <div style="font-size:12px;color:#64748b;margin:0 0 10px">${esc(subtitle)}</div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px">
+function attPdfMatrixHtml(title, subtitle, members, days){
+  const dups=attMatrixDupLabels(members);
+  const dayN=(days||[]).length;
+  const head=`<th class="nm">Thành viên</th>`+(days||[]).map(d=>`<th class="d">${attDayNum(d)}</th>`).join('');
+  const body=members&&members.length
+    ? members.map(mem=>{
+        const label=attMemberLabel(mem);
+        const email=String(mem.email||'').trim();
+        const showMail=!!email && email!==label && (dups.get(label)||0)>1;
+        const cells=(mem.marks||[]).map(on=>`<td class="d">${on?'✓':''}</td>`).join('');
+        return `<tr><td class="nm">${esc(label)}${showMail?`<div class="em">${esc(email)}</div>`:''}</td>${cells}</tr>`;
+      }).join('')
+    : `<tr><td class="nm" colspan="${dayN+1}">Chưa có tài khoản nào trong hệ thống.</td></tr>`;
+  const dayW=26;
+  const nameW=168;
+  return `<div style="font-weight:800;font-size:16px;margin:0 0 4px">${esc(title)}</div>
+    <div style="font-size:11px;color:#64748b;margin:0 0 10px">${esc(subtitle)}</div>
+    <table style="border-collapse:collapse;table-layout:fixed;font-size:10px;width:${nameW+dayN*dayW}px">
       <colgroup>
-        <col style="width:10%"><col style="width:11%"><col style="width:16%"><col style="width:18%">
-        <col style="width:23%"><col style="width:7%"><col style="width:7%"><col style="width:8%">
+        <col style="width:${nameW}px">${(days||[]).map(()=>`<col style="width:${dayW}px">`).join('')}
       </colgroup>
       <thead><tr>${head}</tr></thead>
       <tbody>${body}</tbody>
     </table>
     <style>
-      table th,table td{border:1px solid #e2e5e9;padding:4px 6px;vertical-align:top;word-wrap:break-word}
-      table th{background:#17181a;color:#fff;font-weight:700;text-align:left}
+      table th,table td{border:1px solid #e2e5e9;padding:3px 1px;text-align:center;vertical-align:middle}
+      table th{background:#17181a;color:#fff;font-weight:700}
+      table th.nm,table td.nm{text-align:left;padding:4px 8px;font-weight:700}
+      table .em{font-weight:500;font-size:8px;color:#64748b;margin-top:1px}
       tbody tr:nth-child(even) td{background:#f7f8f9}
     </style>`;
 }
@@ -10509,7 +10531,7 @@ async function downloadAttAdminPdf(){
   let mask=null;
   try{
     const cur=attAdminYm();
-    const built=attAdminBuildRows(cur.y, cur.m);
+    const built=attAdminBuildMatrix(cur.y, cur.m);
     if(!(await ensurePdfLibs())){
       toast('Không tải được thư viện PDF — kiểm tra mạng rồi thử lại','bad');
       return;
@@ -10520,20 +10542,21 @@ async function downloadAttAdminPdf(){
     mask.textContent='Đang tạo PDF…';
     document.body.appendChild(mask);
     const title='Chấm công — Tháng '+built.m+'/'+built.y+' — Quang Thanh Solar';
-    const matrix=attAdminExportMatrix(built);
-    const PER=16;
+    const members=built.members||[];
+    const PER=14;
     const chunks=[];
-    if(!matrix.length) chunks.push([]);
-    else for(let i=0;i<matrix.length;i+=PER) chunks.push(matrix.slice(i,i+PER));
+    if(!members.length) chunks.push([]);
+    else for(let i=0;i<members.length;i+=PER) chunks.push(members.slice(i,i+PER));
+    const hostW=Math.max(900, 168+built.days.length*26+48);
     const {jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     const margin=8, contentW=297-margin*2, contentH=210-margin*2;
     const state={first:true};
     for(let i=0;i<chunks.length;i++){
-      const sub='Tháng '+built.m+' / '+built.y+' · '+built.rows.length+' dòng · trang '+(i+1)+'/'+chunks.length;
+      const sub='Tháng '+built.m+' / '+built.y+' · '+built.userCount+' tài khoản · ✓ đã check in · trang '+(i+1)+'/'+chunks.length;
       const host=document.createElement('div');
-      host.style.cssText='position:fixed;left:0;top:0;width:1280px;background:#fff;z-index:1;padding:16px 16px 18px;box-sizing:border-box;color:#17181a;font-family:Be Vietnam Pro,system-ui,sans-serif';
-      host.innerHTML=attPdfTableHtml(title, sub, chunks[i]);
+      host.style.cssText='position:fixed;left:0;top:0;width:'+hostW+'px;background:#fff;z-index:1;padding:16px 16px 18px;box-sizing:border-box;color:#17181a;font-family:Be Vietnam Pro,system-ui,sans-serif';
+      host.innerHTML=attPdfMatrixHtml(title, sub, chunks[i], built.days);
       document.body.appendChild(host);
       try{
         await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -10543,8 +10566,8 @@ async function downloadAttAdminPdf(){
           backgroundColor:'#ffffff',
           useCORS:true,
           logging:false,
-          windowWidth:1280,
-          width:1280,
+          windowWidth:hostW,
+          width:hostW,
           height:cssH,
           scrollX:0,
           scrollY:0,
@@ -10570,29 +10593,23 @@ async function downloadAttAdminPdf(){
     if(mask) mask.remove();
   }
 }
+function attMatrixNameCell(mem, dups){
+  const label=attMemberLabel(mem);
+  const email=String(mem.email||'').trim();
+  const showMail=!!email && email!==label && (dups.get(label)||0)>1;
+  const title=showMail?label+' · '+email:(email&&email!==label?label+' · '+email:label);
+  return `<td class="att-mx-name" title="${esc(title)}"><span class="att-mx-who">${esc(label)}</span>${showMail?`<span class="att-mx-mail">${esc(email)}</span>`:''}</td>`;
+}
 function pageAttendanceAdmin(){
   const {y,m}=attAdminYm();
   const today=attVnYmd().key;
-  const built=attAdminBuildRows(y,m);
+  const built=attAdminBuildMatrix(y,m);
   const monthLabel='Tháng '+m+' / '+y;
-  const rows=built.rows;
-  const body=rows.length?rows.map(r=>{
-    const meta=attFormatDay(r.date);
-    const isToday=r.date===today;
-    return `<tr class="${isToday?'att-today':''}">
-      <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
-      <td class="att-name">${r.name?esc(r.name):'<span class="att-empty">—</span>'}</td>
-      <td>${r.address?`<div class="att-addr">${esc(r.address)}</div>`:'<span class="att-empty">—</span>'}</td>
-      <td>${attAdminPunchHtml(r.checkIn, r.checkInImg)}</td>
-      <td>${attAdminPunchHtml(r.checkOut, r.checkOutImg)}</td>
-      <td>${r.ot?`<div class="att-ot">${esc(r.ot)}</div>`:'<span class="att-empty">—</span>'}</td>
-    </tr>`;
-  }).join(''):'<tr><td colspan="6" class="empty">Không có tài khoản để hiển thị.</td></tr>';
-  return `<div class="page-head att-admin">
+  const head=`<div class="page-head att-admin">
       <div class="page-head-row">
         <div>
           <div class="page-title">${I.clock} Chấm công</div>
-          <div class="att-sub">${esc(monthLabel)} · ${built.userCount} tài khoản · ${rows.length} dòng</div>
+          <div class="att-sub">${esc(monthLabel)} · ${built.userCount} tài khoản · ✓ đã check in</div>
         </div>
         <div class="head-actions">
           <button type="button" class="btn btn-ghost" id="attXlsx">Tải Excel</button>
@@ -10604,15 +10621,28 @@ function pageAttendanceAdmin(){
         <div class="att-month-label">${esc(monthLabel)}</div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attNext" aria-label="Tháng sau">›</button>
       </div>
-    </div>
-    <div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-tbl">
+    </div>`;
+  if(!built.members.length){
+    return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Chưa có tài khoản nào trong hệ thống.</div></div>`;
+  }
+  const dups=attMatrixDupLabels(built.members);
+  const headDays=built.days.map(date=>{
+    const isToday=date===today;
+    const meta=attFormatDay(date);
+    return `<th class="att-mx-day${isToday?' att-mx-today':''}" scope="col" title="${esc(meta.full+(isToday?' · Hôm nay':''))}">${attDayNum(date)}</th>`;
+  }).join('');
+  const body=built.members.map(mem=>{
+    const cells=built.days.map((date,i)=>{
+      const isToday=date===today;
+      const on=!!mem.marks[i];
+      return `<td class="att-mx-day${isToday?' att-mx-today':''}" data-uid="${mem.id}" data-date="${esc(date)}"${on?' aria-label="Đã check in"':''}>${on?'<span class="att-mx-tick" data-att-on="1">✓</span>':''}</td>`;
+    }).join('');
+    return `<tr data-uid="${mem.id}">${attMatrixNameCell(mem, dups)}${cells}</tr>`;
+  }).join('');
+  return head+`<div class="tbl-card att-desktop att-admin"><div class="tbl-wrap"><table class="att-matrix" data-att-matrix="1">
       <thead><tr>
-        <th>Ngày</th>
-        <th>Họ và tên</th>
-        <th>Địa chỉ hiện tại</th>
-        <th>Check in</th>
-        <th>Check out</th>
-        <th>Tăng ca</th>
+        <th class="att-mx-name" scope="col">Thành viên</th>
+        ${headDays}
       </tr></thead>
       <tbody>${body}</tbody>
     </table></div></div>`;
