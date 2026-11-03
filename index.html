@@ -342,6 +342,7 @@ tbody tr:active{background:var(--surface)}
 .att-admin-nav .att-detail-go{margin-left:auto;flex:0 0 auto;background:var(--lime);color:var(--ink);font-weight:800}
 .att-admin-nav .att-detail-go:active{background:var(--lime-d)}
 .att-admin-day a.att-addr-link{display:inline-block;max-width:320px;color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px;word-break:break-word;cursor:pointer}
+.att-addr-cell a.att-addr-link{display:inline-block;max-width:280px;color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px;word-break:break-word;cursor:pointer}
 @media(max-width:767px){
   .att-admin-nav .att-month-label{min-width:0}
   .att-admin-nav .att-detail-go{min-height:40px}
@@ -11683,9 +11684,8 @@ function attPhotoHtml(img, date, kind, canEdit){
   return `<button type="button" class="att-upload" data-att-photo="${date}" data-att-kind="${kind}" title="Tải ảnh lên">${I.img}<span>Tải ảnh</span></button>`;
 }
 function attAddrCell(rec, date, canEdit){
-  const addr=(rec&&rec.address)||'';
   const btn=canEdit?`<button type="button" class="att-map" data-att-map="${date}">Gửi địa chỉ</button>`:'';
-  return `<div class="att-addr-cell"><div class="att-addr">${addr?esc(addr):'<span class="att-empty">—</span>'}</div>${btn}</div>`;
+  return `<div class="att-addr-cell">${attAdminAddrHtml(rec)}${btn}</div>`;
 }
 function attPunchCell(rec, date, kind, canEdit){
   const isIn=kind==='checkIn';
@@ -12331,27 +12331,13 @@ function pageAttendance(){
     <input type="file" id="attFile" accept="image/*" hidden>`;
 }
 let attBusy=false;
-async function attDoCheckIn(date){
-  if(attBusy||!attCanPunch(date)) return;
+function attDoCheckIn(date){
+  if(!attCanPunch(date)) return;
   const rec=attGetRecord(date);
   if(rec&&rec.checkIn){ toast('Ngày này đã check in','bad'); return; }
-  attBusy=true;
-  document.querySelectorAll('[data-att-in="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
-  toast('Đang lấy địa chỉ hiện tại…');
-  try{
-    try{
-      const loc=await attLocate();
-      attUpsert(date,{checkIn:new Date().toISOString(),address:loc.address,lat:loc.lat,lng:loc.lng,name:attEmpName()});
-      toast('Đã check in','ok');
-    }catch(e){
-      const code=e&&typeof e.code==='number'?e.code:0;
-      if(!(code===1||(e&&e.coarse))) attUpsert(date,{checkIn:new Date().toISOString(),name:attEmpName()});
-      toast(attGeoErrorMessage(e),'bad');
-    }
-    renderPage();
-  }finally{
-    attBusy=false;
-  }
+  attUpsert(date,{checkIn:new Date().toISOString()});
+  toast('Đã check in','ok');
+  renderPage();
 }
 function attDoCheckOut(date){
   if(!attCanPunch(date)) return;
@@ -12385,43 +12371,17 @@ function attPickPhoto(date, kind){
   };
   inp.click();
 }
-function attMapsUrl(lat, lng){
-  const la=Number(lat), ln=Number(lng);
-  if(!Number.isFinite(la)||!Number.isFinite(ln)) return '';
-  return 'https://www.google.com/maps?q='+la+','+ln;
-}
-function attHasStoredPin(rec){
-  if(!rec||rec.lat==null||rec.lng==null||rec.lat===''||rec.lng==='') return false;
-  return Number.isFinite(Number(rec.lat))&&Number.isFinite(Number(rec.lng));
-}
-async function attOpenMaps(url){
-  const win=window.open(url,'_blank','noopener');
-  try{ await navigator.clipboard.writeText(url); }catch(e){}
-  toast(win?'Đã gửi địa chỉ lên Google Maps':'Đã sao chép link Google Maps','ok');
-}
 async function attSendAddress(date){
   if(attBusy||!attCanPunch(date)) return;
-  const rec=attGetRecord(date);
-  const today=attDateKey(new Date());
-  if(date!==today && attHasStoredPin(rec)){
-    await attOpenMaps(attMapsUrl(rec.lat, rec.lng));
-    return;
-  }
-  const win=window.open('about:blank','_blank');
   attBusy=true;
   document.querySelectorAll('[data-att-map="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
   toast('Đang lấy định vị GPS…');
   try{
     const loc=await attLocate();
-    attUpsert(date,{address:loc.address,lat:loc.lat,lng:loc.lng,name:attEmpName()});
-    const url=attMapsUrl(loc.lat, loc.lng);
-    if(win) win.location.href=url;
-    else window.open(url,'_blank','noopener');
-    try{ await navigator.clipboard.writeText(url); }catch(e){}
-    toast('Đã gửi địa chỉ lên Google Maps','ok');
+    attUpsert(date,{address:loc.address,lat:loc.lat,lng:loc.lng});
+    toast('Đã gửi địa chỉ','ok');
     renderPage();
   }catch(e){
-    if(win) try{ win.close(); }catch(err){}
     toast(attGeoErrorMessage(e),'bad');
     renderPage();
   }finally{
