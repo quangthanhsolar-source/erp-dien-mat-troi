@@ -3965,13 +3965,16 @@ function quoteLaborRatePerKwp(c){
   const inv=(c&&c.inv)||quoteSelectedInv();
   return isGridTiedInverter(inv)?800000:1500000;
 }
+/** Hòa lưới bám tải INVT XG: mặc định 920.000đ × kWp, sàn 700.000đ × kWp. */
+const BAM_TAI_LABOR_PER_KWP=920000;
+const BAM_TAI_LABOR_FLOOR_PER_KWP=700000;
 /** Giá lắp đặt pin: kWp × đơn giá × 0.92 (trừ VAT) ± % khu vực BD/CT.
- *  Hòa lưới bám tải INVT XG: 1.000.000đ × công suất tấm pin (kWp). */
+ *  Hòa lưới bám tải INVT XG: 920.000đ × công suất tấm pin (kWp). */
 function quoteLaborInstallPrice(c){
   const inv=(c&&c.inv)||quoteSelectedInv();
   let p;
   if(isInvtXgExport(inv)){
-    p=Math.round(systemKwpQty(c)*1000000);
+    p=Math.round(systemKwpQty(c)*BAM_TAI_LABOR_PER_KWP);
   }else{
     const rate=quoteLaborRatePerKwp(c);
     p=Math.round(systemKwpQty(c)*rate*0.92);
@@ -3989,6 +3992,8 @@ function isQuoteHv3Phase(){
   return !!(QT&&QT.volt==='HV'&&+QT.phase===3);
 }
 function quoteLaborFloor(c){
+  const inv=(c&&c.inv)||quoteSelectedInv();
+  if(isInvtXgExport(inv)) return Math.max(0, Math.round(systemKwpQty(c)*BAM_TAI_LABOR_FLOOR_PER_KWP));
   if(isQuoteHv3Phase()) return Math.max(0, Math.round(systemKwpQty(c)*500000));
   return quoteLaborInstallPrice(c);
 }
@@ -4517,13 +4522,39 @@ function applyQuoteQtyFormulas(c){
     setQty(r, 1);
     const prevBasis=r.laborBasis!=null&&r.laborBasis!==''?+r.laborBasis:null;
     const basisChanged=prevBasis!=null && prevBasis!==+laborPrice;
+    const exportLabor=isInvtXgExport((c&&c.inv)||quoteSelectedInv());
+    const kwp=systemKwpQty(c);
+    const prevKwp=r.laborKwp!=null&&r.laborKwp!==''?+r.laborKwp:null;
+    const kwpChanged=prevKwp!=null && Math.abs(prevKwp-kwp)>1e-6;
+    // Báo giá bám tải đã lưu chưa có đơn giá/kWp: suy ra từ thành tiền cũ trước khi đổi kWp.
+    if(exportLabor && r.priceManual && kwpChanged && !(+r.laborRate>0) && prevKwp>0)
+      r.laborRate=(+r.price)/prevKwp;
+    const keepBamTaiRate=exportLabor && !!r.priceManual && +r.laborRate>0 && kwpChanged;
     // Đổi kWp / loại biến tần / % khu vực thì giá công thức đổi theo. Preview và PDF không được ghi đè giá đã sửa khi công thức không đổi.
-    if(basisChanged) r.priceManual=false;
+    // Hòa lưới bám tải: nếu đã sửa đơn giá thì giữ đ/kWp đó khi đổi công suất tấm pin, nhưng không dưới 700.000 × kWp.
+    if(basisChanged && !keepBamTaiRate) r.priceManual=false;
     if(!_qtPriceLockInit && !r.priceManual && prevBasis==null && r.price!=null && r.price!=='' && +r.price!==+laborPrice) r.priceManual=true;
     r.minPrice=laborFloor;
     r.laborBasis=laborPrice;
-    if(!r.priceManual) r.price=laborPrice;
-    else if(+r.price<laborFloor) r.price=laborFloor;
+    if(exportLabor) r.laborKwp=kwp;
+    else{ delete r.laborKwp; delete r.laborRate; }
+    if(!r.priceManual){
+      r.price=laborPrice;
+      if(exportLabor && +r.price<laborFloor) r.price=laborFloor;
+      if(exportLabor) delete r.laborRate;
+    }else if(keepBamTaiRate){
+      let next=Math.round(kwp*(+r.laborRate));
+      if(!(next>=laborFloor)){
+        next=laborFloor;
+        r.laborRate=BAM_TAI_LABOR_FLOOR_PER_KWP;
+      }
+      r.price=next;
+    }else if(+r.price<laborFloor){
+      r.price=laborFloor;
+      if(exportLabor) r.laborRate=BAM_TAI_LABOR_FLOOR_PER_KWP;
+    }else if(exportLabor && !(+r.laborRate>0) && kwp>0){
+      r.laborRate=(+r.price)/kwp;
+    }
   });
   _qtQtyLockInit=true;
   _qtPriceLockInit=true;
@@ -4767,7 +4798,12 @@ function bindQtMoneyPrice(inp, opts){
     const floor=opts.getFloor?opts.getFloor():null;
     if(floor!=null && v<floor){
       v=floor;
-      if(showToast) toast('Giá không được thấp hơn giá niêm yết','bad');
+      if(showToast){
+        let msg='Giá không được thấp hơn giá niêm yết';
+        const custom=typeof opts.floorToast==='function'?opts.floorToast():opts.floorToast;
+        if(custom) msg=custom;
+        toast(msg,'bad');
+      }
     }
     opts.setPrice(v);
     inp.value=formatMoneyDots(v);
@@ -6032,11 +6068,26 @@ function bindQuote(){
         const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
         return r?qtPriceFloor(r):null;
       },
+      floorToast:()=>{
+        const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
+        if(r && /Lắp đặt pin và vận hành/i.test(String(r.name||'')) && isInvtXgExport())
+          return 'Giá lắp đặt không thấp hơn 700.000 đ × kWp';
+        return '';
+      },
       setPrice:v=>{
         const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
         if(!r) return;
         r.price=v;
-        if(/Lắp đặt pin và vận hành/i.test(String(r.name||''))) markQuotePriceManual(r);
+        if(/Lắp đặt pin và vận hành/i.test(String(r.name||''))){
+          markQuotePriceManual(r);
+          if(isInvtXgExport()){
+            const kwp=systemKwpQty(effectiveCalc()||{});
+            if(kwp>0){
+              r.laborRate=(+v)/kwp;
+              r.laborKwp=kwp;
+            }
+          }
+        }
       },
       refresh:refreshNc
     }));
