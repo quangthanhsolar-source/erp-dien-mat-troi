@@ -2124,6 +2124,9 @@ function cloneDBForLocalStorage(){
         delete copy.surveyImgs;
         return copy;
       });
+    }else if(k==='attendance'){
+      // Ảnh gốc nằm IndexedDB — localStorage chỉ giữ field chấm công và thumb nhỏ
+      data[k]=attLocalSlim(DB.attendance);
     }else data[k]=DB[k];
   });
   return data;
@@ -2161,6 +2164,8 @@ function loadDB(){
 loadDB();
 if(!Array.isArray(DB.crm)) DB.crm=[];
 if(!Array.isArray(DB.attendance)) DB.attendance=[];
+try{ attArchiveLocalPhotos(); }catch(e){}
+attHydratePhotosFromIdb().catch(()=>{});
 try{ if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB(); }catch(e){}
 try{ if(typeof crmApplyQuoteMetaToDB==='function') crmApplyQuoteMetaToDB(); }catch(e){}
 try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
@@ -2343,7 +2348,12 @@ function applyDBPayload(data){
       DB.suppliers=(data.suppliers||[]).filter(s=>s&&!gone.has(Number(s.id)));
       return;
     }
-    if(k==='attendance') return;
+    if(k==='attendance'){
+      DB.attendance=attMergeRecords(DB.attendance, data.attendance);
+      try{ attArchiveLocalPhotos(); }catch(e){}
+      try{ attHydratePhotosFromIdb(); }catch(e){}
+      return;
+    }
     if(k==='workPlans'){
       DB.workPlans=wpMergePlans(DB.workPlans, data.workPlans);
       return;
@@ -2557,6 +2567,8 @@ function sbBundleToPayload(bundle){
       data.workPlans=raw._workPlans;
       delete raw._workPlans;
     }
+    if(Array.isArray(raw._attendance)) data.attendance=raw._attendance;
+    delete raw._attendance;
     if(raw._assets&&typeof raw._assets==='object'&&!Array.isArray(raw._assets)){
       data.assets=raw._assets;
       delete raw._assets;
@@ -2691,7 +2703,7 @@ function persistSyncBase(){
   try{ if(_syncBase) localStorage.setItem(SYNC_BASE_KEY, JSON.stringify(_syncBase)); }catch(e){}
 }
 function captureSyncBase(){
-  const base={quotes:{},products:{},stock:{},trans:{},users:{},crm:{},customers:{},suppliers:{},settings:syncHash(DB.settings||{}),workPlans:syncHash(wpPlansPayload()),assets:syncHash(assetSheetPayload())};
+  const base={quotes:{},products:{},stock:{},trans:{},users:{},crm:{},customers:{},suppliers:{},settings:syncHash(DB.settings||{}),workPlans:syncHash(wpPlansPayload()),assets:syncHash(assetSheetPayload()),attendance:syncHash(attFingerprint(DB.attendance))};
   (DB.quotes||[]).forEach(q=>{ if(q&&q.code) base.quotes[String(q.code)]=syncHash(q); });
   SB_PRODUCT_KEYS.forEach(k=>{
     (DB[k]||[]).forEach(p=>{ if(p&&p.id!=null) base.products[String(p.id)]=syncHash(p); });
@@ -2818,6 +2830,7 @@ async function pullDBFromSupabase(){
     const prevBase=_syncBase;
     const snap=dirtyBefore?takeSyncSnapshot():null;
     const localUsersBefore=(DB.users||[]).slice();
+    const remoteAttRaw=bundle.settings&&bundle.settings.data?bundle.settings.data._attendance:null;
     const brandN=applyDBPayload(sbBundleToPayload(bundle))||0;
     try{ crmApplyOverridesToDB(); }catch(e){}
     try{ crmApplySurveyMetaToDB(); }catch(e){}
@@ -2853,6 +2866,13 @@ async function pullDBFromSupabase(){
     if(!remoteHasAssetRows&&_syncBase){
       _syncBase.assets='';
       persistSyncBase();
+    }
+    if(_syncBase){
+      const remoteAttHash=syncHash(attFingerprint(Array.isArray(remoteAttRaw)?remoteAttRaw:[]));
+      if(_syncBase.attendance!==remoteAttHash){
+        _syncBase.attendance='';
+        persistSyncBase();
+      }
     }
     SB_PRODUCT_KEYS.forEach(k=>(DB[k]||[]).forEach(p=>{
       if(p&&p.id!=null&&!idsBeforeSeed.has(String(p.id))) pending.keys.products.push(String(p.id));
@@ -3022,14 +3042,18 @@ async function pushDBToSupabase(){
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
     const wpPlansChanged=!!(_syncBase&&_syncBase.workPlans!==syncHash(wpPlansPayload()));
     const assetsChanged=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
+    const attChanged=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
     const hasCrmOverrides=!!(DB.settings&&DB.settings.crmOverrides&&Object.keys(DB.settings.crmOverrides).length);
     // Luôn đẩy settings khi có CRM override (ghi chú/ảnh/trạng thái…) để không mất sau reload
-    if(settingsChanged||wpPlansChanged||assetsChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
+    if(settingsChanged||wpPlansChanged||assetsChanged||attChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
+    let attPayload=[];
     try{
       const {data:curWp}=await sb.from('erp_settings').select('data').eq('id','main').maybeSingle();
       const remoteWp=curWp&&curWp.data&&curWp.data._workPlans;
       DB.workPlans=wpMergePlans(remoteWp, DB.workPlans);
+      DB.attendance=attMergeRecords(DB.attendance, curWp&&curWp.data&&curWp.data._attendance);
     }catch(e){ console.warn('workPlans merge', e); }
+    try{ attPayload=await attAttendancePayload(); }catch(e){ console.warn('attendance payload', e); attPayload=attScalarsOnly(DB.attendance); }
     const {error:setErr}=await sb.from('erp_settings').upsert({
       id:'main',
       data:{
@@ -3072,7 +3096,8 @@ async function pushDBToSupabase(){
         _deletedUserEmails:Array.isArray(DB.deletedUserEmails)?DB.deletedUserEmails:[],
         _contracts:Array.isArray(DB.contracts)?DB.contracts:[],
         _workPlans:wpPlansPayload(),
-        _assets:assetSheetPayload()
+        _assets:assetSheetPayload(),
+        _attendance:attPayload
       },
       updated_at:now
     });
@@ -3368,6 +3393,7 @@ async function enterApp(u, opt){
     const seedPriceN=applySeedCatalogPricesOnce();
     const assetN=applyAssetSheetOnce();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
+    const attSync=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
     const brandFixed=normalizeCatalogBrands();
     applyPimgToDB();
     const ordAdded=await ensureExcelOrders();
@@ -3375,7 +3401,7 @@ async function enterApp(u, opt){
     ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||assetSync){
+    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||assetSync||attSync){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
       if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
@@ -10726,6 +10752,7 @@ async function pushUsersToSupabase(){
         _deletedProductCodes:Array.isArray(DB.deletedProductCodes)?DB.deletedProductCodes:(prev._deletedProductCodes||[]),
         _contracts:Array.isArray(DB.contracts)?DB.contracts:(prev._contracts||[]),
         _workPlans:(DB.workPlans=wpMergePlans(prev._workPlans, DB.workPlans)),
+        _attendance:(DB.attendance=attMergeRecords(DB.attendance, prev._attendance), await attAttendancePayload()),
         _assets:assetSheetPayload()||prev._assets||null,
         _pimgOverrides:(()=>{
           const o=loadPimgOverrides()||{};
@@ -11013,9 +11040,227 @@ const EYE={dashboard:'Tổng quan',crm:'Khách hàng',"quote-new":'Báo giá NLM
  "dev-light":'Thiết bị',"dev-pump":'Thiết bị',"dev-accessory":'Thiết bị',"dev-mount":'Thiết bị',"dev-cable":'Thiết bị',
  stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công','work-plan':'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
 function attPad(n){ return String(n).padStart(2,'0'); }
+/** Ngày lịch Asia/Ho_Chi_Minh. Chuỗi YYYY-MM-DD giữ nguyên — không parse qua UTC. */
 function attDateKey(d){
+  if(typeof d==='string'){
+    const m=d.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(m) return m[1]+'-'+attPad(+m[2])+'-'+attPad(+m[3]);
+  }
   const x=d instanceof Date?d:new Date(d);
+  if(!(x instanceof Date)||isNaN(+x)) return '';
+  try{
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(x);
+    const y=(parts.find(p=>p.type==='year')||{}).value;
+    const mo=(parts.find(p=>p.type==='month')||{}).value;
+    const day=(parts.find(p=>p.type==='day')||{}).value;
+    if(y&&mo&&day) return String(y)+'-'+String(mo)+'-'+String(day);
+  }catch(e){}
   return x.getFullYear()+'-'+attPad(x.getMonth()+1)+'-'+attPad(x.getDate());
+}
+const ATT_PHOTO_INLINE_MAX=12000;
+const ATT_PHOTO_BUDGET=280000;
+function attPhotoEmpty(v){
+  return v==null||v==='';
+}
+function attNormalizeRecord(r){
+  if(!r||typeof r!=='object') return null;
+  const userId=Number(r.userId);
+  let date='';
+  if(r.date!=null&&String(r.date).trim()) date=attDateKey(String(r.date).trim().slice(0,10))||'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
+    if(r.checkIn) date=attDateKey(r.checkIn);
+    else if(r.checkOut) date=attDateKey(r.checkOut);
+  }
+  if(!Number.isFinite(userId)||!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const lat=r.lat==null||r.lat===''?null:Number(r.lat);
+  const lng=r.lng==null||r.lng===''?null:Number(r.lng);
+  const checkIn=r.checkIn?String(r.checkIn):'';
+  const checkOut=r.checkOut?String(r.checkOut):'';
+  return {
+    id:r.id!=null?r.id:(userId+':'+date),
+    userId,
+    date,
+    name:r.name==null?'':String(r.name),
+    address:r.address==null?'':String(r.address),
+    lat:Number.isFinite(lat)?lat:null,
+    lng:Number.isFinite(lng)?lng:null,
+    img:typeof r.img==='string'?r.img:'',
+    checkInImg:typeof r.checkInImg==='string'?r.checkInImg:'',
+    checkOutImg:typeof r.checkOutImg==='string'?r.checkOutImg:'',
+    checkInThumb:typeof r.checkInThumb==='string'?r.checkInThumb:'',
+    checkOutThumb:typeof r.checkOutThumb==='string'?r.checkOutThumb:'',
+    checkIn,
+    checkOut,
+    updatedAt:r.updatedAt?String(r.updatedAt):(checkOut||checkIn||'')
+  };
+}
+function attPreferPhoto(a,b){
+  const as=typeof a==='string'?a:'';
+  const bs=typeof b==='string'?b:'';
+  if(!as) return bs;
+  if(!bs) return as;
+  return as.length>=bs.length?as:bs;
+}
+function attMergeOne(a,b){
+  const aT=Date.parse(a.updatedAt)||Date.parse(a.checkOut)||Date.parse(a.checkIn)||0;
+  const bT=Date.parse(b.updatedAt)||Date.parse(b.checkOut)||Date.parse(b.checkIn)||0;
+  const primary=bT>=aT?b:a;
+  const secondary=bT>=aT?a:b;
+  const out=Object.assign({}, secondary, primary);
+  ['name','address','checkIn','checkOut'].forEach(f=>{
+    if(attPhotoEmpty(out[f])&&!attPhotoEmpty(secondary[f])) out[f]=secondary[f];
+  });
+  if(out.lat==null&&secondary.lat!=null) out.lat=secondary.lat;
+  if(out.lng==null&&secondary.lng!=null) out.lng=secondary.lng;
+  ['img','checkInImg','checkOutImg','checkInThumb','checkOutThumb'].forEach(f=>{
+    out[f]=attPreferPhoto(a[f], b[f]);
+  });
+  out.userId=Number(primary.userId);
+  out.date=primary.date;
+  out.id=primary.id!=null?primary.id:secondary.id;
+  const pAt=primary.updatedAt||'';
+  const sAt=secondary.updatedAt||'';
+  out.updatedAt=(Date.parse(pAt)||0)>=(Date.parse(sAt)||0)?pAt:sAt;
+  return out;
+}
+function attNormalizeList(list){
+  const map=new Map();
+  (Array.isArray(list)?list:[]).forEach(r=>{
+    const n=attNormalizeRecord(r);
+    if(!n) return;
+    const k=n.userId+'|'+n.date;
+    const prev=map.get(k);
+    map.set(k, prev?attMergeOne(prev, n):n);
+  });
+  return [...map.values()].sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:(a.userId-b.userId)));
+}
+function attMergeRecords(local, remote){
+  const a=Array.isArray(local)?local:(local&&typeof local==='object'?[local]:[]);
+  const b=Array.isArray(remote)?remote:(remote&&typeof remote==='object'?[remote]:[]);
+  return attNormalizeList(a.concat(b));
+}
+function attFingerprint(list){
+  return attNormalizeList(list).map(r=>({
+    id:r.id==null?'':String(r.id),
+    userId:r.userId,
+    date:r.date,
+    name:r.name||'',
+    address:r.address||'',
+    lat:r.lat==null?'':r.lat,
+    lng:r.lng==null?'':r.lng,
+    checkIn:r.checkIn||'',
+    checkOut:r.checkOut||'',
+    updatedAt:r.updatedAt||''
+  }));
+}
+function attScalarsOnly(list){
+  return attNormalizeList(list).map(r=>({
+    id:r.id, userId:r.userId, date:r.date, name:r.name||'', address:r.address||'',
+    lat:r.lat, lng:r.lng, checkIn:r.checkIn||'', checkOut:r.checkOut||'', updatedAt:r.updatedAt||''
+  }));
+}
+function attLocalSlim(list){
+  return attNormalizeList(list).map(r=>{
+    const c=Object.assign({}, r);
+    ['img','checkInImg','checkOutImg'].forEach(f=>{
+      if(typeof c[f]==='string'&&c[f].startsWith('data:')&&c[f].length>ATT_PHOTO_INLINE_MAX) c[f]='';
+    });
+    return c;
+  });
+}
+function attPhotoIdbId(userId, date, kind){
+  return Number(userId)+'|'+date+'|'+(kind==='out'?'out':'in');
+}
+function attArchiveLocalPhotos(){
+  const list=Array.isArray(DB.attendance)?DB.attendance:[];
+  if(typeof crmSurveyIdbPut!=='function') return;
+  list.forEach(r=>{
+    if(!r) return;
+    [['checkInImg','in'],['img','in'],['checkOutImg','out']].forEach(pair=>{
+      const field=pair[0], kind=pair[1];
+      const v=r[field];
+      if(typeof v!=='string'||!v.startsWith('data:')||v.length<=ATT_PHOTO_INLINE_MAX) return;
+      const id=attPhotoIdbId(r.userId, r.date||attDateKey(r.checkIn||r.checkOut||''), kind);
+      crmSurveyIdbPut('att', id, {name:'cham-cong-'+kind+'.jpg', mime:'image/jpeg', kind:'image', dataUrl:v, size:v.length}).catch(()=>{});
+    });
+  });
+}
+async function attHydratePhotosFromIdb(){
+  if(typeof crmSurveyIdbGet!=='function') return 0;
+  const list=Array.isArray(DB.attendance)?DB.attendance:[];
+  let n=0;
+  for(const r of list){
+    if(!r||r.userId==null||!r.date) continue;
+    for(const pair of [['checkInImg','in'],['checkOutImg','out']]){
+      const field=pair[0], kind=pair[1];
+      if(typeof r[field]==='string'&&r[field].startsWith('data:')&&r[field].length>80) continue;
+      try{
+        const hit=await crmSurveyIdbGet('att', attPhotoIdbId(r.userId, r.date, kind));
+        if(hit&&typeof hit.dataUrl==='string'&&hit.dataUrl.startsWith('data:')){
+          r[field]=hit.dataUrl;
+          n++;
+        }
+      }catch(e){}
+    }
+  }
+  if(n>0&&typeof ROUTE!=='undefined'&&ROUTE==='attendance'&&typeof renderPage==='function'){
+    try{ renderPage(); }catch(e){}
+  }
+  return n;
+}
+async function attThumbForSync(dataUrl){
+  if(typeof dataUrl!=='string'||!dataUrl.startsWith('data:image')) return '';
+  if(dataUrl.length<=ATT_PHOTO_INLINE_MAX) return dataUrl;
+  try{
+    if(typeof compressProdImg!=='function') return '';
+    const t=await compressProdImg(dataUrl, 72, 0.46);
+    if(typeof t==='string'&&t.startsWith('data:image')&&t.length<=ATT_PHOTO_INLINE_MAX) return t;
+  }catch(e){}
+  return '';
+}
+async function attAttendancePayload(){
+  const rows=attNormalizeList(DB.attendance);
+  const prepared=[];
+  for(const r of rows){
+    let inImg='';
+    let outImg='';
+    try{ inImg=await attThumbForSync(r.checkInImg||r.img||r.checkInThumb||''); }catch(e){ inImg=''; }
+    try{ outImg=await attThumbForSync(r.checkOutImg||r.checkOutThumb||''); }catch(e){ outImg=''; }
+    prepared.push({r, inImg, outImg});
+  }
+  const order=prepared.slice().sort((a,b)=>{
+    const ta=Date.parse(a.r.updatedAt)||Date.parse(a.r.checkIn)||0;
+    const tb=Date.parse(b.r.updatedAt)||Date.parse(b.r.checkIn)||0;
+    return tb-ta;
+  });
+  const allow=new Set();
+  let used=0;
+  order.forEach(item=>{
+    const n=(item.inImg||'').length+(item.outImg||'').length;
+    if(!n||used+n>ATT_PHOTO_BUDGET) return;
+    allow.add(item.r.userId+'|'+item.r.date);
+    used+=n;
+  });
+  return prepared.map(item=>{
+    const r=item.r;
+    const o={
+      id:r.id,
+      userId:r.userId,
+      date:r.date,
+      name:r.name||'',
+      address:r.address||'',
+      lat:r.lat,
+      lng:r.lng,
+      checkIn:r.checkIn||'',
+      checkOut:r.checkOut||'',
+      updatedAt:r.updatedAt||''
+    };
+    if(allow.has(r.userId+'|'+r.date)){
+      if(item.inImg) o.checkInImg=item.inImg;
+      if(item.outImg) o.checkOutImg=item.outImg;
+    }
+    return o;
+  });
 }
 function attEmpId(){ return ME&&ME.id!=null?ME.id:0; }
 function attEmpName(){ return (ME&&ME.name)||''; }
@@ -11029,16 +11274,19 @@ function attGetRecord(date){
 }
 function attUpsert(date, patch){
   const uid=attEmpId();
+  const day=attDateKey(date)||String(date||'');
   attEnsureStore();
-  let rec=attGetRecord(date);
+  let rec=attGetRecord(day);
   if(!rec){
-    rec={id:Date.now(),userId:uid,date:date,name:attEmpName(),address:'',lat:null,lng:null,img:'',checkInImg:'',checkOutImg:'',checkIn:'',checkOut:''};
+    rec={id:Date.now(),userId:Number(uid),date:day,name:attEmpName(),address:'',lat:null,lng:null,img:'',checkInImg:'',checkOutImg:'',checkIn:'',checkOut:'',updatedAt:''};
     DB.attendance.push(rec);
   }
   Object.assign(rec, patch||{});
-  rec.userId=uid;
+  rec.userId=Number(uid);
   rec.name=attEmpName()||rec.name||'';
-  rec.date=date;
+  rec.date=day;
+  rec.updatedAt=new Date().toISOString();
+  try{ attArchiveLocalPhotos(); }catch(e){}
   saveDB();
   return rec;
 }
@@ -11220,7 +11468,7 @@ function attPunchCell(rec, date, kind, canEdit){
   const isIn=kind==='checkIn';
   const iso=rec&&rec[kind];
   const lockedOut=!isIn && !(rec&&rec.checkIn);
-  const img=(rec&&(isIn?(rec.checkInImg||rec.img):rec.checkOutImg))||'';
+  const img=(rec&&(isIn?(rec.checkInImg||rec.img||rec.checkInThumb):(rec.checkOutImg||rec.checkOutThumb)))||'';
   let timeHtml='<span class="att-empty">—</span>';
   if(iso) timeHtml=`<div class="att-time">${esc(attFormatTime(iso))}</div>`;
   else if(canEdit && !lockedOut){
@@ -11234,12 +11482,12 @@ function attOtCell(rec){
   return t?`<div class="att-ot">${esc(t)}</div>`:'<span class="att-empty">—</span>';
 }
 function attMonthDays(){
-  const now=new Date();
-  const y=now.getFullYear(), m=now.getMonth();
+  const t=attVnYmd();
+  const y=t.y, m=t.m-1;
   const n=new Date(y, m+1, 0).getDate();
   const days=[];
-  for(let d=1;d<=n;d++) days.push(attDateKey(new Date(y,m,d)));
-  return {y,m,days,today:attDateKey(now)};
+  for(let d=1;d<=n;d++) days.push(y+'-'+attPad(m+1)+'-'+attPad(d));
+  return {y,m,days,today:t.key};
 }
 let attAdminCursor=null;
 let attExportBusy=false;
