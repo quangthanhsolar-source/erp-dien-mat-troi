@@ -104,6 +104,24 @@ img{max-width:100%;height:auto}
   display:grid;place-items:center;flex:none;
 }
 .topbar-btn svg{width:18px;height:18px;color:var(--ink-2)}
+/* Mobile header: menu + logo trái, tên trang căn phải. Pill "+ Tạo báo giá" chỉ ẩn ở đây. */
+@media(max-width:767.98px){
+  .topbar #topFab{display:none !important}
+  .topbar > div:has(#topbarTitle){
+    min-width:0;
+    display:flex;
+    justify-content:flex-end;
+    align-items:center;
+  }
+  .topbar #topbarTitle{
+    flex:0 1 auto;
+    min-width:0;
+    text-align:right;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+}
 
 /* ============ DRAWER SIDEBAR ============ */
 .sidebar{
