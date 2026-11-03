@@ -104,22 +104,22 @@ img{max-width:100%;height:auto}
   display:grid;place-items:center;flex:none;
 }
 .topbar-btn svg{width:18px;height:18px;color:var(--ink-2)}
-/* Mobile header: menu + logo trái, tên trang căn phải. Pill "+ Tạo báo giá" chỉ ẩn ở đây. */
+/* Mobile header: hamburger trái, logo căn giữa toàn bộ thanh. Ẩn tên trang. Pill "+ Tạo báo giá" chỉ ẩn ở đây. */
 @media(max-width:767.98px){
   .topbar #topFab{display:none !important}
-  .topbar > div:has(#topbarTitle){
-    min-width:0;
-    display:flex;
-    justify-content:flex-end;
-    align-items:center;
+  .topbar > div:has(#topbarTitle){display:none !important}
+  .topbar #menuBtn{position:relative;z-index:2}
+  .topbar .brandmark{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    z-index:1;
+    /* 100vw: % của chính logo làm max-width ảnh co về 0 */
+    max-width:min(168px, calc(100vw - 132px));
   }
-  .topbar #topbarTitle{
-    flex:0 1 auto;
-    min-width:0;
-    text-align:right;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+  .topbar .brandmark img{
+    max-width:min(168px, 46vw, calc(100vw - 132px));
   }
 }
 
