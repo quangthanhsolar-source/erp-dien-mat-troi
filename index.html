@@ -1478,7 +1478,203 @@ function applyUserAccountSeedOnce(){
     USER_ACCOUNT_LAST=stats;
   }
   applyAccountRoleMap();
+  changed+=dedupeStoredUsers();
   return changed;
+}
+/* Một lệnh INSERT ... ON CONFLICT không được chứa hai dòng cùng id (khóa chính)
+   hoặc cùng email (unique lower(email)) — Postgres báo
+   "ON CONFLICT DO UPDATE command cannot affect row a second time".
+   SĐT chỉ gộp khi đó là tài khoản Excel (id 9xxxxxx) trùng đúng một tài khoản cũ,
+   để không xóa các user không liên quan đang chung SĐT placeholder. */
+let APP_USER_DROP_IDS=[];
+function appUserEmailKey(email){
+  return String(email==null?'':email).trim().toLowerCase();
+}
+function appUserPhoneKey(phone){
+  return String(phone==null?'':phone).replace(/\D/g,'');
+}
+function collapseAppUsers(list, opt){
+  opt=opt||{};
+  const src=Array.isArray(list)?list:[];
+  const respectTomb=opt.tombstone!==false&&typeof isTombstonedUser==='function';
+  const live=[];
+  const indexOf=new Map();
+  src.forEach(u=>{
+    if(!u||u.id==null||!Number.isFinite(Number(u.id))) return;
+    if(respectTomb&&isTombstonedUser(u)) return;
+    indexOf.set(u, live.length);
+    live.push(u);
+  });
+  const parent=live.map((_,i)=>i);
+  const find=i=>{ while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; };
+  const union=(a,b)=>{ a=find(a); b=find(b); if(a!==b) parent[b]=a; };
+  const linkReason=new Map();
+  const note=(a,b,reason)=>{
+    const k=Math.min(a,b)+':'+Math.max(a,b);
+    if(!linkReason.has(k)) linkReason.set(k, reason);
+  };
+  const idAt=new Map();
+  const emailAt=new Map();
+  live.forEach((u,i)=>{
+    const id=Number(u.id);
+    if(idAt.has(id)){ note(i,idAt.get(id),'id'); union(i,idAt.get(id)); }
+    else idAt.set(id,i);
+    const em=appUserEmailKey(u.email);
+    if(!em) return;
+    if(emailAt.has(em)){ note(i,emailAt.get(em),'email'); union(i,emailAt.get(em)); }
+    else emailAt.set(em,i);
+  });
+  const phoneGroups=new Map();
+  live.forEach((u,i)=>{
+    const ph=appUserPhoneKey(u.phone);
+    if(!ph) return;
+    if(!phoneGroups.has(ph)) phoneGroups.set(ph,[]);
+    phoneGroups.get(ph).push(i);
+  });
+  phoneGroups.forEach(idxs=>{
+    if(idxs.length<2) return;
+    const excel=idxs.filter(i=>isUserAccountSeedId(live[i].id));
+    const older=idxs.filter(i=>!isUserAccountSeedId(live[i].id));
+    if(older.length>1||!excel.length) return;
+    if(older.length===1) excel.forEach(i=>{ note(i,older[0],'phone'); union(i,older[0]); });
+    else for(let k=1;k<excel.length;k++){ note(excel[k],excel[0],'phone'); union(excel[k],excel[0]); }
+  });
+  const mergedAt=new Map();
+  const collapsed=[];
+  const groups=new Map();
+  live.forEach((_,i)=>{
+    const r=find(i);
+    if(!groups.has(r)) groups.set(r,[]);
+    groups.get(r).push(i);
+  });
+  groups.forEach(idxs=>{
+    const root=find(idxs[0]);
+    if(idxs.length===1){ mergedAt.set(root, live[idxs[0]]); return; }
+    let keepI=idxs[0];
+    idxs.slice(1).forEach(i=>{
+      const a=live[keepI], b=live[i];
+      const aSeed=isUserAccountSeedId(a.id), bSeed=isUserAccountSeedId(b.id);
+      if(aSeed!==bSeed){ if(aSeed) keepI=i; return; }
+      if(Number(b.id)<Number(a.id)) keepI=i;
+    });
+    const keep=live[keepI];
+    const donors=idxs.filter(i=>i!==keepI).map(i=>({i,u:live[i]})).sort((a,b)=>{
+      const ae=isUserAccountSeedId(a.u.id)?1:0, be=isUserAccountSeedId(b.u.id)?1:0;
+      if(ae!==be) return ae-be;
+      if(Number(a.u.id)!==Number(b.u.id)) return Number(a.u.id)-Number(b.u.id);
+      return a.i-b.i;
+    });
+    const fillEmail=(srcEmail, overwrite)=>{
+      const next=String(srcEmail==null?'':srcEmail).trim();
+      if(!next) return;
+      const cur=String(keep.email==null?'':keep.email).trim();
+      if(!cur){ keep.email=next; return; }
+      if(appUserEmailKey(cur)===appUserEmailKey(next)){ keep.email=cur; return; }
+      if(overwrite) keep.email=next;
+    };
+    const fillPhone=(srcPhone, overwrite)=>{
+      const next=srcPhone==null?'':srcPhone;
+      if(!String(next).trim()) return;
+      if(!keep.phone){ keep.phone=next; return; }
+      if(appUserPhoneKey(keep.phone)===appUserPhoneKey(next)) return;
+      if(overwrite) keep.phone=next;
+    };
+    donors.forEach(d=>{
+      const src=d.u;
+      const excel=isUserAccountSeedId(src.id);
+      if(excel){
+        if(src.name) keep.name=src.name;
+        fillPhone(src.phone, true);
+        if(src.role) keep.role=src.role;
+        fillEmail(src.email, true);
+      }else{
+        if(!keep.name&&src.name) keep.name=src.name;
+        fillPhone(src.phone, false);
+        if(!keep.role&&src.role) keep.role=src.role;
+        fillEmail(src.email, false);
+      }
+      if(!keep.pass&&src.pass) keep.pass=src.pass;
+      if(!keep.avatar&&src.avatar) keep.avatar=src.avatar;
+    });
+    if(keep.email) keep.email=String(keep.email).trim();
+    donors.forEach(d=>{
+      const reasons=[];
+      idxs.forEach(j=>{
+        if(j===d.i) return;
+        const rsn=linkReason.get(Math.min(d.i,j)+':'+Math.max(d.i,j));
+        if(rsn&&reasons.indexOf(rsn)<0) reasons.push(rsn);
+      });
+      collapsed.push({
+        reason:reasons.join('+')||'id',
+        keptId:Number(keep.id),
+        droppedId:Number(d.u.id),
+        keptName:keep.name||'',
+        droppedName:d.u.name||'',
+        email:appUserEmailKey(keep.email||d.u.email),
+        phone:appUserPhoneKey(keep.phone||d.u.phone)
+      });
+    });
+    mergedAt.set(root, keep);
+  });
+  const seenRoot=new Set();
+  const out=[];
+  src.forEach(u=>{
+    if(!indexOf.has(u)){ out.push(u); return; }
+    const r=find(indexOf.get(u));
+    if(seenRoot.has(r)) return;
+    seenRoot.add(r);
+    out.push(mergedAt.get(r)||u);
+  });
+  return {users:out, collapsed, changed:collapsed.length>0};
+}
+function dedupeStoredUsers(){
+  if(!Array.isArray(DB.users)) DB.users=[];
+  const pack=collapseAppUsers(DB.users,{tombstone:true});
+  if(!pack.changed) return 0;
+  pack.collapsed.forEach(c=>{
+    const id=Number(c.droppedId);
+    if(id&&id!==Number(c.keptId)&&isUserAccountSeedId(id)&&APP_USER_DROP_IDS.indexOf(id)<0) APP_USER_DROP_IDS.push(id);
+  });
+  DB.users=pack.users;
+  pack.collapsed.forEach(c=>{
+    const u=DB.users.find(x=>x&&Number(x.id)===Number(c.keptId));
+    if(u&&typeof rememberAccountRole==='function') rememberAccountRole(u.email, u.role);
+  });
+  console.warn('app_users dedupe', pack.collapsed.map(c=>({reason:c.reason,keptId:c.keptId,droppedId:c.droppedId,email:c.email})));
+  return pack.collapsed.length;
+}
+function collapseAppUserWireRows(rows){
+  const pack=collapseAppUsers(rows,{tombstone:false});
+  return (pack.users||[]).filter(u=>u&&u.id!=null&&Number.isFinite(Number(u.id))).map(u=>{
+    const email=String(u.email==null?'':u.email).trim();
+    return Object.assign({}, u, {
+      id:Number(u.id),
+      email:email||null,
+      role:cloudSafeRole(u.role)
+    });
+  });
+}
+function appUserUpsertRows(now){
+  dedupeStoredUsers();
+  return (DB.users||[]).filter(u=>u&&u.id!=null&&!isTombstonedUser(u)&&syncRowChanged('users', u.id, u)).map(u=>({
+    id:Number(u.id),
+    name:u.name||null,
+    email:String(u.email==null?'':u.email).trim()||null,
+    phone:u.phone||null,
+    role:cloudSafeRole(u.role),
+    active:u.active!==false,
+    pass:u.pass||null,
+    avatar:u.avatar||null,
+    updated_at:now
+  }));
+}
+async function sbDeleteCollapsedSeedUsers(){
+  if(!sb||!SB_USER||!APP_USER_DROP_IDS.length) return;
+  const still=new Set((DB.users||[]).map(u=>Number(u&&u.id)));
+  const ids=[...new Set(APP_USER_DROP_IDS.map(Number).filter(id=>id&&isUserAccountSeedId(id)&&!still.has(id)))];
+  if(!ids.length){ APP_USER_DROP_IDS=[]; return; }
+  await sbDeleteUsersByIds(ids);
+  APP_USER_DROP_IDS=[];
 }
 const SALES_PERM_DEFAULTS={
   viewAllOrders:true,
@@ -2866,7 +3062,8 @@ async function sbClearTable(table,idCol){
   if(error)throw error;
 }
 async function sbUpsertChunks(table,rows,onConflict){
-  if(!rows.length)return;
+  if(table==='app_users') rows=collapseAppUserWireRows(rows);
+  if(!rows||!rows.length)return;
   // products / CRM survey imgs có data URL → chunk nhỏ để tránh payload quá lớn
   const chunk=table==='products'?15:(table==='crm_leads'?10:200);
   for(let i=0;i<rows.length;i+=chunk){
@@ -3133,9 +3330,13 @@ async function pullDBFromSupabase(){
     if(localOnly.length){
       // Giữ user vừa thêm local chưa có trên cloud → đẩy lên ngay sau pull
       localOnly.forEach(u=>{
-        if(!DB.users.some(x=>String(x.email||'').toLowerCase()===String(u.email||'').toLowerCase())){
-          DB.users.push(u);
-        }
+        if(!u||u.id==null) return;
+        const em=String(u.email||'').trim().toLowerCase();
+        const id=Number(u.id);
+        const dupEmail=em&&DB.users.some(x=>String(x.email||'').trim().toLowerCase()===em);
+        const dupId=DB.users.some(x=>Number(x.id)===id);
+        if(dupEmail||dupId) return;
+        DB.users.push(u);
       });
       bumpUserSeq();
     }
@@ -3249,17 +3450,7 @@ async function pushDBToSupabase(){
         updated_at:now
       };
     });
-    const userRows=(DB.users||[]).filter(u=>u&&u.id!=null&&!isTombstonedUser(u)&&syncRowChanged('users', u.id, u)).map(u=>({
-      id:Number(u.id),
-      name:u.name||null,
-      email:u.email||null,
-      phone:u.phone||null,
-      role:cloudSafeRole(u.role),
-      active:u.active!==false,
-      pass:u.pass||null,
-      avatar:u.avatar||null,
-      updated_at:now
-    }));
+    const userRows=appUserUpsertRows(now);
 
     // AN TOÀN: upsert trước → chỉ prune thừa sau khi ghi OK (không clear bảng trước)
     await sbUpsertThenPrune('products',productRows,'id',{noPrune:true});
@@ -3324,6 +3515,7 @@ async function pushDBToSupabase(){
     }
     await sbUpsertThenPrune('stock_items',stockRows,'id',{noPrune:true});
     await sbUpsertThenPrune('stock_transactions',transRows,'id',{noPrune:true});
+    await sbDeleteCollapsedSeedUsers();
     await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
 
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
@@ -11017,17 +11209,8 @@ async function pushUsersToSupabase(){
     if(delIds.length) await sbDeleteUsersByIds(delIds);
     if(delEms.length) await sbDeleteUsersByEmails(delEms);
 
-    const userRows=(DB.users||[]).filter(u=>u&&u.id!=null&&!isTombstonedUser(u)&&syncRowChanged('users', u.id, u)).map(u=>({
-      id:Number(u.id),
-      name:u.name||null,
-      email:u.email||null,
-      phone:u.phone||null,
-      role:cloudSafeRole(u.role),
-      active:u.active!==false,
-      pass:u.pass||null,
-      avatar:u.avatar||null,
-      updated_at:now
-    }));
+    const userRows=appUserUpsertRows(now);
+    await sbDeleteCollapsedSeedUsers();
     await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
 
     // 2) Lưu tombstone lên erp_settings để máy khác / reload không kéo lại
