@@ -435,9 +435,30 @@ tbody tr:active{background:var(--surface)}
 .asset-tbl td.asset-name{white-space:normal;min-width:168px;max-width:280px;font-weight:700}
 .asset-tbl th.num,.asset-tbl td.num{text-align:center;font-variant-numeric:tabular-nums;min-width:68px}
 .asset-tbl td.empty{white-space:normal;text-align:center}
+/* Số > 0 ở cột người giữ: xanh brand đậm (cùng tông #d4f85c), đọc được trên nền sáng. 0 giữ màu muted. TỔNG giữ màu chữ thường. */
+.asset-tbl td.asset-zero{color:var(--muted);font-weight:500}
+.asset-tbl td.asset-qty-pos{color:#5c7a00;font-weight:700}
+.asset-tbl td.asset-total,.asset-tbl td.asset-total b{color:var(--ink);font-weight:700}
+.asset-tbl td.asset-name .asset-owners{display:block;margin-top:2px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:0;text-transform:none}
+.asset-tbl td.asset-edit{cursor:text}
+.asset-qty-in{
+  width:58px;max-width:100%;height:32px;margin:0 auto;display:block;
+  border:1px solid transparent;border-radius:8px;background:transparent;
+  text-align:center;font:inherit;font-variant-numeric:tabular-nums;
+  color:var(--muted);font-weight:500;padding:0 2px;
+}
+.asset-qty-in.asset-qty-pos{color:#5c7a00;font-weight:700}
+.asset-qty-in:focus{outline:none;border-color:var(--ink);background:#fff}
+.asset-bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;margin-bottom:14px}
+.asset-bar .search{flex:1 1 240px;margin:0;min-width:0}
+.asset-filter{display:flex;flex-direction:column;gap:4px;flex:1 1 168px;min-width:0}
+.asset-filter > span{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;line-height:1.25}
+.asset-filter .sel{height:var(--tap);font-size:13px;padding:0 34px 0 14px}
 @media(max-width:767px){
   .asset-tbl th,.asset-tbl td{padding:10px 8px}
   .asset-tbl td.asset-name{min-width:150px}
+  .asset-bar .search{flex:1 1 100%}
+  .asset-filter{flex:1 1 calc(50% - 8px)}
 }
 
 /* ============ FORMS ============ */
@@ -13095,61 +13116,190 @@ function bindWorkPlan(){
   wpHydrateThumbs().catch(()=>{});
 }
 let assetQ='';
+let assetHolder='';
+let assetOwners='';
+function assetColHolders(book){
+  const cols=(book&&Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
+  return cols.length>4?cols.slice(3,-1):ASSET_HOLDER_NAMES.slice();
+}
+function assetOwnerCount(row, names){
+  const qty=assetQtyMap(row);
+  let n=0;
+  (names||ASSET_HOLDER_NAMES).forEach(name=>{ if((Number(qty[name])||0)>0) n++; });
+  return n;
+}
+function assetRowSum(row, names){
+  const qty=assetQtyMap(row);
+  let n=0;
+  (names||ASSET_HOLDER_NAMES).forEach(name=>{ n+=Number(qty[name])||0; });
+  return n;
+}
+function assetReadQty(raw){
+  const s=String(raw==null?'':raw).trim().replace(',','.');
+  if(s===''||s==='-'||s==='+'||s==='.') return 0;
+  const n=Number(s);
+  if(!Number.isFinite(n)||n<0) return 0;
+  return Math.round(n);
+}
 function assetFilteredRows(book){
   const rows=book&&Array.isArray(book.rows)?book.rows:[];
   const q=String(assetQ||'').trim().toLocaleLowerCase('vi');
-  if(!q) return rows;
-  const names=(Array.isArray(book.columns)&&book.columns.length>4)?book.columns.slice(3,-1):ASSET_HOLDER_NAMES;
+  const names=assetColHolders(book);
+  const holder=String(assetHolder||'');
+  const owners=String(assetOwners||'');
   return rows.filter(r=>{
     const qty=assetQtyMap(r);
+    if(holder){
+      if(names.indexOf(holder)<0) return false;
+      if(!((Number(qty[holder])||0)>0)) return false;
+    }
+    if(owners!==''){
+      const want=Number(owners);
+      if(!Number.isFinite(want)||assetOwnerCount(r, names)!==want) return false;
+    }
+    if(!q) return true;
     const bits=[r&&r.stt, r&&r.name, r&&r.unit];
     names.forEach(name=>{
       const n=Number(qty[name])||0;
       if(n>0) bits.push(name, n);
     });
-    bits.push(r&&r.total);
+    bits.push(assetRowSum(r, names));
     return bits.filter(x=>x!=null&&String(x)!=='').join(' ').toLocaleLowerCase('vi').includes(q);
   });
+}
+function assetFindRow(idx, name, stt){
+  const rows=DB.assets&&Array.isArray(DB.assets.rows)?DB.assets.rows:[];
+  if(rows[idx]&&(name==null||String(rows[idx].name)===String(name))) return rows[idx];
+  return rows.find(r=>String(r.name)===String(name)&&String(r.stt)===String(stt))||null;
+}
+function assetPaintQtyRow(scope){
+  const tr=scope&&scope.closest?scope.closest('tr'):scope;
+  if(!tr) return;
+  let total=0, owners=0;
+  tr.querySelectorAll('.asset-qty-in').forEach(inp=>{
+    const n=assetReadQty(inp.value);
+    inp.classList.toggle('asset-qty-pos', n>0);
+    total+=n;
+    if(n>0) owners++;
+  });
+  tr.querySelectorAll('td[data-asset-holder]').forEach(td=>{
+    if(td.querySelector('input')) return;
+    const n=assetReadQty(td.textContent);
+    td.classList.toggle('asset-qty-pos', n>0);
+    td.classList.toggle('asset-zero', !(n>0));
+    total+=n;
+    if(n>0) owners++;
+  });
+  const tot=tr.querySelector('.asset-total');
+  if(tot){
+    tot.setAttribute('data-asset-total', String(total));
+    const b=tot.querySelector('b');
+    if(b) b.textContent=String(total);
+  }
+  const own=tr.querySelector('.asset-owners');
+  if(own) own.textContent=owners+' người';
+}
+function assetWriteQty(input, persist){
+  if(!isAdmin()||!input) return;
+  const holder=input.getAttribute('data-asset-holder')||'';
+  if(ASSET_HOLDER_NAMES.indexOf(holder)<0) return;
+  const idx=Number(input.getAttribute('data-asset-idx'));
+  const row=assetFindRow(idx, input.getAttribute('data-asset-name'), input.getAttribute('data-asset-stt'));
+  if(!row) return;
+  const n=assetReadQty(input.value);
+  if(persist&&String(input.value)!==String(n)) input.value=String(n);
+  if(!row.qty||typeof row.qty!=='object'||Array.isArray(row.qty)) row.qty=assetQtyMap(row);
+  const prev=Number(row.qty[holder])||0;
+  row.qty[holder]=n;
+  let total=0;
+  ASSET_HOLDER_NAMES.forEach(name=>{ total+=Number(row.qty[name])||0; });
+  const totalChanged=Number(row.total)!==total;
+  row.total=total;
+  assetPaintQtyRow(input);
+  if(persist&&(prev!==n||totalChanged)) saveDB();
 }
 function pageAssets(){
   applyAssetSheetOnce();
   const book=(DB.assets&&typeof DB.assets==='object'&&Array.isArray(DB.assets.rows)&&DB.assets.rows.length)?DB.assets:assetSheetSeed();
   const cols=(Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
-  const holderNames=cols.slice(3,-1);
+  const holderNames=assetColHolders(book);
   const all=Array.isArray(book.rows)?book.rows:[];
   const rows=assetFilteredRows(book);
+  const canEdit=isAdmin();
   const head=cols.map((label,i)=>{
     const cls=[];
     if(i>=3) cls.push('num');
     if(i>=3&&i<cols.length-1) cls.push('asset-holder');
     return `<th class="${cls.join(' ')}" scope="col">${esc(label)}</th>`;
   }).join('');
+  const countSet=[];
+  all.forEach(r=>{
+    const c=assetOwnerCount(r, holderNames);
+    if(countSet.indexOf(c)<0) countSet.push(c);
+  });
+  if(assetOwners!==''&&Number.isFinite(Number(assetOwners))&&countSet.indexOf(Number(assetOwners))<0) countSet.push(Number(assetOwners));
+  countSet.sort((a,b)=>a-b);
+  const holderOpts=['<option value="">Tất cả</option>'].concat(holderNames.map(name=>`<option value="${esc(name)}"${assetHolder===name?' selected':''}>${esc(name)}</option>`)).join('');
+  const ownerOpts=['<option value="">Tất cả</option>'].concat(countSet.map(c=>`<option value="${c}"${String(assetOwners)===String(c)?' selected':''}>${c} người</option>`)).join('');
   const body=rows.length?rows.map(r=>{
     const qty=assetQtyMap(r);
-    let total=0;
+    const idx=all.indexOf(r);
+    const owners=assetOwnerCount(r, holderNames);
     const holderCells=holderNames.map(name=>{
       const n=Number(qty[name])||0;
-      total+=n;
-      return `<td class="num mono">${n}</td>`;
+      const pos=n>0;
+      if(canEdit&&ASSET_HOLDER_NAMES.indexOf(name)>=0){
+        return `<td class="num mono asset-edit"><input class="asset-qty-in${pos?' asset-qty-pos':''}" type="number" min="0" step="1" inputmode="numeric" value="${n}" data-asset-idx="${idx}" data-asset-stt="${esc(r.stt)}" data-asset-name="${esc(r.name)}" data-asset-holder="${esc(name)}" aria-label="${esc(name)} — ${esc(r.name)}"></td>`;
+      }
+      return `<td class="num mono ${pos?'asset-qty-pos':'asset-zero'}" data-asset-holder="${esc(name)}">${n}</td>`;
     }).join('');
-    return `<tr>
+    const total=assetRowSum(r, holderNames);
+    return `<tr data-asset-row="${idx}">
       <td class="mono">${esc(r.stt)}</td>
-      <td class="asset-name">${esc(r.name)}</td>
+      <td class="asset-name">${esc(r.name)}<span class="asset-owners">${owners} người</span></td>
       <td>${esc(r.unit)}</td>
       ${holderCells}
-      <td class="num mono"><b>${total}</b></td>
+      <td class="num mono asset-total" data-asset-total="${total}"><b>${total}</b></td>
     </tr>`;
   }).join(''):`<tr><td class="empty" colspan="${cols.length}">${all.length?'Không có đồ nghề khớp bộ lọc.':'Không có dòng dữ liệu trong bảng cấp đồ nghề.'}</td></tr>`;
   return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div></div>
     <div class="page-sub" style="margin:-8px 0 14px">${esc(book.title||ASSET_SHEET_TITLE)}</div>
-    <div class="search">${I.search}<input class="inp" id="assetQ" placeholder="Lọc đồ nghề, đơn vị, kỹ thuật viên..." value="${esc(assetQ)}" autocomplete="off"></div>
-    <div class="tbl-card asset-card"><div class="tbl-wrap"><table class="asset-tbl" data-asset-rows="${all.length}">
+    <div class="asset-bar">
+      <div class="search">${I.search}<input class="inp" id="assetQ" placeholder="Lọc đồ nghề, đơn vị, kỹ thuật viên..." value="${esc(assetQ)}" autocomplete="off"></div>
+      <label class="asset-filter"><span>Người đang giữ</span><select class="sel" id="assetHolder">${holderOpts}</select></label>
+      <label class="asset-filter"><span>Số người đang sở hữu</span><select class="sel" id="assetOwners">${ownerOpts}</select></label>
+    </div>
+    <div class="tbl-card asset-card"><div class="tbl-wrap"><table class="asset-tbl" data-asset-rows="${all.length}" data-asset-edit="${canEdit?'admin':'view'}">
       <thead><tr>${head}</tr></thead>
       <tbody>${body}</tbody>
     </table></div></div>`;
 }
 function bindAssets(){
   bindSearchInput('assetQ', v=>{ assetQ=v; renderPage(); });
+  const holderSel=document.getElementById('assetHolder');
+  if(holderSel) holderSel.addEventListener('change', ()=>{ assetHolder=holderSel.value; renderPage(); });
+  const ownerSel=document.getElementById('assetOwners');
+  if(ownerSel) ownerSel.addEventListener('change', ()=>{ assetOwners=ownerSel.value; renderPage(); });
+  if(!isAdmin()) return;
+  document.querySelectorAll('.asset-qty-in').forEach(input=>{
+    input.addEventListener('input', ()=>assetPaintQtyRow(input));
+    input.addEventListener('change', ()=>assetWriteQty(input, true));
+    input.addEventListener('blur', ()=>{
+      assetWriteQty(input, true);
+      const idx=Number(input.getAttribute('data-asset-idx'));
+      const row=assetFindRow(idx, input.getAttribute('data-asset-name'), input.getAttribute('data-asset-stt'));
+      if(ROUTE==='assets'&&row&&DB.assets&&assetFilteredRows(DB.assets).indexOf(row)<0) renderPage();
+    });
+    input.addEventListener('keydown', ev=>{
+      if(ev.key==='Enter'){ ev.preventDefault(); input.blur(); }
+    });
+    const td=input.closest('td');
+    if(td) td.addEventListener('click', ev=>{
+      if(ev.target===input) return;
+      input.focus();
+      try{ input.select(); }catch(e){}
+    });
+  });
 }
 function renderPage(){
   const m=$('#main');
