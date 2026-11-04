@@ -454,6 +454,11 @@ tbody tr:active{background:var(--surface)}
 .asset-filter{display:flex;flex-direction:column;gap:4px;flex:1 1 168px;min-width:0}
 .asset-filter > span{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;line-height:1.25}
 .asset-filter .sel{height:var(--tap);font-size:13px;padding:0 34px 0 14px}
+.asset-filter-tool{flex:1 1 240px}
+.asset-notes{flex:1 1 100%;display:flex;flex-direction:column;gap:3px;min-width:0}
+.asset-notes:empty{display:none}
+.asset-notes p{margin:0;font-size:13px;line-height:1.4;font-weight:600;color:var(--ink)}
+.asset-notes p b{font-weight:800}
 @media(max-width:767px){
   .asset-tbl th,.asset-tbl td{padding:10px 8px}
   .asset-tbl td.asset-name{min-width:150px}
@@ -13500,7 +13505,7 @@ function bindWorkPlan(){
 }
 let assetQ='';
 let assetHolder='';
-let assetOwners='';
+let assetTool='';
 function assetColHolders(book){
   const cols=(book&&Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
   return cols.length>4?cols.slice(3,-1):ASSET_HOLDER_NAMES.slice();
@@ -13524,31 +13529,94 @@ function assetReadQty(raw){
   if(!Number.isFinite(n)||n<0) return 0;
   return Math.round(n);
 }
+function assetRowMatchesQuery(row, names, q){
+  if(!q) return true;
+  const qty=assetQtyMap(row);
+  const bits=[row&&row.stt, row&&row.name, row&&row.unit];
+  names.forEach(name=>{
+    const n=Number(qty[name])||0;
+    if(n>0) bits.push(name, n);
+  });
+  bits.push(assetRowSum(row, names));
+  return bits.filter(x=>x!=null&&String(x)!=='').join(' ').toLocaleLowerCase('vi').includes(q);
+}
 function assetFilteredRows(book){
   const rows=book&&Array.isArray(book.rows)?book.rows:[];
   const q=String(assetQ||'').trim().toLocaleLowerCase('vi');
   const names=assetColHolders(book);
   const holder=String(assetHolder||'');
-  const owners=String(assetOwners||'');
+  const tool=String(assetTool||'').trim();
   return rows.filter(r=>{
     const qty=assetQtyMap(r);
     if(holder){
       if(names.indexOf(holder)<0) return false;
       if(!((Number(qty[holder])||0)>0)) return false;
     }
-    if(owners!==''){
-      const want=Number(owners);
-      if(!Number.isFinite(want)||assetOwnerCount(r, names)!==want) return false;
-    }
-    if(!q) return true;
-    const bits=[r&&r.stt, r&&r.name, r&&r.unit];
-    names.forEach(name=>{
-      const n=Number(qty[name])||0;
-      if(n>0) bits.push(name, n);
-    });
-    bits.push(assetRowSum(r, names));
-    return bits.filter(x=>x!=null&&String(x)!=='').join(' ').toLocaleLowerCase('vi').includes(q);
+    if(tool && String(r&&r.name||'').trim()!==tool) return false;
+    return assetRowMatchesQuery(r, names, q);
   });
+}
+/* Số đồ nghề người này đang giữ, có tính ô tìm kiếm, không thu hẹp theo lọc thiết bị. */
+function assetPersonHoldCount(book, holder){
+  const rows=book&&Array.isArray(book.rows)?book.rows:[];
+  const q=String(assetQ||'').trim().toLocaleLowerCase('vi');
+  const names=assetColHolders(book);
+  if(!holder||names.indexOf(holder)<0) return 0;
+  let n=0;
+  rows.forEach(r=>{
+    const qty=assetQtyMap(r);
+    if(!((Number(qty[holder])||0)>0)) return;
+    if(!assetRowMatchesQuery(r, names, q)) return;
+    n++;
+  });
+  return n;
+}
+function assetToolHolderNames(book, tool){
+  const rows=book&&Array.isArray(book.rows)?book.rows:[];
+  const names=assetColHolders(book);
+  const want=String(tool||'').trim();
+  const held=[];
+  rows.forEach(r=>{
+    if(String(r&&r.name||'').trim()!==want) return;
+    const qty=assetQtyMap(r);
+    names.forEach(name=>{
+      if((Number(qty[name])||0)>0 && held.indexOf(name)<0) held.push(name);
+    });
+  });
+  return names.filter(name=>held.indexOf(name)>=0);
+}
+function assetToolOptionNames(book){
+  const rows=book&&Array.isArray(book.rows)?book.rows:[];
+  const seen=[];
+  rows.forEach(r=>{
+    const name=String(r&&r.name||'').trim();
+    if(name&&seen.indexOf(name)<0) seen.push(name);
+  });
+  const cur=String(assetTool||'').trim();
+  if(cur&&seen.indexOf(cur)<0) seen.push(cur);
+  return seen;
+}
+function assetNotesHtml(book){
+  const names=assetColHolders(book);
+  const holder=String(assetHolder||'');
+  const tool=String(assetTool||'').trim();
+  const bits=[];
+  if(holder && names.indexOf(holder)>=0){
+    const n=assetPersonHoldCount(book, holder);
+    bits.push(`<p class="asset-hold-count"><b>${esc(holder)}</b> đang giữ ${n} đồ nghề</p>`);
+  }
+  if(tool){
+    const who=assetToolHolderNames(book, tool);
+    const list=who.length?who.map(esc).join(', '):'Chưa có ai giữ';
+    bits.push(`<p class="asset-tool-who"><b>${esc(tool)}</b>: ${list}</p>`);
+  }
+  return bits.join('');
+}
+function assetSyncNotes(){
+  const el=document.getElementById('assetNotes');
+  if(!el) return;
+  const book=(DB.assets&&typeof DB.assets==='object'&&Array.isArray(DB.assets.rows)&&DB.assets.rows.length)?DB.assets:assetSheetSeed();
+  el.innerHTML=assetNotesHtml(book);
 }
 function assetFindRow(idx, name, stt){
   const rows=DB.assets&&Array.isArray(DB.assets.rows)?DB.assets.rows:[];
@@ -13599,6 +13667,7 @@ function assetWriteQty(input, persist){
   const totalChanged=Number(row.total)!==total;
   row.total=total;
   assetPaintQtyRow(input);
+  assetSyncNotes();
   if(persist&&(prev!==n||totalChanged)) saveDB();
 }
 function pageAssets(){
@@ -13615,15 +13684,10 @@ function pageAssets(){
     if(i>=3&&i<cols.length-1) cls.push('asset-holder');
     return `<th class="${cls.join(' ')}" scope="col">${esc(label)}</th>`;
   }).join('');
-  const countSet=[];
-  all.forEach(r=>{
-    const c=assetOwnerCount(r, holderNames);
-    if(countSet.indexOf(c)<0) countSet.push(c);
-  });
-  if(assetOwners!==''&&Number.isFinite(Number(assetOwners))&&countSet.indexOf(Number(assetOwners))<0) countSet.push(Number(assetOwners));
-  countSet.sort((a,b)=>a-b);
   const holderOpts=['<option value="">Tất cả</option>'].concat(holderNames.map(name=>`<option value="${esc(name)}"${assetHolder===name?' selected':''}>${esc(name)}</option>`)).join('');
-  const ownerOpts=['<option value="">Tất cả</option>'].concat(countSet.map(c=>`<option value="${c}"${String(assetOwners)===String(c)?' selected':''}>${c} người</option>`)).join('');
+  const toolNames=assetToolOptionNames(book);
+  const toolOpts=['<option value="">Tất cả</option>'].concat(toolNames.map(name=>`<option value="${esc(name)}"${assetTool===name?' selected':''}>${esc(name)}</option>`)).join('');
+  const notes=assetNotesHtml(book);
   const body=rows.length?rows.map(r=>{
     const qty=assetQtyMap(r);
     const idx=all.indexOf(r);
@@ -13650,7 +13714,8 @@ function pageAssets(){
     <div class="asset-bar">
       <div class="search">${I.search}<input class="inp" id="assetQ" placeholder="Lọc đồ nghề, đơn vị, kỹ thuật viên..." value="${esc(assetQ)}" autocomplete="off"></div>
       <label class="asset-filter"><span>Người đang giữ</span><select class="sel" id="assetHolder">${holderOpts}</select></label>
-      <label class="asset-filter"><span>Số người đang sở hữu</span><select class="sel" id="assetOwners">${ownerOpts}</select></label>
+      <label class="asset-filter asset-filter-tool"><span>Thiết bị đang được giữ</span><select class="sel" id="assetTool">${toolOpts}</select></label>
+      <div class="asset-notes" id="assetNotes">${notes}</div>
     </div>
     <div class="tbl-card asset-card"><div class="tbl-wrap"><table class="asset-tbl" data-asset-rows="${all.length}" data-asset-edit="${canEdit?'admin':'view'}">
       <thead><tr>${head}</tr></thead>
@@ -13661,8 +13726,8 @@ function bindAssets(){
   bindSearchInput('assetQ', v=>{ assetQ=v; renderPage(); });
   const holderSel=document.getElementById('assetHolder');
   if(holderSel) holderSel.addEventListener('change', ()=>{ assetHolder=holderSel.value; renderPage(); });
-  const ownerSel=document.getElementById('assetOwners');
-  if(ownerSel) ownerSel.addEventListener('change', ()=>{ assetOwners=ownerSel.value; renderPage(); });
+  const toolSel=document.getElementById('assetTool');
+  if(toolSel) toolSel.addEventListener('change', ()=>{ assetTool=toolSel.value; renderPage(); });
   if(!isAdmin()) return;
   document.querySelectorAll('.asset-qty-in').forEach(input=>{
     input.addEventListener('input', ()=>assetPaintQtyRow(input));
