@@ -216,6 +216,25 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .stock-tbl{min-width:1180px}
 .stock-tbl th{text-transform:none;letter-spacing:.04em}
 .stock-tbl td{white-space:nowrap}
+.stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
+.stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
+.stk-tab.active{background:var(--lime);color:var(--ink)}
+.stk-cap{font-size:12.5px;line-height:1.45;color:var(--muted);margin:-4px 0 12px}
+.stk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:0 0 12px}
+.stk-bar .pager{padding:0;margin:0;flex:1 1 220px;justify-content:flex-end}
+.stk-zero{height:40px;padding:0 14px;border-radius:999px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink);border:1px solid var(--line-2)}
+.stk-zero.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.stock-tbl td.stk-ed{cursor:pointer}
+.stock-tbl td.stk-editing{padding:6px 8px}
+.stock-qty-in{width:100%;min-width:72px;max-width:120px;height:34px;border-radius:10px;border:1px solid var(--ink);padding:0 8px;text-align:right;font-weight:700;background:#fff;font-size:13px}
+.stock-qty-in:focus{outline:none}
+@media(max-width:480px){
+  .stk-tabs{display:grid;grid-template-columns:1fr 1fr}
+  .stk-tab{width:100%;padding:0 8px}
+  .stk-bar{flex-direction:column;align-items:stretch}
+  .stk-bar .pager{flex:0 0 auto;width:100%;justify-content:space-between}
+  .stk-zero{width:100%}
+}
 th{text-align:left;font-size:10px;font-weight:700;color:var(--muted);padding:12px 12px;background:transparent;border-bottom:1px solid var(--line);white-space:nowrap;text-transform:uppercase;letter-spacing:.08em}
 td{padding:14px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle;font-size:13px}
 tr:last-child td{border-bottom:none}
@@ -1807,6 +1826,22 @@ function canManageStock(){
   if(!isSalesRole()) return true;
   return salesHasPerm('manageStock');
 }
+/** Sửa số lượng tồn: Admin, Kho, Kế Toán — theo id app hoặc nhãn tiếng Việt, không theo enum Supabase đã gộp về sales. */
+function canEditStockQty(u){
+  u=u||ME;
+  if(!u) return false;
+  const allow={admin:1,kho:1,ketoan:1};
+  if(allow[effectiveUserRole(u)]) return true;
+  const texts=[u.role, accountMappedRole(u)];
+  try{ const meta=roleMeta(u); if(meta&&meta.t) texts.push(meta.t); }catch(e){}
+  for(let i=0;i<texts.length;i++){
+    const raw=texts[i];
+    if(allow[roleIdFromText(raw)]) return true;
+    const folded=roleFold(raw);
+    if(folded==='admin'||folded==='kho'||folded==='ke toan'||folded==='ketoan') return true;
+  }
+  return false;
+}
 function canManageDevices(){
   if(!ME) return false;
   if(!isSalesRole()) return true;
@@ -2839,7 +2874,15 @@ const STOCK_SHEET_ROWS=[
   [535,"accessory","ĐẦU NỐI RĂNG NGOÀI 3/4\" CVL (PG 25)",0,0]
 ];
 function stockSheetId(stt){ return STOCK_SHEET_ID_BASE+Number(stt); }
-function stockSheetPack(stt, lock){ return '#tk|'+stt+'|'+lock; }
+function stockSheetPack(stt, lock, hive, binh, viet){
+  const n=v=>{
+    if(v==null||v==='') return '';
+    const x=Number(v);
+    return Number.isFinite(x)?String(Math.round(x*1000)/1000):'';
+  };
+  if(arguments.length<=2) return '#tk|'+n(stt)+'|'+n(lock);
+  return '#tk|'+n(stt)+'|'+n(lock)+'|'+n(hive)+'|'+n(binh)+'|'+n(viet);
+}
 function stockSheetRecord(row){
   const stt=row[0], cat=row[1], name=row[2], lock=row[3], trong=row[4];
   const unit=stockSheetPack(stt, lock);
@@ -2854,7 +2897,23 @@ function stockSheetUnpack(s){
   const lock=Number(p[2]);
   if(s.stt==null && Number.isFinite(stt)) s.stt=stt;
   if(s.lock==null && Number.isFinite(lock)) s.lock=lock;
+  const take=(i,key)=>{
+    if(s[key]!=null&&s[key]!=='') return;
+    if(p.length<=i||p[i]==='') return;
+    const n=Number(p[i]);
+    if(Number.isFinite(n)) s[key]=n;
+  };
+  take(3,'hive'); take(4,'binh'); take(5,'viet');
   return s;
+}
+function stockSyncUnit(s){
+  if(!s) return;
+  const u=String(s.unit||'');
+  if(u.indexOf('#tk|')!==0) return;
+  const parts=u.split('|');
+  const stt=s.stt!=null?s.stt:(Number(parts[1])||0);
+  const lock=s.lock!=null?s.lock:(parts.length>2&&parts[2]!==''?Number(parts[2]):0);
+  s.unit=stockSheetPack(stt, lock, s.hive, s.binh, s.viet);
 }
 function applyStockSheetOnce(){
   if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
@@ -4097,7 +4156,7 @@ async function pushDBToSupabase(){
     });
     const stockRows=(DB.stock||[]).filter(s=>s&&s.id!=null&&syncRowChanged('stock', s.id, s)).map(s=>{
       let unit=s.unit==null?null:s.unit;
-      if(s.stt!=null && s.lock!=null && String(s.unit||'').indexOf('#tk|')===0) unit=stockSheetPack(s.stt, s.lock);
+      if(s.stt!=null && s.lock!=null && String(s.unit||'').indexOf('#tk|')===0) unit=stockSheetPack(s.stt, s.lock, s.hive, s.binh, s.viet);
       return {id:Number(s.id),category:s.cat||'',name:s.name||null,qty:Number(s.qty)||0,min_qty:Number(s.min)||0,unit:unit||null,updated_at:now};
     });
     const transRows=(DB.trans||[]).filter(t=>t&&t.id!=null&&syncRowChanged('trans', t.id, t)).map(t=>{
@@ -11461,7 +11520,8 @@ function devModal(cat,o){
 }
 
 /* ---------------- TỒN KHO ---------------- */
-let stkCat='',stkQ='';
+const STOCK_PAGE_SIZE=50;
+let stkCat='',stkQ='',stkPage=1,stkWh='hcm',stkOwner='',stkBoth=false,stkShowZero=false;
 function stockRow(id){return DB.stock.find(s=>s.id==id);}
 function stockFmt(v){
   if(v==null||v==='') return '';
@@ -11481,69 +11541,283 @@ function stockCategories(){
   present.forEach(k=>{ if(!CAT[k]&&ordered.indexOf(k)<0) ordered.push(k); });
   return ordered;
 }
-function pageStock(){
-  const canMut=canManageStock();
-  const q=stkQ.toLowerCase();
-  const rows=DB.stock.filter(s=>s&&(!stkCat||s.cat===stkCat)&&strip(s.name).toLowerCase().includes(q)).slice().sort((a,b)=>{
+function stockNonZero(v){
+  const n=Number(v);
+  return Number.isFinite(n)&&n!==0;
+}
+function stockNameKey(name){
+  return strip(name||'').normalize('NFC').toLowerCase().replace(/\s+/g,' ').trim();
+}
+function stockParseQty(raw){
+  let t=String(raw==null?'':raw).trim().replace(/\s/g,'');
+  if(!t) return null;
+  t=t.replace(/,/g,'.');
+  if(!/^-?\d+(\.\d+)?$/.test(t)) return null;
+  const n=Number(t);
+  if(!Number.isFinite(n)) return null;
+  return Math.round(n*1000)/1000;
+}
+function stockWhList(wh){
+  if((wh||stkWh)==='bd'){
+    const st=DB.settings;
+    return (st&&Array.isArray(st.stockBd))?st.stockBd:[];
+  }
+  return Array.isArray(DB.stock)?DB.stock:[];
+}
+function stockBdEnsure(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!Array.isArray(DB.settings.stockBd)) DB.settings.stockBd=[];
+  return DB.settings.stockBd;
+}
+function stockActiveList(){ return stockWhList(stkWh); }
+function stockSortRows(rows){
+  return rows.slice().sort((a,b)=>{
     const as=Number(a.stt)||0, bs=Number(b.stt)||0;
     if(as&&bs&&as!==bs) return as-bs;
     if(as!==bs) return as?-1:1;
     return 0;
   });
-  const cats=new Set(DB.stock.map(s=>s&&s.cat).filter(Boolean)).size;
+}
+function stockIndexByName(list){
+  const m=new Map();
+  (list||[]).forEach(s=>{
+    const k=stockNameKey(s&&s.name);
+    if(!k) return;
+    let arr=m.get(k);
+    if(!arr){ arr=[]; m.set(k,arr); }
+    arr.push(s);
+  });
+  return m;
+}
+function stockGroupHit(rows, owner){
+  if(!rows||!rows.length) return false;
+  if(owner) return rows.some(s=>stockNonZero(s[owner]));
+  return rows.some(s=>stockNonZero(s.qty));
+}
+function stockPassesFilters(s, otherIdx){
+  if(!s) return false;
+  if(stkCat&&s.cat!==stkCat) return false;
+  const q=stkQ.toLowerCase();
+  if(q&&!strip(s.name).toLowerCase().includes(q)) return false;
+  if(stkOwner&&!stockNonZero(s[stkOwner])) return false;
+  if(stkBoth){
+    const key=stockNameKey(s.name);
+    if(!key) return false;
+    const mineOk=stkOwner?stockNonZero(s[stkOwner]):stockNonZero(s.qty);
+    if(!mineOk||!stockGroupHit(otherIdx.get(key), stkOwner)) return false;
+  }
+  return true;
+}
+function stockQuery(){
+  const other=stkWh==='bd'?'hcm':'bd';
+  const otherIdx=stockIndexByName(stockWhList(other));
+  const matched=(stockActiveList()||[]).filter(s=>stockPassesFilters(s, otherIdx));
+  const zeroCount=matched.filter(s=>!stockNonZero(s.qty)).length;
+  const shown=stkShowZero?matched:matched.filter(s=>stockNonZero(s.qty));
+  return {rows:stockSortRows(shown), zeroCount};
+}
+function stockPageCount(n){
+  return Math.max(1, Math.ceil((n||0)/STOCK_PAGE_SIZE)||1);
+}
+function stockQtyCell(s, field, style){
+  const val=stockFmt(s[field]);
+  const extra=style?` style="${style}"`:'';
+  if(!canEditStockQty()) return `<td class="num mono"${extra}>${val}</td>`;
+  return `<td class="num mono stk-ed"${extra} data-stk-edit="${field}" data-stk-id="${esc(s.id)}" data-stk-wh="${stkWh}" title="Nhấp đúp để sửa">${val}</td>`;
+}
+function stockPagerHtml(page, pages){
+  return `<div class="pager stk-pager">
+    <div class="pager-info">Trang ${page}/${pages}</div>
+    <div class="pager-btns">
+      <button type="button" data-stk-nav="prev" ${page<=1?'disabled':''}>Trước</button>
+      <button type="button" data-stk-nav="next" ${page>=pages?'disabled':''}>Sau</button>
+    </div>
+  </div>`;
+}
+function stockEmptyText(){
+  const bare=!stkCat&&!String(stkQ||'').trim()&&!stkOwner&&!stkBoth;
+  if(stkWh==='bd'&&bare&&!stockWhList('bd').length) return 'Kho Bình Định chưa có hàng.';
+  if(stkBoth) return 'Không có hàng khớp «Có ở cả 2 kho».';
+  return 'Không có sản phẩm nào khớp bộ lọc.';
+}
+function pageStock(){
+  const canMut=canManageStock();
+  const all=stockActiveList();
+  const cats=new Set(all.map(s=>s&&s.cat).filter(Boolean)).size;
+  const qy=stockQuery();
+  const pages=stockPageCount(qy.rows.length);
+  if(stkPage>pages) stkPage=pages;
+  if(stkPage<1) stkPage=1;
+  const start=(stkPage-1)*STOCK_PAGE_SIZE;
+  const pageRows=qy.rows.slice(start, start+STOCK_PAGE_SIZE);
+  const zeroLabel=(stkShowZero?'Ẩn hàng tồn 0':'Hiện hàng tồn 0')+' ('+qy.zeroCount+')';
+  const ownerChips=[
+    {k:'',t:'Tất cả'},
+    {k:'hive',t:'SolarHive'},
+    {k:'binh',t:'Bình Định'},
+    {k:'viet',t:'SolarViet'}
+  ];
   return `<div class="page-head"><div class="page-title">Quản lý Tồn kho</div>
     ${canMut?`<button class="btn btn-primary" id="stkAdd">${I.plus} Thêm sản phẩm vào kho</button>`:''}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:20px">
-    <div class="stat"><div class="lbl">Tổng sản phẩm</div><div class="val mono t-blue">${DB.stock.length}</div></div>
+    <div class="stat"><div class="lbl">Tổng sản phẩm</div><div class="val mono t-blue">${all.length}</div></div>
     <div class="stat"><div class="lbl">Danh mục</div><div class="val mono t-blue">${cats}</div></div>
+  </div>
+  <div class="stk-tabs" role="tablist">
+    <button type="button" class="stk-tab ${stkWh==='hcm'?'active':''}" data-wh="hcm" role="tab" aria-selected="${stkWh==='hcm'}">Kho HCM</button>
+    <button type="button" class="stk-tab ${stkWh==='bd'?'active':''}" data-wh="bd" role="tab" aria-selected="${stkWh==='bd'}">Kho Bình Định</button>
   </div>
   <div class="chips"><button class="chip ${stkCat===''?'active':''}" data-c="">Tất cả</button>
     ${stockCategories().map(k=>`<button class="chip ${stkCat===k?'active':''}" data-c="${esc(k)}">${esc(stockCatLabel(k))}</button>`).join('')}</div>
+  <div class="chips" id="stkOwners">${ownerChips.map(c=>`<button type="button" class="chip ${stkOwner===c.k?'active':''}" data-own="${c.k}">${esc(c.t)}</button>`).join('')}
+    <button type="button" class="chip ${stkBoth?'active':''}" data-stk-both="1">Có ở cả 2 kho</button></div>
+  <p class="stk-cap">Có ở cả 2 kho: chưa chọn SolarHive, Bình Định hay SolarViet thì hiện hàng có Trong Kho khác 0 ở cả Kho HCM và Kho Bình Định (khớp theo tên). Đang chọn một cột thì hiện hàng có số lượng cột đó khác 0 ở cả hai kho.</p>
   <div class="search">${I.search}<input class="inp" id="stkQ" placeholder="Tìm sản phẩm..." value="${esc(stkQ)}" autocomplete="off"></div>
-  <div class="tbl-card"><div class="tbl-wrap"><table class="stock-tbl">
+  <div class="stk-bar">
+    <button type="button" class="stk-zero ${stkShowZero?'on':''}" id="stkZero">${zeroLabel}</button>
+    ${stockPagerHtml(stkPage, pages)}
+  </div>
+  <div class="tbl-card"><div class="tbl-wrap"><table class="stock-tbl" id="stkTable">
     <thead><tr>
       <th style="width:56px">STT</th>
       <th>Loại</th>
       <th>TÊN HÀNG HÓA</th>
-      <th class="num">Lock Hàng</th>
       <th class="num">Trong Kho</th>
+      <th class="num">Lock Hàng</th>
       <th class="num">Còn Dư</th>
-      <th class="num">Của SolarHive</th>
-      <th class="num">Của Bình Định</th>
-      <th class="num">Của SolarViet</th>
+      <th class="num">SolarHive</th>
+      <th class="num">Bình Định</th>
+      <th class="num">SolarViet</th>
     </tr></thead>
-    <tbody>${rows.length?rows.map(s=>`<tr>
+    <tbody>${pageRows.length?pageRows.map(s=>`<tr>
       <td class="mono">${s.stt!=null&&s.stt!==''?esc(s.stt):''}</td>
       <td><span class="pill p-gray">${esc(stockCatLabel(s.cat))}</span></td>
       <td><b>${esc(strip(s.name))}</b></td>
-      <td class="num mono">${stockFmt(s.lock)}</td>
-      <td class="num mono" style="font-weight:700">${stockFmt(s.qty)}</td>
-      <td class="num mono">${stockRemainText(s)}</td>
-      <td class="num mono">${stockFmt(s.hive)}</td>
-      <td class="num mono">${stockFmt(s.binh)}</td>
-      <td class="num mono">${stockFmt(s.viet)}</td>
+      ${stockQtyCell(s,'qty','font-weight:700')}
+      ${stockQtyCell(s,'lock')}
+      <td class="num mono" data-stk-remain>${stockRemainText(s)}</td>
+      ${stockQtyCell(s,'hive')}
+      ${stockQtyCell(s,'binh')}
+      ${stockQtyCell(s,'viet')}
     </tr>`).join('')
-      :'<tr><td colspan="9" class="empty">Không có sản phẩm nào khớp bộ lọc.</td></tr>'}</tbody>
-  </table></div></div>`;
+      :`<tr><td colspan="9" class="empty">${esc(stockEmptyText())}</td></tr>`}</tbody>
+  </table></div></div>
+  ${stockPagerHtml(stkPage, pages)}`;
+}
+function stockOpenEditor(td){
+  if(!canEditStockQty()||!td||td.classList.contains('stk-editing')) return;
+  const field=td.getAttribute('data-stk-edit');
+  const id=td.getAttribute('data-stk-id');
+  const wh=td.getAttribute('data-stk-wh')||stkWh;
+  const s=stockWhList(wh).find(x=>x&&String(x.id)===String(id));
+  if(!s||!field) return;
+  td.classList.add('stk-editing');
+  const orig=stockFmt(s[field]);
+  const tr=td.closest('tr');
+  const rem=tr?tr.querySelector('[data-stk-remain]'):null;
+  const origRemain=rem?rem.textContent:'';
+  const input=document.createElement('input');
+  input.className='stock-qty-in mono';
+  input.setAttribute('inputmode','decimal');
+  input.setAttribute('aria-label',field);
+  input.value=orig;
+  td.textContent='';
+  td.appendChild(input);
+  input.focus();
+  try{ input.select(); }catch(e){}
+  const paint=()=>{
+    if(!rem||(field!=='qty'&&field!=='lock')) return;
+    const n=stockParseQty(input.value);
+    if(n==null) return;
+    const qty=field==='qty'?n:(Number(s.qty)||0);
+    const lock=field==='lock'?n:(Number(s.lock)||0);
+    rem.textContent=stockFmt(qty-lock);
+  };
+  input.addEventListener('input', paint);
+  let closed=false;
+  const cancel=()=>{
+    if(closed) return;
+    closed=true;
+    input.onblur=null;
+    td.classList.remove('stk-editing');
+    td.textContent=orig;
+    if(rem) rem.textContent=origRemain;
+  };
+  const commit=()=>{
+    if(closed) return;
+    const n=stockParseQty(input.value);
+    if(n==null){
+      toast('Nhập một số hợp lệ','bad');
+      input.focus();
+      return;
+    }
+    closed=true;
+    input.onblur=null;
+    const prevRaw=s[field];
+    const prev=prevRaw==null||prevRaw===''?null:Number(prevRaw);
+    const same=prev!=null&&Number.isFinite(prev)&&Math.round(prev*1000)===Math.round(n*1000);
+    if(!same){
+      s[field]=n;
+      stockSyncUnit(s);
+      saveDB();
+    }
+    renderPage();
+  };
+  input.onblur=()=>{ setTimeout(commit, 80); };
+  input.onkeydown=e=>{
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    if(e.key==='Escape'){ e.preventDefault(); cancel(); }
+  };
 }
 function bindStock(){
-  $('#main').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{stkCat=b.dataset.c;renderPage();});
-  $('#stkQ') && bindSearchInput('stkQ', v=>{ stkQ=v; renderPage(); });
+  $('#main').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{stkCat=b.dataset.c;stkPage=1;renderPage();});
+  $('#main').querySelectorAll('[data-wh]').forEach(b=>b.onclick=()=>{
+    const wh=b.getAttribute('data-wh')==='bd'?'bd':'hcm';
+    if(stkWh!==wh){ stkWh=wh; stkPage=1; renderPage(); }
+  });
+  $('#main').querySelectorAll('[data-own]').forEach(b=>b.onclick=()=>{stkOwner=b.getAttribute('data-own')||'';stkPage=1;renderPage();});
+  const both=$('#main').querySelector('[data-stk-both]');
+  if(both) both.onclick=()=>{ stkBoth=!stkBoth; stkPage=1; renderPage(); };
+  $('#stkQ') && bindSearchInput('stkQ', v=>{ stkQ=v; stkPage=1; renderPage(); });
+  const zero=$('#stkZero');
+  if(zero) zero.onclick=()=>{ stkShowZero=!stkShowZero; stkPage=1; renderPage(); };
+  $('#main').querySelectorAll('[data-stk-nav]').forEach(b=>b.onclick=()=>{
+    if(b.disabled) return;
+    const pages=stockPageCount(stockQuery().rows.length);
+    if(b.getAttribute('data-stk-nav')==='prev') stkPage=Math.max(1, stkPage-1);
+    else stkPage=Math.min(pages, stkPage+1);
+    renderPage();
+    const bar=document.querySelector('.stk-bar');
+    if(bar){
+      const top=bar.getBoundingClientRect().top+window.scrollY-64;
+      window.scrollTo(0, Math.max(0, top));
+    }
+  });
+  if(canEditStockQty()){
+    $('#main').querySelectorAll('[data-stk-edit]').forEach(td=>{
+      td.ondblclick=e=>{
+        if(e.target.closest('input')) return;
+        stockOpenEditor(td);
+      };
+    });
+  }
   if(!canManageStock()) return;
   const stkAdd=$('#stkAdd');
   if(stkAdd) stkAdd.onclick=()=>{
-    openModal('Thêm sản phẩm vào kho',`
+    const whLabel=stkWh==='bd'?'Kho Bình Định':'Kho HCM';
+    openModal('Thêm sản phẩm vào '+whLabel,`
       <div class="field"><label>Loại</label><select class="sel" style="width:100%" id="sCat">
         ${Object.keys(CAT).map(k=>`<option value="${k}">${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Tên hàng hóa</label><select class="sel" style="width:100%" id="sProd"></select></div>
       <div class="field" style="margin:0"><label>Trong Kho</label><input class="inp mono" id="sQty" type="number" value="0"></div>`,'Lưu',()=>{
       const cat=$('#sCat').value,pid=+$('#sProd').value,p=catList(cat).find(x=>x.id==pid);
       if(!p){toast('Chọn sản phẩm','bad');return false;}
-      if(DB.stock.find(s=>s.id===pid)){toast('Sản phẩm đã có trong kho','bad');return false;}
+      const list=stkWh==='bd'?stockBdEnsure():DB.stock;
+      if(list.find(s=>s.id===pid)){toast('Sản phẩm đã có trong kho','bad');return false;}
       const qty=+$('#sQty').value||0;
-      const stt=(DB.stock||[]).reduce((m,s)=>Math.max(m, Number(s&&s.stt)||0),0)+1;
+      const stt=list.reduce((m,s)=>Math.max(m, Number(s&&s.stt)||0),0)+1;
       const lock=0;
-      DB.stock.push({id:pid,cat,name:p.name,qty,min:0,unit:stockSheetPack(stt, lock),stt,lock});
+      list.push({id:pid,cat,name:p.name,qty,min:0,unit:stockSheetPack(stt, lock, 0, 0, 0),stt,lock,hive:0,binh:0,viet:0});
       toast('Đã thêm vào kho','ok');saveDB();renderPage();return true;});
     const fill=()=>{$('#sProd').innerHTML=catList($('#sCat').value).map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');};
     $('#sCat').onchange=fill;fill();};
