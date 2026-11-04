@@ -4202,20 +4202,27 @@ function defaultRouteForRole(role){
   return TECH_ROLES[role]?'attendance':'dashboard';
 }
 function routeAllowed(r, role){
+  const passed=arguments.length>1&&role!=null&&role!=='';
   role=role||effectiveUserRole(ME);
+  const admin=passed?role==='admin':isAdmin();
+  if(r==='settings'&&!admin) return false;
   if(!TECH_ROLES[role]) return true;
   return r==='attendance'||r==='attendance-board'||r==='assets';
 }
 function navModelForRole(role){
+  const passed=arguments.length>0&&role!=null&&role!=='';
   role=role||effectiveUserRole(ME);
+  let items;
   if(TECH_ROLES[role]){
-    return NAV.filter(n=>n.k==='attendance'||n.k==='assets').map(n=>{
+    items=NAV.filter(n=>n.k==='attendance'||n.k==='assets').map(n=>{
       if(n.k!=='attendance'||!Array.isArray(n.sub)) return n;
       return Object.assign({}, n, {sub:n.sub.filter(s=>s.k==='attendance'||s.k==='attendance-board')});
     });
-  }
-  if(TELESALES_MENU_ROLES[role]) return NAV;
-  return NAV;
+  }else if(TELESALES_MENU_ROLES[role]) items=NAV;
+  else items=NAV;
+  const admin=passed?role==='admin':isAdmin();
+  if(!admin) items=items.filter(n=>n.k!=='settings');
+  return items;
 }
 function renderBottomNav(){
   const nav=document.getElementById('bottomNav');
