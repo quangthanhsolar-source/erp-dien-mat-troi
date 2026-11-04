@@ -4186,7 +4186,7 @@ const NAV=[
  {k:'customers',t:'Doanh số',i:'book'},
  {k:'device',t:'Thiết bị',i:'cpu',sub:[{k:'dev-panel',t:'Tấm pin'},{k:'dev-inverter',t:'Biến tần'},{k:'dev-battery',t:'Pin lưu trữ'},{k:'dev-cabinet',t:'Tủ điện'},{k:'dev-accessory',t:'Phụ kiện & Giám sát'},{k:'dev-mount',t:'Khung đỡ & Vật tư'},{k:'dev-cable',t:'Dây cáp'}]},
  {k:'wh',t:'Kho hàng',i:'box',sub:[{k:'stock',t:'Tồn kho'},{k:'trans',t:'Nhập/Xuất kho'}]},
- {k:'attendance',t:'Chấm công',i:'clock',sub:[{k:'attendance',t:'Check-In'},{k:'work-plan',t:'Kế Hoạch Công Tác'}]},
+ {k:'attendance',t:'Chấm công',i:'clock',sub:[{k:'attendance',t:'Check-In'},{k:'attendance-board',t:'Bảng chấm công'},{k:'work-plan',t:'Kế Hoạch Công Tác'}]},
  {k:'assets',t:'Quản lý tài sản',i:'build'},
  {k:'users',t:'Nhân sự',i:'users'},
  {k:'settings',t:'Cài đặt',i:'gear'},
@@ -4204,14 +4204,14 @@ function defaultRouteForRole(role){
 function routeAllowed(r, role){
   role=role||effectiveUserRole(ME);
   if(!TECH_ROLES[role]) return true;
-  return r==='attendance'||r==='assets';
+  return r==='attendance'||r==='attendance-board'||r==='assets';
 }
 function navModelForRole(role){
   role=role||effectiveUserRole(ME);
   if(TECH_ROLES[role]){
     return NAV.filter(n=>n.k==='attendance'||n.k==='assets').map(n=>{
       if(n.k!=='attendance'||!Array.isArray(n.sub)) return n;
-      return Object.assign({}, n, {sub:n.sub.filter(s=>s.k==='attendance')});
+      return Object.assign({}, n, {sub:n.sub.filter(s=>s.k==='attendance'||s.k==='attendance-board')});
     });
   }
   if(TELESALES_MENU_ROLES[role]) return NAV;
@@ -11658,7 +11658,7 @@ function bindSettings(){
 const EYE={dashboard:'Tổng quan',crm:'Khách hàng',"quote-new":'Báo giá NLMT',customers:'Doanh số',contracts:'Hợp đồng',
  "dev-inverter":'Thiết bị',"dev-panel":'Thiết bị',"dev-battery":'Thiết bị',"dev-cabinet":'Thiết bị',"dev-service":'Thiết bị',
  "dev-light":'Thiết bị',"dev-pump":'Thiết bị',"dev-accessory":'Thiết bị',"dev-mount":'Thiết bị',"dev-cable":'Thiết bị',
- stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công','work-plan':'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
+ stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công','attendance-board':'Chấm công','work-plan':'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
 function attPad(n){ return String(n).padStart(2,'0'); }
 /** Ngày lịch Asia/Ho_Chi_Minh. Chuỗi YYYY-MM-DD giữ nguyên — không parse qua UTC. */
 function attDateKey(d){
@@ -11827,7 +11827,7 @@ async function attHydratePhotosFromIdb(opt){
       }catch(e){}
     }
   }
-  if(n>0&&!(opt&&opt.silent)&&typeof ROUTE!=='undefined'&&ROUTE==='attendance'&&typeof renderPage==='function'){
+  if(n>0&&!(opt&&opt.silent)&&typeof ROUTE!=='undefined'&&(ROUTE==='attendance'||ROUTE==='attendance-board')&&typeof renderPage==='function'){
     try{ renderPage(); }catch(e){}
   }
   return n;
@@ -12806,7 +12806,6 @@ function pageAttendanceAdminDay(){
     </table></div></div>`;
 }
 function pageAttendance(){
-  if(isAdmin()) return pageAttendanceAdmin();
   const {y,m,days,today}=attMonthDays();
   const name=attEmpName()||'Nhân viên';
   const monthLabel='Tháng '+(m+1)+' / '+y;
@@ -12964,7 +12963,6 @@ function bindAttendanceAdmin(){
   });
 }
 function bindAttendance(){
-  if(isAdmin()){ bindAttendanceAdmin(); return; }
   document.querySelectorAll('[data-att-in]').forEach(b=>{
     b.onclick=()=>attDoCheckIn(b.getAttribute('data-att-in'));
   });
@@ -13642,6 +13640,7 @@ function renderPage(){
     case 'trans': m.innerHTML=pageTrans();bindTrans();break;
     case 'suppliers': m.innerHTML=pageSuppliers();bindSuppliers();break;
     case 'attendance': m.innerHTML=pageAttendance();bindAttendance();break;
+    case 'attendance-board': m.innerHTML=pageAttendanceAdmin();bindAttendanceAdmin();break;
     case 'work-plan': m.innerHTML=pageWorkPlan();bindWorkPlan();break;
     case 'assets': m.innerHTML=pageAssets();bindAssets();break;
     case 'users': m.innerHTML=pageUsers();bindUsers();break;
@@ -13657,7 +13656,7 @@ function renderPage(){
     'dev-inverter':'Biến tần','dev-panel':'Tấm pin','dev-battery':'Pin lưu trữ',
     'dev-cabinet':'Tủ điện','dev-light':'Đèn NLMT','dev-accessory':'Phụ kiện','dev-service':'Dịch vụ',
     stock:'Tồn kho',trans:'Nhập/Xuất kho',suppliers:'Nhà cung cấp',
-    attendance:'Chấm công','work-plan':'Kế Hoạch Công Tác',assets:'Quản lý tài sản',
+    attendance:'Chấm công','attendance-board':'Bảng chấm công','work-plan':'Kế Hoạch Công Tác',assets:'Quản lý tài sản',
     users:'Người dùng',settings:'Cài đặt'};
   if(tbT) tbT.textContent=TITLES[ROUTE]||'Quang Thanh Solar';
   // Sync bottom nav
