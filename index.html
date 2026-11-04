@@ -12822,7 +12822,7 @@ function pageAttendance(){
     const meta=attFormatDay(date);
     const isToday=date===today;
     const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
-    return `<tr class="${cls.trim()}">
+    return `<tr class="${cls.trim()}"${isToday?' data-att-scroll-today="1"':''}>
       <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
       <td class="att-name">${esc(name)}</td>
       <td>${attAddrCell(rec,date,can)}</td>
@@ -12837,7 +12837,7 @@ function pageAttendance(){
     const meta=attFormatDay(date);
     const isToday=date===today;
     const cls=(isToday?'att-today':'')+(date>today?' att-future':'');
-    return `<article class="att-card ${cls.trim()}">
+    return `<article class="att-card ${cls.trim()}"${isToday?' data-att-scroll-today="1"':''}>
       <div class="att-card-head"><b>${esc(meta.wd)} ${esc(meta.full)}</b>${isToday?'<span class="pill p-green">Hôm nay</span>':''}</div>
       <div class="att-card-row"><span>Họ và tên</span><b class="att-name">${esc(name)}</b></div>
       <div class="att-card-row"><span>Địa chỉ hiện tại</span>${attAddrCell(rec,date,can)}</div>
@@ -12969,6 +12969,65 @@ function bindAttendanceAdmin(){
     img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
   });
 }
+/** att-scroll-today: dòng Hôm nay trên danh sách chấm công cá nhân, không đụng bảng ma trận. */
+let attScrollTodayGen=0;
+function attPersonalTodayRow(){
+  const root=document.getElementById('main');
+  if(!root) return null;
+  const list=root.querySelectorAll('[data-att-scroll-today]');
+  for(const el of list){
+    if(el.closest('.att-admin')||el.closest('.att-matrix')||el.closest('.att-day-panel')) continue;
+    const pill=el.querySelector('.pill');
+    if(!pill||String(pill.textContent||'').trim()!=='Hôm nay') continue;
+    const r=el.getBoundingClientRect();
+    if(r.width>1&&r.height>1) return el;
+  }
+  return null;
+}
+function attScrollTodayIntoView(){
+  if(typeof ROUTE!=='undefined'&&ROUTE!=='attendance') return;
+  const el=attPersonalTodayRow();
+  if(!el) return;
+  const rect=el.getBoundingClientRect();
+  let viewTop=12;
+  const topbar=document.querySelector('.topbar');
+  if(topbar){
+    const cs=getComputedStyle(topbar);
+    if(cs.display!=='none'&&cs.visibility!=='hidden'){
+      const tb=topbar.getBoundingClientRect();
+      if(tb.height>0) viewTop=Math.max(viewTop, tb.bottom+8);
+    }
+  }
+  let viewBottom=window.innerHeight-8;
+  const bn=document.querySelector('.bottom-nav');
+  if(bn){
+    const cs=getComputedStyle(bn);
+    if(cs.display!=='none'&&cs.visibility!=='hidden'){
+      const bb=bn.getBoundingClientRect();
+      if(bb.height>0&&bb.top>0&&bb.top<viewBottom) viewBottom=bb.top-8;
+    }
+  }
+  if(!(viewBottom>viewTop+80)) viewBottom=window.innerHeight-8;
+  const visTop=Math.max(rect.top, viewTop);
+  const visBot=Math.min(rect.bottom, viewBottom);
+  const vis=visBot-visTop;
+  const room=Math.min(rect.height, viewBottom-viewTop);
+  const onScreen=rect.top>=viewTop-2 && vis>=room*0.85;
+  const tallOk=rect.height>(viewBottom-viewTop) && rect.top>=viewTop-2 && rect.top<=viewTop+48;
+  if(onScreen||tallOk) return;
+  const delta=rect.top-viewTop;
+  if(!(Math.abs(delta)>=8)) return;
+  window.scrollBy(0, delta);
+}
+function attScheduleScrollToday(){
+  const gen=++attScrollTodayGen;
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      if(gen!==attScrollTodayGen) return;
+      attScrollTodayIntoView();
+    });
+  });
+}
 function bindAttendance(){
   document.querySelectorAll('[data-att-in]').forEach(b=>{
     b.onclick=()=>attDoCheckIn(b.getAttribute('data-att-in'));
@@ -12985,6 +13044,7 @@ function bindAttendance(){
   document.querySelectorAll('[data-att-preview]').forEach(img=>{
     img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
   });
+  attScheduleScrollToday();
 }
 /** Ảnh chấm công dùng viewer riêng: phóng kín viewport, không dùng lightbox CRM (chỉ max-width nên ảnh ~480px nằm nhỏ giữa màn). */
 function openAttPhotoPreview(src){
