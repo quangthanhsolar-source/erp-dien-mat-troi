@@ -7879,13 +7879,27 @@ function orderIsFullyPaid(q){
 function orderStaffIsShortName(name){
   return String(name||'').trim().split(/\s+/).filter(Boolean).length<=1;
 }
+/** Tên lẻ trùng người đã có họ tên đầy đủ — không đưa vào bộ lọc. */
+const ORDER_STAFF_HIDE_SHORT=new Set(['nhi','dương','an']);
+function orderStaffHideFromFilter(name){
+  const key=orderStaffNameKey(name);
+  return !!key && orderStaffIsShortName(name) && ORDER_STAFF_HIDE_SHORT.has(key);
+}
+function orderStaffSamePerson(a, b){
+  const la=orderStaffNameKey(orderStaffLabel(a)||a);
+  const lb=orderStaffNameKey(orderStaffLabel(b)||b);
+  if(la&&lb&&la===lb) return true;
+  const ka=orderKpiStorageKey(a)||orderNvKey(a);
+  const kb=orderKpiStorageKey(b)||orderNvKey(b);
+  return !!(ka&&kb&&ka===kb);
+}
 function orderStaffFilterOptions(){
   const full=[];
   const short=[];
   const seen=new Set();
   const push=label=>{
     const name=String(label||'').trim();
-    if(!name) return;
+    if(!name||orderStaffHideFromFilter(name)) return;
     const key=orderStaffNameKey(name);
     if(!key||seen.has(key)) return;
     seen.add(key);
@@ -7940,7 +7954,6 @@ function sortOrderRowsNewestFirst(list){
 }
 function filteredQuotes(){
   const qtxt=qFilter.q.toLowerCase().trim();
-  const nvKey=orderKpiStorageKey(qFilter.nv)||orderNvKey(qFilter.nv);
   const rows=DB.quotes.filter(q=>{
     if(!hasOrderStaff(q)) return false;
     if(!canViewOrder(q)) return false;
@@ -7950,7 +7963,7 @@ function filteredQuotes(){
     if(qFilter.d&&(!p||p.d!==String(qFilter.d).padStart(2,'0'))) return false;
     if(qFilter.pay==='paid'&&!orderIsFullyPaid(q)) return false;
     if(qFilter.pay==='unpaid'&&orderIsFullyPaid(q)) return false;
-    if(nvKey&&(orderKpiStorageKey(q.nv)||orderNvKey(q.nv))!==nvKey) return false;
+    if(qFilter.nv&&!orderStaffSamePerson(qFilter.nv, q.nv)) return false;
     if(qtxt){
       const blob=[q.code,q.cus,q.phone,q.nv,q.source,q.coHoi,q.note,q.payStatus,q.catLabel,orderCatLabel(q.cat)].join(' ').toLowerCase();
       if(!blob.includes(qtxt)) return false;
@@ -8131,13 +8144,16 @@ function quoteListSection(){
     const p=quoteDateParts(q); return p?p.y:(q.date||'').slice(0,4);
   }).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
   if(qFilter.y&&!years.includes(qFilter.y)) years.unshift(qFilter.y);
+  if(qFilter.nv&&orderStaffHideFromFilter(orderStaffLabel(qFilter.nv)||qFilter.nv)) qFilter.nv='';
   const staffOpts=orderStaffFilterOptions();
-  if(qFilter.nv&&!staffOpts.some(n=>orderKpiStorageKey(n)===orderKpiStorageKey(qFilter.nv))){
+  if(qFilter.nv&&!staffOpts.some(n=>orderStaffSamePerson(n, qFilter.nv))){
     const label=orderStaffLabel(qFilter.nv)||qFilter.nv;
-    if(orderStaffIsShortName(label)) staffOpts.push(label);
-    else{
-      const at=staffOpts.findIndex(orderStaffIsShortName);
-      staffOpts.splice(at<0?staffOpts.length:at,0,label);
+    if(!orderStaffHideFromFilter(label)){
+      if(orderStaffIsShortName(label)) staffOpts.push(label);
+      else{
+        const at=staffOpts.findIndex(orderStaffIsShortName);
+        staffOpts.splice(at<0?staffOpts.length:at,0,label);
+      }
     }
   }
   const rows=filteredQuotes();
