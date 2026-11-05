@@ -13940,10 +13940,7 @@ function attPunchStack(rec, date, kind, canEdit){
   else if(canEdit&&!lockedOut){
     timeHtml=`<button type="button" class="btn ${isIn?'btn-green':'btn-primary'} att-btn" data-att-${isIn?'in':'out'}="${date}">${isIn?'Check in':'Check out'}</button>`;
   }
-  let addrHtml=attSideAddrHtml(rec, isIn?'checkIn':'checkOut');
-  if(canEdit&&!lockedOut){
-    addrHtml+=`<button type="button" class="att-map" data-att-map="${date}" data-att-kind="${isIn?'checkIn':'checkOut'}">Gửi địa chỉ</button>`;
-  }
+  const addrHtml=attSideAddrHtml(rec, isIn?'checkIn':'checkOut');
   let photoHtml='<span class="att-empty">—</span>';
   if(!lockedOut&&(canEdit||img)){
     const photo=attPhotoHtml(img, date, isIn?'checkIn':'checkOut', canEdit);
@@ -14066,23 +14063,38 @@ function pageAttendance(){
     <input type="file" id="attFile" accept="image/*" hidden>`;
 }
 let attBusy=false;
-function attDoCheckIn(date){
-  if(!attCanPunch(date)) return;
+async function attPunchWithLocation(date, kind){
+  if(attBusy||!attCanPunch(date)) return;
+  const isIn=kind!=='checkOut';
   const rec=attGetRecord(date);
-  if(rec&&rec.checkIn){ toast('Ngày này đã check in','bad'); return; }
-  attUpsert(date,{checkIn:new Date().toISOString()});
-  toast('Đã check in','ok');
-  renderPage();
+  if(isIn){
+    if(rec&&rec.checkIn){ toast('Ngày này đã check in','bad'); return; }
+  }else{
+    if(!rec||!rec.checkIn){ toast('Hãy check in trước','bad'); return; }
+    if(rec.checkOut){ toast('Ngày này đã check out','bad'); return; }
+  }
+  const when=new Date().toISOString();
+  const sel=isIn?'[data-att-in="'+date+'"]':'[data-att-out="'+date+'"]';
+  attBusy=true;
+  document.querySelectorAll(sel).forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
+  toast('Đang lấy định vị GPS…');
+  try{
+    const loc=await attLocate();
+    const patch=isIn
+      ?{checkIn:when,checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng,address:loc.address,lat:loc.lat,lng:loc.lng}
+      :{checkOut:when,checkOutAddress:loc.address,checkOutLat:loc.lat,checkOutLng:loc.lng};
+    attUpsert(date, patch);
+    toast(isIn?'Đã check in':'Đã check out','ok');
+    renderPage();
+  }catch(e){
+    toast((isIn?'Chưa lưu check in. ':'Chưa lưu check out. ')+attGeoErrorMessage(e),'bad');
+    renderPage();
+  }finally{
+    attBusy=false;
+  }
 }
-function attDoCheckOut(date){
-  if(!attCanPunch(date)) return;
-  const rec=attGetRecord(date);
-  if(!rec||!rec.checkIn){ toast('Hãy check in trước','bad'); return; }
-  if(rec.checkOut){ toast('Ngày này đã check out','bad'); return; }
-  attUpsert(date,{checkOut:new Date().toISOString()});
-  toast('Đã check out','ok');
-  renderPage();
-}
+function attDoCheckIn(date){ return attPunchWithLocation(date,'checkIn'); }
+function attDoCheckOut(date){ return attPunchWithLocation(date,'checkOut'); }
 function attPickPhoto(date, kind){
   const inp=document.getElementById('attFile');
   if(!inp||!attCanPunch(date)) return;
