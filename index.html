@@ -11742,10 +11742,10 @@ function stockPagerHtml(page, pages){
 function stockEmptyText(){
   const bare=!stkCat&&!String(stkQ||'').trim()&&!stkOwner&&!stkBoth;
   if(stkWh==='bd'&&bare&&!stockWhList('bd').length) return 'Kho Bình Định chưa có hàng.';
-  if(stkBoth) return 'Không có hàng khớp «Có ở cả 2 kho».';
   return 'Không có sản phẩm nào khớp bộ lọc.';
 }
 function pageStock(){
+  stkBoth=false;
   const canMut=canManageStock();
   const all=stockActiveList();
   const cats=new Set(all.map(s=>s&&s.cat).filter(Boolean)).size;
@@ -11777,10 +11777,8 @@ function pageStock(){
     <div class="chips"><button class="chip ${stkCat===''?'active':''}" data-c="">Tất cả</button>
       ${stockCategories().map(k=>`<button class="chip ${stkCat===k?'active':''}" data-c="${esc(k)}">${esc(stockCatLabel(k))}</button>`).join('')}</div>
     <div class="stk-filter-label">Bộ lọc SolarHive / Bình Định / SolarViet</div>
-    <div class="chips" id="stkOwners">${ownerChips.map(c=>`<button type="button" class="chip ${stkOwner===c.k?'active':''}" data-own="${c.k}">${esc(c.t)}</button>`).join('')}
-      <button type="button" class="chip ${stkBoth?'active':''}" data-stk-both="1">Có ở cả 2 kho</button></div>
+    <div class="chips" id="stkOwners">${ownerChips.map(c=>`<button type="button" class="chip ${stkOwner===c.k?'active':''}" data-own="${c.k}">${esc(c.t)}</button>`).join('')}</div>
   </div>
-  <p class="stk-cap">Có ở cả 2 kho: chưa chọn SolarHive, Bình Định hay SolarViet thì hiện hàng có Trong Kho khác 0 ở cả Kho HCM và Kho Bình Định (khớp theo tên). Đang chọn một cột thì hiện hàng có số lượng cột đó khác 0 ở cả hai kho.</p>
   <div class="search">${I.search}<input class="inp" id="stkQ" placeholder="Tìm sản phẩm..." value="${esc(stkQ)}" autocomplete="off"></div>
   <div class="stk-bar">
     <button type="button" class="stk-zero ${stkShowZero?'on':''}" id="stkZero">${zeroLabel}</button>
