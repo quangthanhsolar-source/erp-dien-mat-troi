@@ -213,9 +213,11 @@ button.avatar:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 /* ============ TABLES ============ */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;min-width:340px}
-.stock-tbl{min-width:1180px}
+.stock-tbl{width:max-content;min-width:0}
 .stock-tbl th{text-transform:none;letter-spacing:.04em}
+.stock-tbl th,.stock-tbl td{padding:8px 6px}
 .stock-tbl td{white-space:nowrap}
+.stock-tbl .stk-name{font-weight:400;white-space:normal;max-width:280px;min-width:120px;line-height:1.35}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -11799,8 +11801,8 @@ function pageStock(){
     <tbody>${pageRows.length?pageRows.map(s=>`<tr>
       <td class="mono">${s.stt!=null&&s.stt!==''?esc(s.stt):''}</td>
       <td><span class="pill p-gray">${esc(stockCatLabel(s.cat))}</span></td>
-      <td><b>${esc(strip(s.name))}</b></td>
-      ${stockQtyCell(s,'qty','font-weight:700')}
+      <td class="stk-name">${esc(strip(s.name))}</td>
+      ${stockQtyCell(s,'qty')}
       ${stockQtyCell(s,'lock')}
       <td class="num mono" data-stk-remain>${stockRemainText(s)}</td>
       ${stockQtyCell(s,'hive')}
@@ -12823,6 +12825,11 @@ const ATT_PHOTO_BUDGET=900000;
 function attPhotoEmpty(v){
   return v==null||v==='';
 }
+function attCoord(v){
+  if(v==null||v==='') return null;
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+}
 function attNormalizeRecord(r){
   if(!r||typeof r!=='object') return null;
   const userId=Number(r.userId);
@@ -12833,8 +12840,16 @@ function attNormalizeRecord(r){
     else if(r.checkOut) date=attDateKey(r.checkOut);
   }
   if(!Number.isFinite(userId)||!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  const lat=r.lat==null||r.lat===''?null:Number(r.lat);
-  const lng=r.lng==null||r.lng===''?null:Number(r.lng);
+  const address=r.address==null?'':String(r.address);
+  const checkInAddress=r.checkInAddress==null?'':String(r.checkInAddress);
+  const checkOutAddress=r.checkOutAddress==null?'':String(r.checkOutAddress);
+  const lat=attCoord(r.lat);
+  const lng=attCoord(r.lng);
+  const checkInLat=attCoord(r.checkInLat);
+  const checkInLng=attCoord(r.checkInLng);
+  const inAddr=checkInAddress||address;
+  const inLat=checkInLat!=null?checkInLat:lat;
+  const inLng=checkInLng!=null?checkInLng:lng;
   const checkIn=r.checkIn?String(r.checkIn):'';
   const checkOut=r.checkOut?String(r.checkOut):'';
   return {
@@ -12842,9 +12857,15 @@ function attNormalizeRecord(r){
     userId,
     date,
     name:r.name==null?'':String(r.name),
-    address:r.address==null?'':String(r.address),
-    lat:Number.isFinite(lat)?lat:null,
-    lng:Number.isFinite(lng)?lng:null,
+    address:address||inAddr,
+    lat:lat!=null?lat:inLat,
+    lng:lng!=null?lng:inLng,
+    checkInAddress:inAddr,
+    checkInLat:inLat,
+    checkInLng:inLng,
+    checkOutAddress,
+    checkOutLat:attCoord(r.checkOutLat),
+    checkOutLng:attCoord(r.checkOutLng),
     img:typeof r.img==='string'?r.img:'',
     checkInImg:typeof r.checkInImg==='string'?r.checkInImg:'',
     checkOutImg:typeof r.checkOutImg==='string'?r.checkOutImg:'',
@@ -12868,11 +12889,12 @@ function attMergeOne(a,b){
   const primary=bT>=aT?b:a;
   const secondary=bT>=aT?a:b;
   const out=Object.assign({}, secondary, primary);
-  ['name','address','checkIn','checkOut'].forEach(f=>{
+  ['name','address','checkIn','checkOut','checkInAddress','checkOutAddress'].forEach(f=>{
     if(attPhotoEmpty(out[f])&&!attPhotoEmpty(secondary[f])) out[f]=secondary[f];
   });
-  if(out.lat==null&&secondary.lat!=null) out.lat=secondary.lat;
-  if(out.lng==null&&secondary.lng!=null) out.lng=secondary.lng;
+  ['lat','lng','checkInLat','checkInLng','checkOutLat','checkOutLng'].forEach(f=>{
+    if(out[f]==null&&secondary[f]!=null) out[f]=secondary[f];
+  });
   ['img','checkInImg','checkOutImg','checkInThumb','checkOutThumb'].forEach(f=>{
     out[f]=attPreferPhoto(a[f], b[f]);
   });
@@ -12909,6 +12931,12 @@ function attFingerprint(list){
     address:r.address||'',
     lat:r.lat==null?'':r.lat,
     lng:r.lng==null?'':r.lng,
+    checkInAddress:r.checkInAddress||'',
+    checkOutAddress:r.checkOutAddress||'',
+    checkInLat:r.checkInLat==null?'':r.checkInLat,
+    checkInLng:r.checkInLng==null?'':r.checkInLng,
+    checkOutLat:r.checkOutLat==null?'':r.checkOutLat,
+    checkOutLng:r.checkOutLng==null?'':r.checkOutLng,
     checkIn:r.checkIn||'',
     checkOut:r.checkOut||'',
     updatedAt:r.updatedAt||'',
@@ -12919,7 +12947,10 @@ function attFingerprint(list){
 function attScalarsOnly(list){
   return attNormalizeList(list).map(r=>({
     id:r.id, userId:r.userId, date:r.date, name:r.name||'', address:r.address||'',
-    lat:r.lat, lng:r.lng, checkIn:r.checkIn||'', checkOut:r.checkOut||'', updatedAt:r.updatedAt||''
+    lat:r.lat, lng:r.lng,
+    checkInAddress:r.checkInAddress||'', checkInLat:r.checkInLat, checkInLng:r.checkInLng,
+    checkOutAddress:r.checkOutAddress||'', checkOutLat:r.checkOutLat, checkOutLng:r.checkOutLng,
+    checkIn:r.checkIn||'', checkOut:r.checkOut||'', updatedAt:r.updatedAt||''
   }));
 }
 function attLocalSlim(list){
@@ -13081,9 +13112,15 @@ async function attAttendancePayload(){
       userId:r.userId,
       date:r.date,
       name:r.name||'',
-      address:r.address||'',
-      lat:r.lat,
-      lng:r.lng,
+      address:r.address||r.checkInAddress||'',
+      lat:r.lat!=null?r.lat:r.checkInLat,
+      lng:r.lng!=null?r.lng:r.checkInLng,
+      checkInAddress:r.checkInAddress||r.address||'',
+      checkInLat:r.checkInLat!=null?r.checkInLat:r.lat,
+      checkInLng:r.checkInLng!=null?r.checkInLng:r.lng,
+      checkOutAddress:r.checkOutAddress||'',
+      checkOutLat:r.checkOutLat,
+      checkOutLng:r.checkOutLng,
       checkIn:r.checkIn||'',
       checkOut:r.checkOut||'',
       updatedAt:r.updatedAt||''
@@ -14081,7 +14118,7 @@ async function attSendAddress(date, kind){
     const loc=await attLocate();
     const patch=side==='checkOut'
       ?{checkOutAddress:loc.address,checkOutLat:loc.lat,checkOutLng:loc.lng}
-      :{checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng};
+      :{checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng,address:loc.address,lat:loc.lat,lng:loc.lng};
     attUpsert(date,patch);
     toast('Đã gửi địa chỉ','ok');
     renderPage();
