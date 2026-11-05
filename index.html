@@ -559,6 +559,13 @@ textarea.inp{height:88px;padding:12px 16px;resize:vertical;border-radius:14px}
 .chip:active{background:var(--surface-2)}
 .chip.active{background:var(--ink);color:#fff}
 .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.stk-filter-box{border:1px solid var(--line);border-radius:16px;background:#fff;padding:12px 14px 2px;margin:0 0 14px}
+.stk-filter-label{font-size:12px;font-weight:700;color:var(--muted);margin:0 0 8px}
+.u-ed{cursor:cell}
+.u-editing .inp,.u-editing .sel{width:100%;min-width:120px;height:34px}
+.att-stack{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:168px}
+.att-stack-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%}
+.att-k{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--muted)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .filters .sel{width:auto;min-width:120px;flex:1 1 120px;max-width:220px}
 .filters-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
@@ -2247,9 +2254,15 @@ const ASSET_SHEET_ROWS=[
   {stt:26,name:'Túi đồ nghề',unit:'Cái',qty:[0,1,1,1,1,1,0,0,0]}
 ];
 function assetQtyMap(row){
-  const src=row&&row.qty&&typeof row.qty==='object'?row.qty:{};
+  const src=row&&row.qty&&typeof row.qty==='object'&&!Array.isArray(row.qty)?row.qty:{};
+  const names=ASSET_HOLDER_NAMES.slice();
+  Object.keys(src).forEach(name=>{ if(name&&names.indexOf(name)<0) names.push(name); });
+  const book=DB&&DB.assets;
+  if(book&&Array.isArray(book.columns)&&book.columns.length>4){
+    book.columns.slice(3,-1).forEach(name=>{ if(name&&name!=='TỔNG'&&names.indexOf(name)<0) names.push(name); });
+  }
   const out={};
-  ASSET_HOLDER_NAMES.forEach((name,i)=>{
+  names.forEach((name,i)=>{
     let n=src[name];
     if(n==null&&Array.isArray(row&&row.qty)) n=row.qty[i];
     out[name]=Number(n)||0;
@@ -2304,8 +2317,25 @@ function applyAssetSheetOnce(){
     return seed.rows.length;
   }
   if(!cur.title) cur.title=seed.title;
-  if(!Array.isArray(cur.columns)||cur.columns.length!==seed.columns.length) cur.columns=seed.columns.slice();
-  cur.holders=assetNormalizeHolders(cur.holders, seed.holders);
+  if(!Array.isArray(cur.columns)||cur.columns.length<4) cur.columns=seed.columns.slice();
+  else{
+    const cols=cur.columns.slice();
+    const have=new Set(cols);
+    if(!have.has('TỔNG')) cols.push('TỔNG');
+    ASSET_HOLDER_NAMES.forEach(name=>{
+      if(have.has(name)) return;
+      const at=cols.lastIndexOf('TỔNG');
+      cols.splice(at<0?cols.length:at, 0, name);
+      have.add(name);
+    });
+    cur.columns=cols;
+  }
+  const holders=assetNormalizeHolders(cur.holders, seed.holders);
+  const haveH=new Set(holders.map(h=>h&&h.name));
+  cur.columns.slice(3,-1).forEach(name=>{
+    if(name&&!haveH.has(name)){ holders.push({name,userId:null}); haveH.add(name); }
+  });
+  cur.holders=holders;
   DB.assets=cur;
   if(DB.settings.assetSheetRev!==REV){
     DB.settings.assetSheetRev=REV;
@@ -2322,7 +2352,7 @@ function assetSheetPayload(){
   const rows=a.rows.map(r=>{
     const qty=assetQtyMap(r);
     let total=0;
-    ASSET_HOLDER_NAMES.forEach(name=>{ total+=Number(qty[name])||0; });
+    Object.keys(qty).forEach(name=>{ total+=Number(qty[name])||0; });
     return {stt:Number(r.stt)||0,name:String(r.name||''),unit:String(r.unit||''),qty,total};
   });
   return {
@@ -4866,7 +4896,7 @@ const NAV=[
  {k:'customers',t:'Doanh số',i:'book'},
  {k:'device',t:'Thiết bị',i:'cpu',sub:[{k:'dev-panel',t:'Tấm pin'},{k:'dev-inverter',t:'Biến tần'},{k:'dev-battery',t:'Pin lưu trữ'},{k:'dev-cabinet',t:'Tủ điện'},{k:'dev-accessory',t:'Phụ kiện & Giám sát'},{k:'dev-mount',t:'Khung đỡ & Vật tư'},{k:'dev-cable',t:'Dây cáp'}]},
  {k:'wh',t:'Kho hàng',i:'box',sub:[{k:'stock',t:'Tồn kho'},{k:'trans',t:'Nhập/Xuất kho'}]},
- {k:'attendance',t:'Chấm công',i:'clock',sub:[{k:'attendance',t:'Check-In'},{k:'attendance-board',t:'Bảng chấm công'},{k:'work-plan',t:'Kế Hoạch Công Tác'}]},
+ {k:'attendance',t:'Chấm công',i:'clock',sub:[{k:'attendance',t:'Check-in'},{k:'attendance-board',t:'Bảng chấm công'},{k:'work-plan',t:'Kế Hoạch Công Tác'}]},
  {k:'assets',t:'Quản lý tài sản',i:'build'},
  {k:'users',t:'Nhân sự',i:'users'},
  {k:'settings',t:'Cài đặt',i:'gear'},
@@ -4914,7 +4944,7 @@ function renderBottomNav(){
     nav.innerHTML=tech
       ?`<button class="bn-item" data-go="attendance">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>
-      <span>Check-In</span><div class="bn-dot"></div>
+      <span>Check-in</span><div class="bn-dot"></div>
     </button>
     <button class="bn-item" data-go="assets">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
@@ -7665,6 +7695,30 @@ function ensureOrderKpiSeedOnce(){
   DB.settings.orderKpiSeedOct2026=true;
   return 1;
 }
+/** KPI tháng 11 của thành viên đã có mốc tháng 10 = đúng mốc tháng 10. Chỉ chạy một lần. */
+function ensureOrderKpiNovFromOct(){
+  if(!DB.settings) DB.settings={};
+  if(DB.settings.orderKpiNovFromOct==='2026-11') return 0;
+  ensureOrderKpiSeedOnce();
+  const store=DB.settings.orderKpi;
+  if(store&&typeof store==='object'&&!Array.isArray(store)){
+    Object.keys(store).forEach(key=>{
+      const raw=store[key];
+      if(!raw||typeof raw!=='object'||!raw.months||typeof raw.months!=='object') return;
+      if(!Object.prototype.hasOwnProperty.call(raw.months,'2026-10')) return;
+      raw.months['2026-11']=Math.max(0, Math.round(+raw.months['2026-10']||0));
+    });
+  }
+  orderKpiEnsureLists();
+  const hidOct=orderKpiHiddenForYm('2026-10');
+  const hidNov=Array.isArray(DB.settings.orderKpiHiddenMonths['2026-11'])?DB.settings.orderKpiHiddenMonths['2026-11']:[];
+  DB.settings.orderKpiHiddenMonths['2026-11']=hidNov.filter(k=>{
+    const key=orderKpiStorageKey(k)||orderStaffNameKey(k)||String(k||'').trim();
+    return key&&hidOct.has(key);
+  });
+  DB.settings.orderKpiNovFromOct='2026-11';
+  return 1;
+}
 function mergeAnhThanhOrders(){
   let n=0;
   (DB.quotes||[]).forEach(q=>{
@@ -8059,7 +8113,7 @@ function orderKpiEditor(){
 }
 function quoteListSection(){
   mergeAnhThanhOrders();
-  if(ensureOrderKpiSeedOnce()){ try{ saveDB(); }catch(e){} }
+  if(ensureOrderKpiSeedOnce()||ensureOrderKpiNovFromOct()){ try{ saveDB(); }catch(e){} }
   const years=[...new Set(DB.quotes.map(q=>{
     const p=quoteDateParts(q); return p?p.y:(q.date||'').slice(0,4);
   }).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
@@ -10389,12 +10443,26 @@ function normalizeCrmPhone(phone){
   if(d.startsWith('84') && d.length>=11) d='0'+d.slice(2);
   return d;
 }
+function crmPhoneKeys(row){
+  const keys=new Set();
+  const add=v=>{
+    const k=normalizeCrmPhone(v);
+    if(k&&k.length>=9&&k.length<=12) keys.add(k);
+  };
+  add(row&&row.phone);
+  const blob=[row&&row.phone,row&&row.name,row&&row.note,row&&row.address,row&&row.demand].filter(Boolean).join('\n');
+  const re=/(?:\+?84|0)\d[\d.\-\s]{7,16}\d/g;
+  let m;
+  while((m=re.exec(blob))) add(m[0]);
+  return keys;
+}
 function findCrmByPhone(phone, excludeId){
   const key=normalizeCrmPhone(phone);
-  if(!key) return null;
+  if(!key||key.length<9) return null;
   return (DB.crm||[]).find(x=>{
     if(!x) return false;
     if(excludeId!=null && String(x.id)===String(excludeId)) return false;
+    if(crmPhoneKeys(x).has(key)) return true;
     return normalizeCrmPhone(x.phone)===key;
   })||null;
 }
@@ -10548,7 +10616,7 @@ function openCrmModal(row){
     if(phone){
       const dup=findCrmByPhone(phone, isEdit?row.id:null);
       if(dup){
-        toast('SĐT đã tồn tại ở khách «'+(dup.name||'không tên')+'» — không được lưu trùng','bad');
+        toast('SĐT trùng với khách «'+(dup.name||'không tên')+'». Giữ thông tin khách cũ, không thêm khách mới.','bad');
         return false;
       }
     }
@@ -11613,7 +11681,8 @@ function stockQuery(){
   const otherIdx=stockIndexByName(stockWhList(other));
   const matched=(stockActiveList()||[]).filter(s=>stockPassesFilters(s, otherIdx));
   const zeroCount=matched.filter(s=>!stockNonZero(s.qty)).length;
-  const shown=stkShowZero?matched:matched.filter(s=>stockNonZero(s.qty));
+  const ownerOn=!!stkOwner||!!stkBoth;
+  const shown=(stkShowZero||ownerOn)?matched:matched.filter(s=>stockNonZero(s.qty));
   return {rows:stockSortRows(shown), zeroCount};
 }
 function stockPageCount(n){
@@ -11660,17 +11729,21 @@ function pageStock(){
   return `<div class="page-head"><div class="page-title">Quản lý Tồn kho</div>
     ${canMut?`<button class="btn btn-primary" id="stkAdd">${I.plus} Thêm sản phẩm vào kho</button>`:''}</div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-bottom:20px">
-    <div class="stat"><div class="lbl">Tổng sản phẩm</div><div class="val mono t-blue">${all.length}</div></div>
+    <div class="stat"><div class="lbl">Tổng sản phẩm</div><div class="val mono t-blue" data-stk-total="${qy.rows.length}">${qy.rows.length}</div></div>
     <div class="stat"><div class="lbl">Danh mục</div><div class="val mono t-blue">${cats}</div></div>
   </div>
   <div class="stk-tabs" role="tablist">
     <button type="button" class="stk-tab ${stkWh==='hcm'?'active':''}" data-wh="hcm" role="tab" aria-selected="${stkWh==='hcm'}">Kho HCM</button>
     <button type="button" class="stk-tab ${stkWh==='bd'?'active':''}" data-wh="bd" role="tab" aria-selected="${stkWh==='bd'}">Kho Bình Định</button>
   </div>
-  <div class="chips"><button class="chip ${stkCat===''?'active':''}" data-c="">Tất cả</button>
-    ${stockCategories().map(k=>`<button class="chip ${stkCat===k?'active':''}" data-c="${esc(k)}">${esc(stockCatLabel(k))}</button>`).join('')}</div>
-  <div class="chips" id="stkOwners">${ownerChips.map(c=>`<button type="button" class="chip ${stkOwner===c.k?'active':''}" data-own="${c.k}">${esc(c.t)}</button>`).join('')}
-    <button type="button" class="chip ${stkBoth?'active':''}" data-stk-both="1">Có ở cả 2 kho</button></div>
+  <div class="stk-filter-box" data-stk-filters="1">
+    <div class="stk-filter-label">Bộ lọc danh mục</div>
+    <div class="chips"><button class="chip ${stkCat===''?'active':''}" data-c="">Tất cả</button>
+      ${stockCategories().map(k=>`<button class="chip ${stkCat===k?'active':''}" data-c="${esc(k)}">${esc(stockCatLabel(k))}</button>`).join('')}</div>
+    <div class="stk-filter-label">Bộ lọc SolarHive / Bình Định / SolarViet</div>
+    <div class="chips" id="stkOwners">${ownerChips.map(c=>`<button type="button" class="chip ${stkOwner===c.k?'active':''}" data-own="${c.k}">${esc(c.t)}</button>`).join('')}
+      <button type="button" class="chip ${stkBoth?'active':''}" data-stk-both="1">Có ở cả 2 kho</button></div>
+  </div>
   <p class="stk-cap">Có ở cả 2 kho: chưa chọn SolarHive, Bình Định hay SolarViet thì hiện hàng có Trong Kho khác 0 ở cả Kho HCM và Kho Bình Định (khớp theo tên). Đang chọn một cột thì hiện hàng có số lượng cột đó khác 0 ở cả hai kho.</p>
   <div class="search">${I.search}<input class="inp" id="stkQ" placeholder="Tìm sản phẩm..." value="${esc(stkQ)}" autocomplete="off"></div>
   <div class="stk-bar">
@@ -12265,26 +12338,52 @@ async function sbDeleteUsersByEmails(emails){
     if(error) throw error;
   }
 }
+function userCloudRow(u, now){
+  return {
+    id:Number(u.id),
+    name:u.name||null,
+    email:String(u.email==null?'':u.email).trim()||null,
+    phone:u.phone||null,
+    role:cloudSafeRole(u.role),
+    active:u.active!==false,
+    pass:u.pass||null,
+    avatar:u.avatar||null,
+    updated_at:now
+  };
+}
 /** Chỉ đẩy bảng app_users + tombstone + seq.u — xóa hẳn trên cloud. */
-async function pushUsersToSupabase(){
+async function pushUsersToSupabase(onlyUsers, opt){
   if(!sb||!SB_USER) return false;
   if(!_syncBase) return false;
+  const skipHeavy=!!(opt&&opt.skipHeavy);
+  const touchSettings=!(opt&&opt.touchSettings===false);
   try{
     pruneTombstonedUsersLocal();
     const now=new Date().toISOString();
-    // 1) Xóa tombstone trên cloud TRƯỚC (không chỉ prune)
     const delIds=Array.isArray(DB.deletedUserIds)?DB.deletedUserIds.slice():[];
     const delEms=Array.isArray(DB.deletedUserEmails)?DB.deletedUserEmails.slice():[];
     if(delIds.length) await sbDeleteUsersByIds(delIds);
     if(delEms.length) await sbDeleteUsersByEmails(delEms);
 
-    const userRows=appUserUpsertRows(now);
-    await sbDeleteCollapsedSeedUsers();
-    await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
+    const limited=Array.isArray(onlyUsers)&&onlyUsers.length
+      ?onlyUsers.filter(u=>u&&u.id!=null&&!isTombstonedUser(u)).map(u=>userCloudRow(u, now))
+      :null;
+    const userRows=limited||appUserUpsertRows(now);
+    if(!skipHeavy) await sbDeleteCollapsedSeedUsers();
+    if(userRows.length) await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
 
-    // 2) Lưu tombstone lên erp_settings để máy khác / reload không kéo lại
+    if(skipHeavy&&!touchSettings&&!delIds.length&&!delEms.length){
+      bumpUserSeq();
+      captureSyncBase();
+      return true;
+    }
     const {data:curSet}=await sb.from('erp_settings').select('data').eq('id','main').maybeSingle();
     const prev=(curSet&&curSet.data&&typeof curSet.data==='object')?curSet.data:{};
+    const attendance=skipHeavy
+      ?(prev._attendance||null)
+      :(DB.attendance=attMergeRecords(DB.attendance, prev._attendance), await attAttendancePayload());
+    const workPlans=skipHeavy?(prev._workPlans||null):(DB.workPlans=wpMergePlans(prev._workPlans, DB.workPlans));
+    const assets=skipHeavy?(prev._assets!=null?prev._assets:(assetSheetPayload()||null)):(assetSheetPayload()||prev._assets||null);
     const {error:setErr}=await sb.from('erp_settings').upsert({
       id:'main',
       data:{
@@ -12294,9 +12393,9 @@ async function pushUsersToSupabase(){
         _deletedUserEmails:Array.isArray(DB.deletedUserEmails)?DB.deletedUserEmails:[],
         _deletedProductCodes:Array.isArray(DB.deletedProductCodes)?DB.deletedProductCodes:(prev._deletedProductCodes||[]),
         _contracts:Array.isArray(DB.contracts)?DB.contracts:(prev._contracts||[]),
-        _workPlans:(DB.workPlans=wpMergePlans(prev._workPlans, DB.workPlans)),
-        _attendance:(DB.attendance=attMergeRecords(DB.attendance, prev._attendance), await attAttendancePayload()),
-        _assets:assetSheetPayload()||prev._assets||null,
+        _workPlans:workPlans,
+        _attendance:attendance,
+        _assets:assets,
         _pimgOverrides:(()=>{
           const o=loadPimgOverrides()||{};
           const slim={};
@@ -12330,7 +12429,8 @@ async function pushUsersToSupabase(){
     return false;
   }
 }
-async function saveUsersDB(){
+function saveUsersDB(opts){
+  opts=opts||{};
   bumpUserSeq();
   pruneTombstonedUsersLocal();
   if(typeof _saveDB==='function') _saveDB();
@@ -12338,13 +12438,19 @@ async function saveUsersDB(){
     try{ localStorage.setItem(DB_STORE_KEY,JSON.stringify(cloneDBForLocalStorage())); }catch(e){ console.warn(e); }
   }
   markDBDirty();
-  if(SB_READY&&SB_USER){
-    const ok=await pushUsersToSupabase();
-    if(ok) clearDBDirty();
-    return ok;
+  if(!(SB_READY&&SB_USER)){
+    toast('Chưa đăng nhập Supabase — chỉ lưu trên máy này, reload máy khác sẽ không thấy','bad');
+    return false;
   }
-  toast('Chưa đăng nhập Supabase — chỉ lưu trên máy này, reload máy khác sẽ không thấy','bad');
-  return false;
+  const users=Array.isArray(opts.users)?opts.users:null;
+  const touchSettings=opts.settings!==false;
+  pushUsersToSupabase(users,{skipHeavy:true,touchSettings}).then(ok=>{
+    if(ok) clearDBDirty();
+  }).catch(e=>{
+    console.warn('pushUsers',e);
+    toast('Không đồng bộ người dùng lên Supabase: '+(e.message||e),'bad');
+  });
+  return true;
 }
 /** Sĩ số công ty: mọi vai trò, bỏ tài khoản đã xóa (tombstone). Không theo bộ lọc bảng. */
 function companyStaffCount(){
@@ -12371,8 +12477,8 @@ function pageUsers(){
       <th>Tên</th><th>Hình ảnh</th><th>Email</th><th>SĐT</th><th>Vai trò</th><th>Trạng thái</th>${canMut?'<th style="width:130px">Thao tác</th>':''}</tr></thead>
     <tbody>${DB.users.map(u=>`<tr class="${u.active?'':'locked'}">
       ${canMut?`<td class="chk-col"><input type="checkbox" data-uchk="${u.id}" ${userSelected.has(String(u.id))?'checked':''}></td>`:''}
-      <td><b>${esc(u.name)}</b></td><td><div class="u-photo">${userAvatarInner(u)}</div></td><td style="color:var(--muted)">${esc(u.email)}</td><td class="mono">${esc(u.phone)}</td>
-      <td><span class="pill ${roleMeta(u).c}">${I.shield} ${roleMeta(u).t}</span></td>
+      <td class="${canMut?'u-ed':''}" ${canMut?`data-uid="${u.id}" data-ufield="name" title="Nhấp đúp để sửa"`:''}><b>${esc(u.name)}</b></td><td><div class="u-photo">${userAvatarInner(u)}</div></td><td class="${canMut?'u-ed':''}" style="color:var(--muted)" ${canMut?`data-uid="${u.id}" data-ufield="email" title="Nhấp đúp để sửa"`:''}>${esc(u.email)}</td><td class="mono ${canMut?'u-ed':''}" ${canMut?`data-uid="${u.id}" data-ufield="phone" title="Nhấp đúp để sửa"`:''}>${esc(u.phone)}</td>
+      <td class="${canMut?'u-ed':''}" ${canMut?`data-uid="${u.id}" data-ufield="role" title="Nhấp đúp để sửa"`:''}><span class="pill ${roleMeta(u).c}">${I.shield} ${roleMeta(u).t}</span></td>
       <td class="${u.active?'st-on':'st-off'}">${u.active?'Hoạt động':'Bị khóa'}</td>
       ${canMut?`<td><div class="act"><button data-eu="${u.id}" title="Sửa">${I.pen}</button>
         <button class="${u.active?'del':'ok'}" data-lu="${u.id}" title="${u.active?'Khóa tài khoản':'Mở khóa'}">${u.active?I.ux:I.uok}</button>
@@ -12407,17 +12513,8 @@ function bindUsers(){
     rememberDeletedUsers(removed);
     DB.users=DB.users.filter(u=>!set.has(String(u.id)));
     ids.forEach(id=>userSelected.delete(String(id)));
-    // Xóa ngay trên Supabase (không chờ prune)
-    if(SB_READY&&SB_USER){
-      try{
-        await sbDeleteUsersByIds(removed.map(u=>u.id));
-        await sbDeleteUsersByEmails(removed.map(u=>u.email));
-      }catch(e){
-        console.warn('delete users cloud',e);
-      }
-    }
-    const ok=await saveUsersDB();
-    if(ok) toast('Đã xóa '+removed.length+' tài khoản trên Supabase','ok');
+    const ok=saveUsersDB({settings:true});
+    if(ok) toast('Đã xóa '+removed.length+' tài khoản','ok');
     renderPage();
     return true;
   };
@@ -12436,10 +12533,21 @@ function bindUsers(){
     if(!u)return;
     if(u.id===ME.id){toast('Không thể tự khóa tài khoản đang đăng nhập','bad');return;}
     u.active=!u.active;
-    const ok=await saveUsersDB();
+    const ok=saveUsersDB({users:[u],settings:false});
     if(ok) toast(u.active?'Đã mở khóa '+u.email:'Đã khóa '+u.email,'ok');
     renderPage();
   });
+  if(!$('#main')._userInlineBound){
+    $('#main')._userInlineBound=true;
+    $('#main').addEventListener('dblclick',e=>{
+      if(ROUTE!=='users'||!canManageUsers()) return;
+      const td=e.target.closest('td[data-ufield]');
+      if(!td||!$('#main').contains(td)||td.classList.contains('u-editing')) return;
+      if(e.target.closest('button')||e.target.closest('input')||e.target.closest('a')) return;
+      e.preventDefault();
+      startUserCellEdit(td);
+    });
+  }
   $('#main').querySelectorAll('[data-du]').forEach(b=>b.onclick=()=>{
     const u=DB.users.find(x=>x.id==b.dataset.du);
     if(!u)return;
@@ -12475,19 +12583,84 @@ function userModal(u){
         DB.users.push({id:++DB.seq.u,name:n,email:e,phone:$('#uT').value,role,active:true,pass:p});
       }
       rememberAccountRole(e, role, prevEmail);
-      const ok=await saveUsersDB();
-      // Ép Auth Supabase dùng đúng mật khẩu mới — mật khẩu cũ không còn đăng nhập được
-      if(ok && SB_READY && (p||(u&&u.pass))){
-        const passNow=p||(u&&u.pass)||'';
-        if(passNow){
-          try{ await sb.rpc('erp_sync_auth_login',{p_email:e.trim().toLowerCase(),p_password:passNow}); }
-          catch(err){ console.warn('sync auth after user save', err); }
-        }
+      const saved=u||DB.users[DB.users.length-1];
+      const ok=saveUsersDB({users:saved?[saved]:null,settings:true});
+      const passNow=p||(saved&&saved.pass)||'';
+      if(ok && SB_READY && passNow){
+        sb.rpc('erp_sync_auth_login',{p_email:e.trim().toLowerCase(),p_password:passNow}).catch(err=>{
+          console.warn('sync auth after user save', err);
+        });
       }
-      if(ok) toast(u?'Đã cập nhật người dùng trên Supabase':'Đã thêm người dùng lên Supabase','ok');
+      if(ok) toast(u?'Đã cập nhật người dùng':'Đã thêm người dùng','ok');
       renderPage();
       return true;
     });
+}
+function startUserCellEdit(td){
+  if(!canManageUsers()||!td||td.classList.contains('u-editing')) return;
+  const id=td.getAttribute('data-uid');
+  const field=td.getAttribute('data-ufield');
+  const u=DB.users.find(x=>String(x.id)===String(id));
+  if(!u||!field) return;
+  const prev=td.innerHTML;
+  td.classList.add('u-editing');
+  let editor;
+  if(field==='role'){
+    editor=document.createElement('select');
+    editor.className='sel';
+    editor.innerHTML=Object.keys(ROLE).map(k=>`<option value="${k}" ${effectiveUserRole(u)===k?'selected':''}>${ROLE[k].t}</option>`).join('');
+  }else{
+    editor=document.createElement('input');
+    editor.className='inp'+(field==='phone'?' mono':'');
+    editor.value=field==='name'?u.name:(field==='email'?u.email:(u.phone||''));
+  }
+  td.innerHTML='';
+  td.appendChild(editor);
+  editor.focus();
+  if(editor.select) editor.select();
+  let closed=false;
+  const cancel=()=>{
+    if(closed) return;
+    closed=true;
+    editor.onblur=null;
+    td.classList.remove('u-editing');
+    td.innerHTML=prev;
+  };
+  const commit=()=>{
+    if(closed) return;
+    const v=String(editor.value||'').trim();
+    if(field==='name'){
+      if(!v){ toast('Nhập họ và tên','bad'); editor.focus(); return; }
+      u.name=v;
+      if(isTelesalesRosterName(v)) u.role='telesales';
+    }else if(field==='email'){
+      if(!v){ toast('Nhập email','bad'); editor.focus(); return; }
+      if(DB.users.some(x=>x.id!==u.id&&String(x.email||'').toLowerCase()===v.toLowerCase())){
+        toast('Email này đã được dùng','bad'); editor.focus(); return;
+      }
+      const prevEmail=u.email;
+      u.email=v;
+      rememberAccountRole(v, effectiveUserRole(u), prevEmail);
+    }else if(field==='phone'){
+      u.phone=v;
+    }else if(field==='role'){
+      let role=normalizeAppRole(v);
+      if(isTelesalesRosterName(u.name)) role='telesales';
+      u.role=role;
+      rememberAccountRole(u.email, role, u.email);
+    }else return cancel();
+    closed=true;
+    editor.onblur=null;
+    saveUsersDB({users:[u],settings:field==='role'||field==='email'});
+    toast('Đã cập nhật '+u.name,'ok');
+    renderPage();
+  };
+  editor.onblur=()=>setTimeout(commit, 80);
+  if(editor.tagName==='SELECT') editor.onchange=()=>editor.blur();
+  editor.onkeydown=e=>{
+    if(e.key==='Enter'){ e.preventDefault(); editor.blur(); }
+    if(e.key==='Escape'){ e.preventDefault(); cancel(); }
+  };
 }
 
 /* ---------------- CÀI ĐẶT ---------------- */
@@ -13671,13 +13844,50 @@ function attAdminPhotoSrc(rec, kind){
   const isIn=kind!=='checkOut';
   return (isIn?(rec.checkInImg||rec.img||rec.checkInThumb):(rec.checkOutImg||rec.checkOutThumb))||'';
 }
+function attSideLoc(rec, kind){
+  const isOut=kind==='checkOut';
+  if(!rec) return {address:'',lat:'',lng:''};
+  if(isOut){
+    return {address:String(rec.checkOutAddress||'').trim(),lat:rec.checkOutLat,lng:rec.checkOutLng};
+  }
+  return {
+    address:String(rec.checkInAddress||rec.address||'').trim(),
+    lat:rec.checkInLat!=null?rec.checkInLat:rec.lat,
+    lng:rec.checkInLng!=null?rec.checkInLng:rec.lng
+  };
+}
+function attSideAddrHtml(rec, kind){
+  const loc=attSideLoc(rec, kind);
+  if(!loc.address) return '<span class="att-empty">—</span>';
+  return attAdminAddrHtml({address:loc.address,lat:loc.lat,lng:loc.lng});
+}
+function attPunchStack(rec, date, kind, canEdit){
+  const isIn=kind!=='checkOut';
+  const iso=rec&&rec[isIn?'checkIn':'checkOut'];
+  const lockedOut=!isIn && !(rec&&rec.checkIn);
+  const img=attAdminPhotoSrc(rec, isIn?'checkIn':'checkOut');
+  let timeHtml='<span class="att-empty">—</span>';
+  if(iso) timeHtml=`<div class="att-time">${esc(attFormatTime(iso))}</div>`;
+  else if(canEdit&&!lockedOut){
+    timeHtml=`<button type="button" class="btn ${isIn?'btn-green':'btn-primary'} att-btn" data-att-${isIn?'in':'out'}="${date}">${isIn?'Check in':'Check out'}</button>`;
+  }
+  let addrHtml=attSideAddrHtml(rec, isIn?'checkIn':'checkOut');
+  if(canEdit&&!lockedOut){
+    addrHtml+=`<button type="button" class="att-map" data-att-map="${date}" data-att-kind="${isIn?'checkIn':'checkOut'}">Gửi địa chỉ</button>`;
+  }
+  let photoHtml='<span class="att-empty">—</span>';
+  if(!lockedOut&&(canEdit||img)){
+    const photo=attPhotoHtml(img, date, isIn?'checkIn':'checkOut', canEdit);
+    photoHtml=photo||'<span class="att-empty">—</span>';
+  }
+  return `<div class="att-stack">
+    <div class="att-stack-item"><span class="att-k">Thời gian</span>${timeHtml}</div>
+    <div class="att-stack-item"><span class="att-k">Địa chỉ</span><div class="att-addr-cell">${addrHtml}</div></div>
+    <div class="att-stack-item"><span class="att-k">Upload ảnh</span>${photoHtml}</div>
+  </div>`;
+}
 function attAdminPunchHtml(rec, kind){
-  const iso=rec&&rec[kind];
-  const img=attAdminPhotoSrc(rec, kind);
-  if(!iso&&!img) return '<span class="att-empty">—</span>';
-  const time=iso?`<div class="att-time">${esc(attFormatTime(iso))}</div>`:'';
-  const photo=img?`<div class="att-photo"><img class="att-thumb" src="${attImgSrc(img)}" alt="${kind==='checkOut'?'Ảnh check out':'Ảnh check in'}" data-att-preview="1"></div>`:'';
-  return `<div class="att-punch">${time}${photo}</div>`;
+  return attPunchStack(rec, '', kind, false);
 }
 function pageAttendanceAdminDay(){
   const date=attAdminSelectedDay();
@@ -13721,7 +13931,6 @@ function pageAttendanceAdminDay(){
     return `<tr data-uid="${mem.id}" data-date="${esc(date)}">
       <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span></td>
       <td class="att-name">${esc(label)}${showMail?`<div class="att-mx-mail">${esc(email)}</div>`:''}</td>
-      <td>${attAdminAddrHtml(rec)}</td>
       <td>${attAdminPunchHtml(rec, 'checkIn')}</td>
       <td>${attAdminPunchHtml(rec, 'checkOut')}</td>
       <td>${attOtCell(rec)}</td>
@@ -13731,7 +13940,6 @@ function pageAttendanceAdminDay(){
       <thead><tr>
         <th>Ngày</th>
         <th>Họ và tên</th>
-        <th>Địa chỉ hiện tại</th>
         <th>Check in</th>
         <th>Check out</th>
         <th>Tăng ca</th>
@@ -13752,9 +13960,8 @@ function pageAttendance(){
     return `<tr class="${cls.trim()}"${isToday?' data-att-scroll-today="1"':''}>
       <td><span class="att-wd">${esc(meta.wd)}</span><span class="att-day">${esc(meta.label)}</span>${isToday?' <span class="pill p-green">Hôm nay</span>':''}</td>
       <td class="att-name">${esc(name)}</td>
-      <td>${attAddrCell(rec,date,can)}</td>
-      <td>${attPunchCell(rec,date,'checkIn',can)}</td>
-      <td>${attPunchCell(rec,date,'checkOut',can)}</td>
+      <td>${attPunchStack(rec,date,'checkIn',can)}</td>
+      <td>${attPunchStack(rec,date,'checkOut',can)}</td>
       <td>${attOtCell(rec)}</td>
     </tr>`;
   }).join('');
@@ -13767,9 +13974,8 @@ function pageAttendance(){
     return `<article class="att-card ${cls.trim()}"${isToday?' data-att-scroll-today="1"':''}>
       <div class="att-card-head"><b>${esc(meta.wd)} ${esc(meta.full)}</b>${isToday?'<span class="pill p-green">Hôm nay</span>':''}</div>
       <div class="att-card-row"><span>Họ và tên</span><b class="att-name">${esc(name)}</b></div>
-      <div class="att-card-row"><span>Địa chỉ hiện tại</span>${attAddrCell(rec,date,can)}</div>
-      <div class="att-card-row"><span>Check in</span>${attPunchCell(rec,date,'checkIn',can)}</div>
-      <div class="att-card-row"><span>Check out</span>${attPunchCell(rec,date,'checkOut',can)}</div>
+      <div class="att-card-row"><span>Check in</span>${attPunchStack(rec,date,'checkIn',can)}</div>
+      <div class="att-card-row"><span>Check out</span>${attPunchStack(rec,date,'checkOut',can)}</div>
       <div class="att-card-row"><span>Tăng ca</span>${attOtCell(rec)}</div>
     </article>`;
   }).join('');
@@ -13781,7 +13987,6 @@ function pageAttendance(){
       <thead><tr>
         <th>Ngày</th>
         <th>Họ và tên</th>
-        <th>Địa chỉ hiện tại</th>
         <th>Check in</th>
         <th>Check out</th>
         <th>Tăng ca</th>
@@ -13832,14 +14037,18 @@ function attPickPhoto(date, kind){
   };
   inp.click();
 }
-async function attSendAddress(date){
+async function attSendAddress(date, kind){
   if(attBusy||!attCanPunch(date)) return;
   attBusy=true;
-  document.querySelectorAll('[data-att-map="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
+    document.querySelectorAll('[data-att-map="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
   toast('Đang lấy định vị GPS…');
   try{
     const loc=await attLocate();
-    attUpsert(date,{address:loc.address,lat:loc.lat,lng:loc.lng});
+    const side=kind==='checkOut'?'checkOut':'checkIn';
+    const patch=side==='checkOut'
+      ?{checkOutAddress:loc.address,checkOutLat:loc.lat,checkOutLng:loc.lng}
+      :{checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng,address:loc.address,lat:loc.lat,lng:loc.lng};
+    attUpsert(date,patch);
     toast('Đã gửi địa chỉ','ok');
     renderPage();
   }catch(e){
@@ -13966,7 +14175,7 @@ function bindAttendance(){
     b.onclick=()=>attPickPhoto(b.getAttribute('data-att-photo'), b.getAttribute('data-att-kind'));
   });
   document.querySelectorAll('[data-att-map]').forEach(b=>{
-    b.onclick=()=>attSendAddress(b.getAttribute('data-att-map'));
+    b.onclick=()=>attSendAddress(b.getAttribute('data-att-map'), b.getAttribute('data-att-kind'));
   });
   document.querySelectorAll('[data-att-preview]').forEach(img=>{
     img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
@@ -14424,6 +14633,16 @@ function bindWorkPlan(){
     btn.addEventListener('click', ()=>wpOpenImage(btn.getAttribute('data-wp-view')));
   });
   wpHydrateThumbs().catch(()=>{});
+  requestAnimationFrame(()=>wpScrollTodayIntoView());
+}
+function wpScrollTodayIntoView(){
+  const wrap=document.querySelector('.wp-card .tbl-wrap');
+  const day=wrap&&wrap.querySelector('th.wp-day.wp-today');
+  if(!wrap||!day) return;
+  const name=wrap.querySelector('th.wp-name');
+  const nameRight=name?name.getBoundingClientRect().right:wrap.getBoundingClientRect().left;
+  const delta=day.getBoundingClientRect().left-nameRight;
+  if(Math.abs(delta)>12) wrap.scrollLeft+=delta;
 }
 let assetQ='';
 let assetHolder='';
@@ -14431,6 +14650,24 @@ let assetTool='';
 function assetColHolders(book){
   const cols=(book&&Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
   return cols.length>4?cols.slice(3,-1):ASSET_HOLDER_NAMES.slice();
+}
+function assetLiveBook(){
+  applyAssetSheetOnce();
+  if(!(DB.assets&&Array.isArray(DB.assets.rows))) DB.assets=assetSheetSeed();
+  if(!Array.isArray(DB.assets.columns)||DB.assets.columns.length<4) DB.assets.columns=ASSET_SHEET_COLS.slice();
+  return DB.assets;
+}
+function assetVisibleHolders(book){
+  const names=assetColHolders(book);
+  const holder=String(assetHolder||'');
+  const tool=String(assetTool||'').trim();
+  let list=names.slice();
+  if(holder&&names.indexOf(holder)>=0) list=[holder];
+  if(tool){
+    const who=new Set(assetToolHolderNames(book, tool));
+    list=list.filter(name=>who.has(name));
+  }
+  return list;
 }
 function assetOwnerCount(row, names){
   const qty=assetQtyMap(row);
@@ -14575,7 +14812,7 @@ function assetPaintQtyRow(scope){
 function assetWriteQty(input, persist){
   if(!isAdmin()||!input) return;
   const holder=input.getAttribute('data-asset-holder')||'';
-  if(ASSET_HOLDER_NAMES.indexOf(holder)<0) return;
+  if(assetColHolders(DB.assets).indexOf(holder)<0) return;
   const idx=Number(input.getAttribute('data-asset-idx'));
   const row=assetFindRow(idx, input.getAttribute('data-asset-name'), input.getAttribute('data-asset-stt'));
   if(!row) return;
@@ -14585,7 +14822,7 @@ function assetWriteQty(input, persist){
   const prev=Number(row.qty[holder])||0;
   row.qty[holder]=n;
   let total=0;
-  ASSET_HOLDER_NAMES.forEach(name=>{ total+=Number(row.qty[name])||0; });
+  assetColHolders(DB.assets).forEach(name=>{ total+=Number(row.qty[name])||0; });
   const totalChanged=Number(row.total)!==total;
   row.total=total;
   assetPaintQtyRow(input);
@@ -14595,18 +14832,16 @@ function assetWriteQty(input, persist){
 function pageAssets(){
   applyAssetSheetOnce();
   const book=(DB.assets&&typeof DB.assets==='object'&&Array.isArray(DB.assets.rows)&&DB.assets.rows.length)?DB.assets:assetSheetSeed();
-  const cols=(Array.isArray(book.columns)&&book.columns.length)?book.columns:ASSET_SHEET_COLS;
-  const holderNames=assetColHolders(book);
+  const allHolders=assetColHolders(book);
+  const holderNames=assetVisibleHolders(book);
   const all=Array.isArray(book.rows)?book.rows:[];
   const rows=assetFilteredRows(book);
   const canEdit=isAdmin();
-  const head=cols.map((label,i)=>{
-    const cls=[];
-    if(i>=3) cls.push('num');
-    if(i>=3&&i<cols.length-1) cls.push('asset-holder');
-    return `<th class="${cls.join(' ')}" scope="col">${esc(label)}</th>`;
-  }).join('');
-  const holderOpts=['<option value="">Tất cả</option>'].concat(holderNames.map(name=>`<option value="${esc(name)}"${assetHolder===name?' selected':''}>${esc(name)}</option>`)).join('');
+  const head=['STT','ĐỒ NGHỀ','ĐVT'].map(label=>`<th scope="col">${esc(label)}</th>`).join('')
+    +holderNames.map(name=>`<th class="num asset-holder" scope="col">${esc(name)}</th>`).join('')
+    +`<th class="num" scope="col">TỔNG</th>`;
+  const colCount=4+holderNames.length;
+  const holderOpts=['<option value="">Tất cả</option>'].concat(allHolders.map(name=>`<option value="${esc(name)}"${assetHolder===name?' selected':''}>${esc(name)}</option>`)).join('');
   const toolNames=assetToolOptionNames(book);
   const toolOpts=['<option value="">Tất cả</option>'].concat(toolNames.map(name=>`<option value="${esc(name)}"${assetTool===name?' selected':''}>${esc(name)}</option>`)).join('');
   const notes=assetNotesHtml(book);
@@ -14617,12 +14852,12 @@ function pageAssets(){
     const holderCells=holderNames.map(name=>{
       const n=Number(qty[name])||0;
       const pos=n>0;
-      if(canEdit&&ASSET_HOLDER_NAMES.indexOf(name)>=0){
+      if(canEdit){
         return `<td class="num mono asset-edit"><input class="asset-qty-in${pos?' asset-qty-pos':''}" type="number" min="0" step="1" inputmode="numeric" value="${n}" data-asset-idx="${idx}" data-asset-stt="${esc(r.stt)}" data-asset-name="${esc(r.name)}" data-asset-holder="${esc(name)}" aria-label="${esc(name)} — ${esc(r.name)}"></td>`;
       }
       return `<td class="num mono ${pos?'asset-qty-pos':'asset-zero'}" data-asset-holder="${esc(name)}">${n}</td>`;
     }).join('');
-    const total=assetRowSum(r, holderNames);
+    const total=assetRowSum(r, holderNames.length?holderNames:assetColHolders(book));
     return `<tr data-asset-row="${idx}">
       <td class="mono">${esc(r.stt)}</td>
       <td class="asset-name">${esc(r.name)}<span class="asset-owners">${owners} người</span></td>
@@ -14630,8 +14865,9 @@ function pageAssets(){
       ${holderCells}
       <td class="num mono asset-total" data-asset-total="${total}"><b>${total}</b></td>
     </tr>`;
-  }).join(''):`<tr><td class="empty" colspan="${cols.length}">${all.length?'Không có đồ nghề khớp bộ lọc.':'Không có dòng dữ liệu trong bảng cấp đồ nghề.'}</td></tr>`;
-  return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div></div>
+  }).join(''):`<tr><td class="empty" colspan="${colCount}">${all.length?'Không có đồ nghề khớp bộ lọc.':'Không có dòng dữ liệu trong bảng cấp đồ nghề.'}</td></tr>`;
+  return `<div class="page-head"><div class="page-title">${I.build} Quản lý tài sản</div>
+    ${canEdit?`<div class="head-actions"><button type="button" class="btn btn-primary" id="assetAddTool">${I.plus} Thêm đồ nghề</button><button type="button" class="btn" id="assetAddHolder">${I.plus} Thêm người giữ</button></div>`:''}</div>
     <div class="page-sub" style="margin:-8px 0 14px">${esc(book.title||ASSET_SHEET_TITLE)}</div>
     <div class="asset-bar">
       <div class="search">${I.search}<input class="inp" id="assetQ" placeholder="Lọc đồ nghề, đơn vị, kỹ thuật viên..." value="${esc(assetQ)}" autocomplete="off"></div>
@@ -14650,6 +14886,56 @@ function bindAssets(){
   if(holderSel) holderSel.addEventListener('change', ()=>{ assetHolder=holderSel.value; renderPage(); });
   const toolSel=document.getElementById('assetTool');
   if(toolSel) toolSel.addEventListener('change', ()=>{ assetTool=toolSel.value; renderPage(); });
+  const addTool=document.getElementById('assetAddTool');
+  if(addTool) addTool.onclick=()=>{
+    openModal('Thêm đồ nghề',`
+      <div class="field"><label>Tên đồ nghề *</label><input class="inp" id="assetNewName" placeholder="Tên thiết bị"></div>
+      <div class="field" style="margin:0"><label>Đơn vị</label><input class="inp" id="assetNewUnit" value="Cái"></div>`,
+      'Lưu',()=>{
+        const name=$('#assetNewName').value.trim();
+        const unit=($('#assetNewUnit').value.trim()||'Cái');
+        if(!name){ toast('Nhập tên đồ nghề','bad'); return false; }
+        const book=assetLiveBook();
+        if((book.rows||[]).some(r=>String(r.name||'').trim().toLocaleLowerCase('vi')===name.toLocaleLowerCase('vi'))){
+          toast('Đồ nghề này đã có trong bảng','bad'); return false;
+        }
+        const holders=assetColHolders(book);
+        const qty={};
+        holders.forEach(h=>{ qty[h]=0; });
+        const stt=(book.rows||[]).reduce((m,r)=>Math.max(m, Number(r.stt)||0),0)+1;
+        book.rows.push({stt:String(stt),name,unit,qty,total:0});
+        saveDB();
+        toast('Đã thêm '+name,'ok');
+        renderPage();
+        return true;
+      });
+  };
+  const addHolder=document.getElementById('assetAddHolder');
+  if(addHolder) addHolder.onclick=()=>{
+    openModal('Thêm người đang giữ',`
+      <div class="field" style="margin:0"><label>Tên người giữ *</label><input class="inp" id="assetNewHolder" placeholder="Ví dụ: Minh"></div>`,
+      'Lưu',()=>{
+        const name=$('#assetNewHolder').value.trim();
+        if(!name){ toast('Nhập tên người giữ','bad'); return false; }
+        const book=assetLiveBook();
+        const holders=assetColHolders(book);
+        if(holders.some(h=>h.toLocaleLowerCase('vi')===name.toLocaleLowerCase('vi'))){
+          toast('Người này đã có trong bảng','bad'); return false;
+        }
+        const cols=book.columns.slice();
+        const at=cols.lastIndexOf('TỔNG');
+        if(at<0) cols.push(name); else cols.splice(at,0,name);
+        book.columns=cols;
+        (book.rows||[]).forEach(r=>{
+          if(!r.qty||typeof r.qty!=='object'||Array.isArray(r.qty)) r.qty=assetQtyMap(r);
+          r.qty[name]=0;
+        });
+        saveDB();
+        toast('Đã thêm cột '+name,'ok');
+        renderPage();
+        return true;
+      });
+  };
   if(!isAdmin()) return;
   document.querySelectorAll('.asset-qty-in').forEach(input=>{
     input.addEventListener('input', ()=>assetPaintQtyRow(input));
