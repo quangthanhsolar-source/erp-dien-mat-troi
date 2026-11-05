@@ -7876,18 +7876,31 @@ function orderIsFullyPaid(q){
   if(total>0&&paid>=total) return true;
   return debt<=0&&(total===0||paid>=total);
 }
+function orderStaffIsShortName(name){
+  return String(name||'').trim().split(/\s+/).filter(Boolean).length<=1;
+}
 function orderStaffFilterOptions(){
-  const map=new Map();
+  const full=[];
+  const short=[];
+  const seen=new Set();
+  const push=label=>{
+    const name=String(label||'').trim();
+    if(!name) return;
+    const key=orderStaffNameKey(name);
+    if(!key||seen.has(key)) return;
+    seen.add(key);
+    (orderStaffIsShortName(name)?short:full).push(name);
+  };
+  crmOwnerNames().forEach(push);
   (DB.quotes||[]).forEach(q=>{
     const raw=orderNvCanon(q.nv);
     if(!raw) return;
-    const key=orderKpiStorageKey(raw);
-    if(!key) return;
-    const label=orderStaffLabel(raw)||raw;
-    const prev=map.get(key);
-    if(!prev || label.length>prev.length) map.set(key,label);
+    push(orderStaffLabel(raw)||raw);
   });
-  return [...map.values()].sort((a,b)=>a.localeCompare(b,'vi'));
+  const byName=(a,b)=>a.localeCompare(b,'vi');
+  full.sort(byName);
+  short.sort(byName);
+  return full.concat(short);
 }
 function orderListSortParts(q){
   const raw=String((q&&q.date)||'').trim();
@@ -8120,7 +8133,12 @@ function quoteListSection(){
   if(qFilter.y&&!years.includes(qFilter.y)) years.unshift(qFilter.y);
   const staffOpts=orderStaffFilterOptions();
   if(qFilter.nv&&!staffOpts.some(n=>orderKpiStorageKey(n)===orderKpiStorageKey(qFilter.nv))){
-    staffOpts.unshift(orderStaffLabel(qFilter.nv)||qFilter.nv);
+    const label=orderStaffLabel(qFilter.nv)||qFilter.nv;
+    if(orderStaffIsShortName(label)) staffOpts.push(label);
+    else{
+      const at=staffOpts.findIndex(orderStaffIsShortName);
+      staffOpts.splice(at<0?staffOpts.length:at,0,label);
+    }
   }
   const rows=filteredQuotes();
   const sum=rows.reduce((s,q)=>s+(+q.total||0),0);
