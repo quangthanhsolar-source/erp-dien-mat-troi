@@ -14073,15 +14073,15 @@ function attPickPhoto(date, kind){
 }
 async function attSendAddress(date, kind){
   if(attBusy||!attCanPunch(date)) return;
+  const side=kind==='checkOut'?'checkOut':'checkIn';
   attBusy=true;
-    document.querySelectorAll('[data-att-map="'+date+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
+  document.querySelectorAll('[data-att-map="'+date+'"][data-att-kind="'+side+'"]').forEach(b=>{ b.disabled=true; b.textContent='Đang lấy vị trí…'; });
   toast('Đang lấy định vị GPS…');
   try{
     const loc=await attLocate();
-    const side=kind==='checkOut'?'checkOut':'checkIn';
     const patch=side==='checkOut'
       ?{checkOutAddress:loc.address,checkOutLat:loc.lat,checkOutLng:loc.lng}
-      :{checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng,address:loc.address,lat:loc.lat,lng:loc.lng};
+      :{checkInAddress:loc.address,checkInLat:loc.lat,checkInLng:loc.lng};
     attUpsert(date,patch);
     toast('Đã gửi địa chỉ','ok');
     renderPage();
