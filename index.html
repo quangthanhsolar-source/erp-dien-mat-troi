@@ -365,11 +365,15 @@ tbody tr:active{background:var(--surface)}
 /* Xem chi tiết: hành động chính, cùng màu lime với mục menu đang chọn, nằm bên phải hàng tháng */
 .att-admin-nav .att-detail-go{margin-left:auto;flex:0 0 auto;background:var(--lime);color:var(--ink);font-weight:800}
 .att-admin-nav .att-detail-go:active{background:var(--lime-d)}
+.att-admin-nav .att-emp-search{flex:0 1 220px;margin:0;min-width:160px;max-width:260px}
+.att-admin-nav .att-emp-search .inp{height:40px;font-size:14px;padding-left:38px}
+.att-admin-nav .att-emp-search svg{left:12px;width:16px;height:16px}
 .att-admin-day a.att-addr-link{display:inline-block;max-width:320px;color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px;word-break:break-word;cursor:pointer}
 .att-addr-cell a.att-addr-link{display:inline-block;max-width:280px;color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:2px;word-break:break-word;cursor:pointer}
 @media(max-width:767px){
   .att-admin-nav .att-month-label{min-width:0}
   .att-admin-nav .att-detail-go{min-height:40px}
+  .att-admin-nav .att-emp-search{flex:1 1 100%;max-width:none;min-width:0}
 }
 .att-admin .att-nav-btn{width:40px;min-width:40px;height:40px;padding:0;font-size:22px;line-height:1}
 /* att-day-pick: dropdown chọn ngày trên Xem chi tiết (admin) */
@@ -13732,8 +13736,78 @@ function attMatrixNameCell(mem, dups){
 }
 let attAdminMode='matrix';
 let attAdminDay='';
+let attAdminQ='';
+let attAdminSearchTimer=null;
 let attDayPickOpen=false;
 let attDayPickYm=null;
+function attAdminFold(s){
+  return String(s==null?'':s)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/đ/g,'d')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function attAdminMemberMatch(mem){
+  const q=attAdminFold(attAdminQ);
+  if(!q) return true;
+  const name=attAdminFold(mem&&mem.name);
+  const email=attAdminFold(mem&&mem.email);
+  const label=attAdminFold(attMemberLabel(mem));
+  return label.includes(q)||name.includes(q)||email.includes(q);
+}
+function attAdminCountLabel(shown, total){
+  const n=total|0;
+  if(!attAdminFold(attAdminQ)) return n+' tài khoản';
+  return (shown|0)+'/'+n+' tài khoản';
+}
+function attAdminSearchHtml(){
+  return `<div class="search att-emp-search">${I.search}<input class="inp" id="attAdminQ" placeholder="Nhân viên" aria-label="Nhân viên" value="${esc(attAdminQ)}" autocomplete="off" spellcheck="false"></div>`;
+}
+function bindAttAdminSearch(){
+  const el=document.getElementById('attAdminQ');
+  if(!el) return;
+  if(attAdminSearchTimer){
+    clearTimeout(attAdminSearchTimer);
+    attAdminSearchTimer=null;
+  }
+  let composing=false;
+  const snapshot=()=>{
+    const cur=document.getElementById('attAdminQ');
+    if(!cur) return;
+    attAdminQ=cur.value;
+  };
+  const schedule=()=>{
+    snapshot();
+    clearTimeout(attAdminSearchTimer);
+    attAdminSearchTimer=setTimeout(()=>{
+      attAdminSearchTimer=null;
+      const cur=document.getElementById('attAdminQ');
+      let caret=null;
+      if(cur){
+        attAdminQ=cur.value;
+        caret=typeof cur.selectionStart==='number'?cur.selectionStart:cur.value.length;
+      }
+      renderPage();
+      requestAnimationFrame(()=>{
+        const n=document.getElementById('attAdminQ');
+        if(!n) return;
+        n.focus();
+        if(caret!=null){
+          try{ const p=Math.min(Math.max(0, caret), n.value.length); n.setSelectionRange(p,p); }catch(e){}
+        }
+      });
+    }, 320);
+  };
+  el.addEventListener('compositionstart',()=>{ composing=true; snapshot(); clearTimeout(attAdminSearchTimer); attAdminSearchTimer=null; });
+  el.addEventListener('compositionupdate', snapshot);
+  el.addEventListener('compositionend',()=>{ composing=false; schedule(); });
+  el.addEventListener('input',(e)=>{
+    if(composing || e.isComposing) return;
+    schedule();
+  });
+}
 function attAddDays(key, delta){
   const p=String(key||'').split('-').map(Number);
   const dt=new Date(Date.UTC(p[0]||1970, (p[1]||1)-1, (p[2]||1)+(delta||0)));
@@ -13838,12 +13912,14 @@ function pageAttendanceAdminMatrix(){
   const {y,m}=attAdminYm();
   const today=attVnYmd().key;
   const built=attAdminBuildMatrix(y,m);
+  const all=built.members||[];
+  const members=all.filter(attAdminMemberMatch);
   const monthLabel='Tháng '+m+' / '+y;
   const head=`<div class="page-head att-admin" data-att-admin-view="matrix">
       <div class="page-head-row">
         <div>
           <div class="page-title">${I.clock} Chấm công</div>
-          <div class="att-sub">${esc(monthLabel)} · ${built.userCount} tài khoản · ✓ đã check in</div>
+          <div class="att-sub">${esc(monthLabel)} · ${attAdminCountLabel(members.length, all.length)} · ✓ đã check in</div>
         </div>
         <div class="head-actions">
           <button type="button" class="btn btn-ghost" id="attXlsx">Tải Excel</button>
@@ -13854,19 +13930,23 @@ function pageAttendanceAdminMatrix(){
         <button type="button" class="btn btn-ghost att-nav-btn" id="attPrev" aria-label="Tháng trước">‹</button>
         <div class="att-month-label">${esc(monthLabel)}</div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attNext" aria-label="Tháng sau">›</button>
+        ${attAdminSearchHtml()}
         <button type="button" class="btn btn-green att-mode-btn att-detail-go" id="attDetailTab">Xem chi tiết</button>
       </div>
     </div>`;
-  if(!built.members.length){
+  if(!all.length){
     return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Chưa có tài khoản nào trong hệ thống.</div></div>`;
   }
-  const dups=attMatrixDupLabels(built.members);
+  if(!members.length){
+    return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Không có nhân viên khớp.</div></div>`;
+  }
+  const dups=attMatrixDupLabels(members);
   const headDays=built.days.map(date=>{
     const isToday=date===today;
     const meta=attFormatDay(date);
     return `<th class="att-mx-day${isToday?' att-mx-today':''}" scope="col" title="${esc(meta.full+(isToday?' · Hôm nay':''))}">${attDayNum(date)}</th>`;
   }).join('');
-  const body=built.members.map(mem=>{
+  const body=members.map(mem=>{
     const cells=built.days.map((date,i)=>{
       const isToday=date===today;
       const on=!!mem.marks[i];
@@ -13961,18 +14041,19 @@ function pageAttendanceAdminDay(){
   const meta=attFormatDay(date);
   const isToday=date===today;
   const pack=attAdminAccounts();
-  const members=pack.users.map(u=>{
+  const all=pack.users.map(u=>{
     const id=Number(u.id);
     const name=attAccountName(u, {name:pack.nameFromAtt.get(id)||''});
     const email=String((u&&u.email)||'').trim();
     return {id, name, email, active:u.active!==false};
   });
+  const members=all.filter(attAdminMemberMatch);
   const dayLabel=meta.wd+' '+meta.full;
   const head=`<div class="page-head att-admin" data-att-admin-view="day">
       <div class="page-head-row">
         <div>
           <div class="page-title">${I.clock} Chấm công</div>
-          <div class="att-sub">Chi tiết · ${esc(dayLabel)} · ${members.length} tài khoản</div>
+          <div class="att-sub">Chi tiết · ${esc(dayLabel)} · ${attAdminCountLabel(members.length, all.length)}</div>
         </div>
       </div>
       <div class="att-admin-nav">
@@ -13983,10 +14064,14 @@ function pageAttendanceAdminDay(){
           ${attDayPickPanelHtml(date, today)}
         </div>
         <button type="button" class="btn btn-ghost att-nav-btn" id="attDayNext" aria-label="Ngày sau">›</button>
+        ${attAdminSearchHtml()}
       </div>
     </div>`;
-  if(!members.length){
+  if(!all.length){
     return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Chưa có tài khoản nào trong hệ thống.</div></div>`;
+  }
+  if(!members.length){
+    return head+`<div class="tbl-card att-desktop att-admin"><div class="empty">Không có nhân viên khớp.</div></div>`;
   }
   const dups=attMatrixDupLabels(members);
   const rows=members.map(mem=>{
@@ -14185,6 +14270,7 @@ function bindAttendanceAdmin(){
   document.querySelectorAll('.att-admin [data-att-preview]').forEach(img=>{
     img.onclick=()=>openAttPhotoPreview(img.getAttribute('src'));
   });
+  bindAttAdminSearch();
 }
 /** att-scroll-today: dòng Hôm nay trên danh sách chấm công cá nhân, không đụng bảng ma trận. */
 let attScrollTodayGen=0;
