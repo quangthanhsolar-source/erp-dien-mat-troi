@@ -6,9 +6,9 @@ Privacy: `https://app.quangthanhsolar.com/privacy.html`
 
 ## 0) Bạn cần có sẵn
 
-1. [Google Play Console](https://play.google.com/console) — phí đăng ký ~$25 (một lần).
-2. [Android Studio](https://developer.android.com/studio) trên Windows (JDK + Android SDK).
-3. Logo/chụp màn hình thật (login, đơn hàng, báo giá) — tối thiểu 2 ảnh điện thoại.
+1. [Google Play Console](https://play.google.com/console) — phí đăng ký ~$25 (một lần), xác minh danh tính bằng tài khoản Google của công ty. Bước này không làm thay được.
+2. File đã build sẵn để nộp lần đầu: `android/app/build/outputs/bundle/release/app-release.aab` (versionCode 1, versionName 1.0.0). Không cần Android Studio cho lần nộp này.
+3. Ảnh store nằm ở `docs/play-listing/`: icon 512, feature graphic 1024×500, một ảnh màn hình đăng nhập. Play bắt thêm ít nhất một ảnh nữa chụp từ trong app sau khi đăng nhập (Dashboard hoặc đơn hàng).
 
 ## 1) Tạo keystore (một lần, giữ thật kỹ)
 
@@ -27,15 +27,27 @@ Sẽ tạo:
 
 ## 2) Sync & build AAB
 
+Trên Windows:
+
 ```powershell
 npm install
 npm run mobile:sync
 npm run mobile:bundle
 ```
 
+Trên Linux / macOS:
+
+```bash
+npm install
+npm run mobile:sync
+cd android && ./gradlew bundleRelease
+```
+
 File nộp Play:
 
 `android/app/build/outputs/bundle/release/app-release.aab`
+
+Gói đầu tiên dùng `versionCode` 1, `versionName` 1.0.0, `applicationId` `com.quangthanhsolar.erp`, target Android 16 (API 36). Giữ file `mobile-release.keystore` và mật khẩu ở ngoài git. Mất khóa này thì không cập nhật được app đã đăng.
 
 Mở Android Studio (tuỳ chọn):
 
@@ -84,7 +96,16 @@ Quang Thanh Solar ERP giúp nhân viên kinh doanh và vận hành theo dõi bá
 | Mã hóa khi truyền | Có (HTTPS) |
 | Người dùng có thể yêu cầu xóa? | Qua quản trị viên nội bộ |
 
-Quyền app: Internet (bắt buộc). Không xin vị trí / danh bạ / microphone trừ khi sau này thêm tính năng.
+Quyền app: Internet (bắt buộc) và vị trí (Check-in / Check-out). Ảnh chấm công do người dùng tự chọn trong thư viện, app không xin quyền camera nền. Không xin danh bạ hay microphone.
+
+Khi Google hỏi Data safety, khai thêm:
+
+| Mục | Trả lời |
+|-----|---------|
+| Vị trí | Có, vị trí chính xác, chỉ khi nhân viên nhấn Check-in hoặc Check-out |
+| Ảnh | Có, ảnh người dùng tự tải lên khi chấm công |
+| Theo dõi nền / quảng cáo | Không |
+| Chia sẻ cho quảng cáo | Không |
 
 ## 5) Release
 
