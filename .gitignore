@@ -23,8 +23,13 @@ local.properties
 dist/
 .capacitor/
 *.log
-ios/
 .firebase/
+
+# Apple signing secrets — never commit
+*.p8
+*.p12
+*.mobileprovision
+*.cer
 firebase-debug.log
 firebase-debug.*.log
 supabase/.temp/

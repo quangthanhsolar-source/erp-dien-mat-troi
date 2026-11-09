@@ -27,5 +27,8 @@
   "android": {
     "allowMixedContent": false,
     "backgroundColor": "#111214"
+  },
+  "ios": {
+    "backgroundColor": "#111214"
   }
 }

@@ -120,6 +120,6 @@ Khi Google hỏi Data safety, khai thêm:
 - Chỉ build AAB mới khi đổi native (icon, quyền, versionCode).
 - Mỗi lần nộp native: tăng `versionCode` trong `android/app/build.gradle`.
 
-## 7) App Store (iOS) — phase sau
+## 7) App Store (iOS)
 
-Cần Mac + Apple Developer (~$99/năm). Cùng Capacitor: `npx cap add ios` khi sẵn sàng.
+Dự án iOS đã nằm trong `ios/` (cùng bundle id, cùng URL). Windows không build được IPA. Các bước tài khoản Apple, máy Mac và ảnh chụp iPhone nằm ở `docs/APP_STORE.md`.
