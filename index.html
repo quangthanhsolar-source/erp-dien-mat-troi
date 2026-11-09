@@ -1876,10 +1876,24 @@ function canSeeProfitTable(){
   return salesHasPerm('seeProfitTable');
 }
 function orderStaffNameKey(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function orderNameIsThisUser(raw, fullName){
+  const name=orderNvCanon(raw);
+  const mine=String(fullName||'').trim();
+  if(!name||!mine) return false;
+  if(orderStaffNameKey(name)===orderStaffNameKey(mine)) return true;
+  if(typeof orderNameWordsMatch!=='function'||!orderNameWordsMatch(name, mine)) return false;
+  const mineKey=orderStaffNameKey(mine);
+  const rivals=(typeof orderAccountUsers==='function'?orderAccountUsers():[]).filter(u=>{
+    const n=String(u&&u.name||'').trim();
+    if(!n||orderStaffNameKey(n)===mineKey) return false;
+    return orderNameWordsMatch(name, n);
+  });
+  return rivals.length===0;
+}
 function orderOwnedByMe(q){
   if(!q||!ME) return false;
-  const a=orderNvKey(q.nv), b=orderNvKey(ME.name);
-  return !!a&&!!b&&a===b;
+  if(typeof orderStaffSamePerson==='function'&&orderStaffSamePerson(q.nv, ME.name)) return true;
+  return orderNameIsThisUser(q.nv, ME.name);
 }
 function canEditOrder(q){
   if(!ME || !q) return false;
