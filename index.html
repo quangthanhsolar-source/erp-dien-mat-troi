@@ -15488,7 +15488,6 @@ const HD_PDF_PX=Math.round(HD_PDF_MM*PDF_REF_DPI/25.4); // 688
 /** Tinos ≈ Times New Roman — có trên cả điện thoại & máy tính qua Google Fonts. */
 const HD_PDF_FONT="Tinos,'Times New Roman',Times,serif";
 const HD_PDF_SCALE=3;
-const HD_PDF_FONT_HREF='https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap';
 function romanQT(n){
   const v=[1000,900,500,400,100,90,50,40,10,9,5,4,1];
   const s=['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
@@ -16313,6 +16312,111 @@ async function ensurePdfProductImages(doc, map){
   }
   return {injected,baked:qNodes.filter(n=>n.tagName==='CANVAS').length,mode:'baked'};
 }
+function hdPdfFontUrl(file){
+  try{ return new URL('fonts/'+file, document.baseURI).href; }
+  catch(e){ return 'fonts/'+file; }
+}
+/** Tinos đầy đủ (có dấu cách + tiếng Việt) nằm cùng site — không phụ thuộc Google Fonts. */
+function hdPdfFontFaceCss(){
+  const src=file=>'url("'+hdPdfFontUrl(file)+'") format("woff2")';
+  return [
+    '@font-face{font-family:"Tinos";font-style:normal;font-weight:400;font-display:block;src:'+src('tinos-400.woff2')+';}',
+    '@font-face{font-family:"Tinos";font-style:italic;font-weight:400;font-display:block;src:'+src('tinos-400i.woff2')+';}',
+    '@font-face{font-family:"Tinos";font-style:normal;font-weight:700;font-display:block;src:'+src('tinos-700.woff2')+';}',
+    '@font-face{font-family:"Tinos";font-style:italic;font-weight:700;font-display:block;src:'+src('tinos-700i.woff2')+';}'
+  ].join('');
+}
+async function hdPdfEnsureFont(doc){
+  if(!doc||!doc.fonts||!doc.fonts.load) return false;
+  const specs=['400 16px Tinos','700 16px Tinos','italic 400 16px Tinos','italic 700 16px Tinos'];
+  const deadline=Date.now()+8000;
+  while(Date.now()<deadline){
+    try{
+      await Promise.all(specs.map(s=>doc.fonts.load(s)));
+      if(doc.fonts.ready) await doc.fonts.ready;
+    }catch(e){}
+    if(hdPdfFontPaintsSpaces(doc)) return true;
+    await new Promise(r=>setTimeout(r,150));
+  }
+  return hdPdfFontPaintsSpaces(doc);
+}
+function hdPdfFontPaintsSpaces(doc){
+  try{
+    const c=doc.createElement('canvas');
+    const ctx=c.getContext('2d');
+    if(!ctx) return false;
+    ctx.font='400 72px Tinos';
+    const space=ctx.measureText(' ').width;
+    const pair=ctx.measureText('A B').width;
+    const tight=ctx.measureText('AB').width;
+    return space>=8 && pair>=tight+8;
+  }catch(e){ return false; }
+}
+/** null = không đo được; true = dấu cách còn khoảng; false = chữ bị dính. */
+function hdPdfSpacesHold(doc, root){
+  const probe=doc.createElement('p');
+  probe.className='p';
+  probe.style.cssText='position:absolute;left:0;top:0;opacity:0;width:'+HD_PDF_PX+'px;pointer-events:none;margin:0;';
+  const sample='Căn cứ vào quy định Bộ Luật Dân Sự số 91/2015/QH13 nước Cộng Hòa Xã Hội Chủ Nghĩa Việt Nam;';
+  probe.textContent=sample;
+  (root||doc.body).appendChild(probe);
+  let saw=false, ok=false;
+  try{
+    const node=probe.firstChild;
+    const text=node&&node.nodeValue||'';
+    for(let i=1;i<text.length-1;i++){
+      if(text.charAt(i)!==' ') continue;
+      const r1=doc.createRange(); r1.setStart(node,i-1); r1.setEnd(node,i);
+      const r2=doc.createRange(); r2.setStart(node,i+1); r2.setEnd(node,i+2);
+      const a=r1.getBoundingClientRect();
+      const b=r2.getBoundingClientRect();
+      if(!a.width||!b.width) continue;
+      if(Math.abs(a.top-b.top)>3) continue;
+      saw=true;
+      ok=(b.left-a.right)>=0.75;
+      break;
+    }
+  }catch(e){ saw=false; }
+  probe.remove();
+  return saw?ok:null;
+}
+/** Máy không đo được dấu cách: chèn ô trắng cố định để html2canvas không dính chữ. */
+function hdPdfLockSpaces(root){
+  const doc=root.ownerDocument;
+  const walker=doc.createTreeWalker(root, 4, null);
+  const nodes=[];
+  while(walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node=>{
+    const text=node.nodeValue;
+    if(!text||text.indexOf(' ')<0) return;
+    const parent=node.parentNode;
+    if(!parent) return;
+    if(parent.getAttribute&&parent.getAttribute('data-hd-sp')!=null) return;
+    const tag=parent.tagName||'';
+    if(/^(SCRIPT|STYLE)$/i.test(tag)) return;
+    const frag=doc.createDocumentFragment();
+    const parts=text.split(' ');
+    parts.forEach((part,i)=>{
+      if(part) frag.appendChild(doc.createTextNode(part));
+      if(i<parts.length-1){
+        const sp=doc.createElement('span');
+        sp.setAttribute('data-hd-sp','1');
+        sp.textContent='\u00A0';
+        frag.appendChild(sp);
+      }
+    });
+    parent.replaceChild(frag, node);
+  });
+}
+async function prepareHdPdfLayout(root){
+  if(!root||root.getAttribute('data-hd-ready')==='1') return;
+  const doc=root.ownerDocument;
+  const paints=await hdPdfEnsureFont(doc);
+  const hold=hdPdfSpacesHold(doc, root);
+  if(hold===false||(hold==null&&!paints)) hdPdfLockSpaces(root);
+  root.setAttribute('data-hd-ready','1');
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+}
 /** CSS khóa form HĐ PDF — cùng font/cỡ/lề trên điện thoại và máy tính. */
 function hdPdfLockCss(){
   return [
@@ -16321,11 +16425,12 @@ function hdPdfLockCss(){
     'body{width:'+HD_PDF_PX+'px!important;max-width:'+HD_PDF_PX+'px!important;margin:0 auto!important;padding:0!important;background:#fff!important;',
       'font-family:'+HD_PDF_FONT+'!important;font-size:13.6pt!important;line-height:1.5!important;color:#111!important;',
       '-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}',
-    'body,body *{font-family:'+HD_PDF_FONT+'!important;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;letter-spacing:normal!important}',
+    'body,body *{font-family:'+HD_PDF_FONT+'!important;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;letter-spacing:0!important;font-kerning:none!important;font-variant-ligatures:none!important}',
+    'span[data-hd-sp]{display:inline-block!important;width:0.25em!important;min-width:0.25em!important;overflow:hidden!important;vertical-align:baseline!important}',
     'img,.hd-logo{max-width:42mm!important;height:auto!important}',
     '.p,.sec,.article,li,ul{font-size:13.6pt!important;line-height:1.5!important}',
-    '.p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
-    '.p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:normal!important}',
+    '.p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:0!important}',
+    '.p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:0!important}',
     '.p,.article,li,ul{page-break-inside:avoid!important;break-inside:avoid!important}',
     '.article,.sec{page-break-after:avoid!important;break-after:avoid!important}',
     /* 3 khối khóa size */
@@ -16348,7 +16453,7 @@ async function mountHdPdfCaptureHost(fullHtml){
   const oldHost=document.getElementById('hdPdfCaptureHost'); if(oldHost) oldHost.remove();
   const frame=document.createElement('iframe');
   frame.id='hdPdfCaptureFrame';
-  // allow-same-origin + allow-scripts: tải font Tinos (Google) giống máy tính trên điện thoại
+  // allow-same-origin + allow-scripts: tải font Tinos cùng site, giống máy tính trên điện thoại
   frame.setAttribute('sandbox','allow-same-origin allow-scripts');
   frame.setAttribute('scrolling','no');
   frame.style.cssText='position:fixed;left:0;top:0;width:'+HD_PDF_PX+'px;height:200px;border:0;opacity:1;visibility:visible;z-index:1;pointer-events:none;background:#fff;overflow:hidden;';
@@ -16360,32 +16465,14 @@ async function mountHdPdfCaptureHost(fullHtml){
   doc.open();
   doc.write('<!DOCTYPE html><html><head><meta charset="UTF-8">'
     +'<meta name="viewport" content="width='+HD_PDF_PX+', initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">'
-    +'<link rel="preconnect" href="https://fonts.googleapis.com">'
-    +'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    +'<link href="'+HD_PDF_FONT_HREF+'" rel="stylesheet">'
+    +'<style id="hd-pdf-font">'+hdPdfFontFaceCss()+'</style>'
     +'<style>'+styles+'</style>'
     +'<style id="hd-pdf-lock">'+hdPdfLockCss()+'</style>'
     +'</head><body>'+bodyHtml+'</body></html>');
   doc.close();
   const root=doc.body;
-  // Chờ font Tinos (cùng metric điện thoại/máy tính) rồi mới đo layout
-  try{
-    if(doc.fonts&&doc.fonts.load){
-      await Promise.race([
-        Promise.all([
-          doc.fonts.load('400 13.6pt Tinos'),
-          doc.fonts.load('700 13.6pt Tinos'),
-          doc.fonts.load('italic 400 13.6pt Tinos'),
-          doc.fonts.load('italic 700 13.6pt Tinos')
-        ]).then(()=>doc.fonts.ready),
-        new Promise(r=>setTimeout(r,2500))
-      ]);
-    }else if(doc.fonts&&doc.fonts.ready){
-      await Promise.race([doc.fonts.ready, new Promise(r=>setTimeout(r,2500))]);
-    }
-  }catch(e){}
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  await new Promise(r=>setTimeout(r,100));
+  await prepareHdPdfLayout(root);
+  await new Promise(r=>setTimeout(r,40));
   const h=Math.max(root.scrollHeight||0, root.offsetHeight||0, doc.documentElement.scrollHeight||0, 1);
   frame.style.height=h+'px';
   void frame.offsetHeight;
@@ -16395,6 +16482,7 @@ async function mountHdPdfCaptureHost(fullHtml){
 }
 /** html2canvas HĐ — không ghi đè Arial như báo giá; khóa width/scale giống máy tính. */
 async function captureHdCanvas(root){
+  await prepareHdPdfLayout(root);
   const w=HD_PDF_PX;
   const h=Math.max(1, root.scrollHeight||0, root.offsetHeight||0, root.ownerDocument&&root.ownerDocument.documentElement.scrollHeight||0);
   if(root.style){
@@ -16422,7 +16510,7 @@ async function captureHdCanvas(root){
     onclone:(clonedDoc)=>{
       try{
         const st=clonedDoc.createElement('style');
-        st.textContent=hdPdfLockCss()
+        st.textContent=hdPdfFontFaceCss()+hdPdfLockCss()
           +'html,body{width:'+w+'px!important;max-width:'+w+'px!important;margin:0!important;}'
           +'html,body,body *{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;}';
         (clonedDoc.head||clonedDoc.documentElement).appendChild(st);
