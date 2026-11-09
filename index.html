@@ -5873,7 +5873,6 @@ function applyQuoteQtyFormulas(c){
   const kepQty=c.n*4;
   const csQty=systemKwpQty(c);
   const laborPrice=quoteLaborInstallPrice(c);
-  const laborFloor=quoteLaborFloor(c);
   const lockInit=!_qtQtyLockInit;
   const setQty=(r, qty)=>{
     if(!r) return;
@@ -5902,48 +5901,21 @@ function applyQuoteQtyFormulas(c){
   setBy(QT.nhanCong,/Lắp đặt pin và vận hành/i,r=>{
     setQty(r, 1);
     const prevBasis=r.laborBasis!=null&&r.laborBasis!==''?+r.laborBasis:null;
-    const basisChanged=prevBasis!=null && prevBasis!==+laborPrice;
-    const exportLabor=isInvtXgExport((c&&c.inv)||quoteSelectedInv());
-    const kwp=systemKwpQty(c);
-    const prevKwp=r.laborKwp!=null&&r.laborKwp!==''?+r.laborKwp:null;
-    const kwpChanged=prevKwp!=null && Math.abs(prevKwp-kwp)>1e-6;
-    // Báo giá bám tải đã lưu chưa có đơn giá/kWp: suy ra từ thành tiền cũ trước khi đổi kWp.
-    if(exportLabor && r.priceManual && kwpChanged && !(+r.laborRate>0) && prevKwp>0)
-      r.laborRate=(+r.price)/prevKwp;
-    const keepBamTaiRate=exportLabor && !!r.priceManual && +r.laborRate>0 && kwpChanged;
-    // Đổi kWp / loại biến tần / % khu vực thì giá công thức đổi theo. Preview và PDF không được ghi đè giá đã sửa khi công thức không đổi.
-    // Hòa lưới bám tải: nếu đã sửa đơn giá thì giữ đ/kWp đó khi đổi công suất tấm pin, nhưng không dưới 700.000 × kWp.
-    if(basisChanged && !keepBamTaiRate) r.priceManual=false;
+    // Giá đã gõ tay được giữ nguyên khi đổi kWp và khi xuất preview/PDF. Không còn giá sàn.
     if(!_qtPriceLockInit && !r.priceManual && prevBasis==null && r.price!=null && r.price!=='' && +r.price!==+laborPrice) r.priceManual=true;
-    r.minPrice=laborFloor;
+    r.minPrice=null;
     r.laborBasis=laborPrice;
-    if(exportLabor) r.laborKwp=kwp;
-    else{ delete r.laborKwp; delete r.laborRate; }
-    if(!r.priceManual){
-      r.price=laborPrice;
-      if(exportLabor && +r.price<laborFloor) r.price=laborFloor;
-      if(exportLabor) delete r.laborRate;
-    }else if(keepBamTaiRate){
-      let next=Math.round(kwp*(+r.laborRate));
-      if(!(next>=laborFloor)){
-        next=laborFloor;
-        r.laborRate=BAM_TAI_LABOR_FLOOR_PER_KWP;
-      }
-      r.price=next;
-    }else if(+r.price<laborFloor){
-      r.price=laborFloor;
-      if(exportLabor) r.laborRate=BAM_TAI_LABOR_FLOOR_PER_KWP;
-    }else if(exportLabor && !(+r.laborRate>0) && kwp>0){
-      r.laborRate=(+r.price)/kwp;
-    }
+    delete r.laborKwp;
+    delete r.laborRate;
+    if(!r.priceManual) r.price=Math.max(0, +laborPrice||0);
   });
   _qtQtyLockInit=true;
   _qtPriceLockInit=true;
 }
 function effectiveCalc(){
   const c=calc(); if(!c) return null;
-  if(QT&&QT._panelQty!=null){
-    const n=Math.max(1,+QT._panelQty||1);
+  if(QT&&QT._panelQty!=null&&QT._panelQty!==''){
+    const n=Math.max(0, Math.round(+QT._panelQty)||0);
     const kwp=n*c.pn.w/1000, day=kwp*4, month=day*30, roof=n*3;
     const st=DB.settings||{};
     return{...c,n,kwp,day,month,roof,saveDay:day*(+st.price||0),saveMonth:month*(+st.price||0)};
@@ -5978,11 +5950,17 @@ function syncQuoteDepInputs(){
   });
   (QT.nhanCong||[]).forEach((r,i)=>{
     root.querySelectorAll(`[data-nc-q="${i}"]`).forEach(el=>{ el.value=r.qty; });
-    root.querySelectorAll(`[data-nc-p="${i}"]`).forEach(el=>{ el.value=formatMoneyDots(r.price); });
+    root.querySelectorAll(`[data-nc-p="${i}"]`).forEach(el=>{
+      el.value=formatMoneyDots(r.price);
+      if(/Lắp đặt pin và vận hành/i.test(String(r.name||''))){
+        el.removeAttribute('data-pmin');
+        el.removeAttribute('title');
+      }
+    });
   });
 }
 function syncQuoteDepsFromPanelCount(n){
-  n=Math.max(1,+n||1);
+  n=Math.max(0, Math.round(+n)||0);
   QT._panelQty=n;
   const base=calc(); if(!base) return null;
   const kwp=n*base.pn.w/1000;
@@ -6090,7 +6068,8 @@ function qtPriceInputAttrs(it,i){
 }
 function seedQuoteRowMinPrice(rows){
   (rows||[]).forEach(r=>{
-    if(r&&r.minPrice==null) r.minPrice=Math.max(0,+r.price||0);
+    if(!r||/Lắp đặt pin và vận hành/i.test(String(r.name||''))) return;
+    if(r.minPrice==null) r.minPrice=Math.max(0,+r.price||0);
   });
 }
 function qtQtyKey(key,id){ return String(key)+'|'+String(id); }
@@ -6346,8 +6325,8 @@ function buildItems(){
   const prev=QT.items||[];
   const base=calc();
   const prevPn=prev.find(x=>x&&x.k==='Tấm pin NLMT'&&!x._dx);
-  if(base&&prevPn&&String(prevPn.id)===String(base.pn.id)&&prevPn.qty!=null&&prevPn.qty!==''&&+prevPn.qty>0){
-    QT._panelQty=Math.max(1, Math.round(+prevPn.qty));
+  if(base&&prevPn&&String(prevPn.id)===String(base.pn.id)&&prevPn.qty!=null&&prevPn.qty!==''){
+    QT._panelQty=Math.max(0, Math.round(+prevPn.qty)||0);
   }
   const c=effectiveCalc();if(!c)return;const st=DB.settings;
   ensureExportQuoteMode();
@@ -6468,7 +6447,7 @@ function buildItems(){
   restoreManualPkRows();
   seedQuoteRowMinPrice(QT.phuKien);
   if(!QT.nhanCong) QT.nhanCong=[
-    {name:'Lắp đặt pin và vận hành hết vòng đời hệ thống',unit:'Hệ',qty:1,price:quoteLaborInstallPrice(c),minPrice:quoteLaborInstallPrice(c),
+    {name:'Lắp đặt pin và vận hành hết vòng đời hệ thống',unit:'Hệ',qty:1,price:quoteLaborInstallPrice(c),minPrice:null,
      specs:['Thủ tục đăng ký, thông báo sở công thương và điện lực theo nghị định 58/2025/NĐ-CP','Tặng kèm bảo hiểm cháy nổ và thiên tai']},
     {name:'Chi phí đóng gói và vận chuyển toàn bộ đến công trình',unit:'Hệ',qty:1,price:1000000,minPrice:1000000,specs:[]},
   ];
@@ -6512,7 +6491,7 @@ function buildItems(){
   DB.services.forEach(s=>{if(QT.svc[s.id]&&s.price>0&&!qtOmitSec('svc:'+s.id))it.push({k:'Dịch vụ',name:s.name,id:s.id,img:'',specs:[],qty:qtKeepQty(prev,'Dịch vụ',s.id,1,true),price:qtKeepUnitPrice(prev,'Dịch vụ',s.id,s.price),minPrice:s.price,cost:s.cost});});
 
   const pnLine=it.find(x=>x&&x.k==='Tấm pin NLMT'&&!x._dx);
-  if(pnLine&&+pnLine.qty>0) QT._panelQty=Math.max(1, Math.round(+pnLine.qty));
+  if(pnLine&&pnLine.qty!=null&&pnLine.qty!=='') QT._panelQty=Math.max(0, Math.round(+pnLine.qty)||0);
   else QT._panelQty=null;
   QT.items=it;
   it.forEach(rememberLineQty);
@@ -7341,7 +7320,7 @@ function bindQuote(){
           QT.batQty=it.qty;
           QT._batQtyId=it.id;
         }
-        if(it.k==='Tấm pin NLMT' && it.qty>0){
+        if(it.k==='Tấm pin NLMT'){
           syncQuoteDepsFromPanelCount(it.qty);
           refreshQtKpis();
           refreshNv();
@@ -7447,27 +7426,18 @@ function bindQuote(){
     $('#main').querySelectorAll('[data-nc-p]').forEach(inp=>bindQtMoneyPrice(inp,{
       getFloor:()=>{
         const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
+        if(r && /Lắp đặt pin và vận hành/i.test(String(r.name||''))) return null;
         return r?qtPriceFloor(r):null;
-      },
-      floorToast:()=>{
-        const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
-        if(r && /Lắp đặt pin và vận hành/i.test(String(r.name||'')) && isInvtXgExport())
-          return 'Giá lắp đặt không thấp hơn 700.000 đ × kWp';
-        return '';
       },
       setPrice:v=>{
         const r=QT.nhanCong&&QT.nhanCong[+inp.dataset.ncP];
         if(!r) return;
-        r.price=v;
+        r.price=Math.max(0,+v||0);
         if(/Lắp đặt pin và vận hành/i.test(String(r.name||''))){
           markQuotePriceManual(r);
-          if(isInvtXgExport()){
-            const kwp=systemKwpQty(effectiveCalc()||{});
-            if(kwp>0){
-              r.laborRate=(+v)/kwp;
-              r.laborKwp=kwp;
-            }
-          }
+          r.minPrice=null;
+          delete r.laborRate;
+          delete r.laborKwp;
         }
       },
       refresh:refreshNc
