@@ -263,7 +263,10 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .in-tbl th,.in-tbl td{padding:10px 8px}
 .in-tbl .in-name,.in-tbl .in-series{white-space:normal;overflow-wrap:anywhere;line-height:1.45}
 .in-tbl .in-tight{white-space:nowrap;padding-left:6px;padding-right:6px}
-.in-tbl td.cocq-cell{white-space:normal;overflow-wrap:anywhere;vertical-align:top;line-height:1.35;padding:8px 6px}
+.in-tbl th.in-mid,.in-tbl td.in-mid{text-align:center}
+.in-tbl td.cocq-cell{white-space:normal;overflow-wrap:anywhere;vertical-align:top;line-height:1.35;padding:8px 6px;text-align:center}
+.in-tbl td.cocq-cell .cocq-note,.in-tbl td.cocq-cell .cocq-name{text-align:center}
+.in-tbl td.cocq-cell .cocq-acts{justify-content:center}
 .cocq-note{font-size:12px;margin-bottom:4px;overflow-wrap:anywhere}
 .cocq-name{font-size:11.5px;font-weight:600;line-height:1.35;overflow-wrap:anywhere;word-break:break-word;margin-bottom:4px}
 .cocq-acts{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
@@ -12560,8 +12563,8 @@ function cocqCellHtml(t){
   const noteHtml=note?`<div class="mono cocq-note">${esc(note)}</div>`:'';
   const id=esc(String(t&&t.id!=null?t.id:''));
   const input=`<label class="cocq-btn">Tải lên<input type="file" class="cocq-file" data-cocq-up="${id}" accept="${COCQ_ACCEPT}" aria-label="Tải file COCQ"></label>`;
-  if(!f) return `<td class="cocq-cell">${noteHtml}<div class="cocq-acts">${input}</div></td>`;
-  return `<td class="cocq-cell">${noteHtml}<div class="cocq-name">${esc(f.name)}</div><div class="cocq-acts"><button type="button" class="cocq-btn" data-cocq-dl="${id}">Tải về</button>${input}<button type="button" class="cocq-btn" data-cocq-rm="${id}">Xóa</button></div></td>`;
+  if(!f) return `<td class="cocq-cell in-mid">${noteHtml}<div class="cocq-acts">${input}</div></td>`;
+  return `<td class="cocq-cell in-mid">${noteHtml}<div class="cocq-name">${esc(f.name)}</div><div class="cocq-acts"><button type="button" class="cocq-btn" data-cocq-dl="${id}">Tải về</button>${input}<button type="button" class="cocq-btn" data-cocq-rm="${id}">Xóa</button></div></td>`;
 }
 function saveTransCocqFile(t, meta){
   if(!t) return;
@@ -12593,14 +12596,14 @@ function pageTrans(){
   </div>
   <div class="tbl-card"><div class="tbl-wrap"><table class="in-tbl">
     <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
-    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight">Đơn vị</th><th class="num in-tight">Số lượng</th><th class="in-tight">NCC / KH</th><th>COCQ</th></tr></thead>
+    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">NCC / KH</th><th class="in-mid">COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td class="mono">${esc(inboundDateText(t.date))}</td>
       <td class="in-name"><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
       <td class="mono in-series">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
-      <td class="in-tight">${esc(inboundUnitText(t))}</td>
-      <td class="num mono in-tight" style="font-weight:700">${t.qty}</td>
-      <td class="in-tight"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
+      <td class="in-tight in-mid">${esc(inboundUnitText(t))}</td>
+      <td class="num mono in-tight in-mid" style="font-weight:700">${t.qty}</td>
+      <td class="in-tight in-mid"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
       ${cocqCellHtml(t)}
     </tr>`).join(''):`<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
   </table></div></div>`;
