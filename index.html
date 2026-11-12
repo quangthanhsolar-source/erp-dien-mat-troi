@@ -274,6 +274,17 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .cocq-btn:hover{background:var(--lime);border-color:transparent}
 .cocq-file{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
 .cocq-form{display:flex;flex-direction:column;gap:8px}
+.wh-tbl{width:100%;table-layout:fixed}
+.wh-tbl .wh-c-date{width:132px}
+.wh-tbl .wh-c-name{width:auto}
+.wh-tbl .wh-c-series{width:120px}
+.wh-tbl .wh-c-unit{width:72px}
+.wh-tbl .wh-c-out{width:118px}
+.wh-tbl .wh-c-code{width:156px}
+.wh-tbl .wh-c-bh{width:100px}
+.wh-tbl th,.wh-tbl td{vertical-align:middle}
+.wh-tbl th.wh-mid,.wh-tbl td.wh-mid{text-align:center}
+.wh-tbl td.wh-name,.wh-tbl td.wh-series,.wh-tbl td.wh-code{white-space:normal;overflow-wrap:anywhere}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -12779,92 +12790,76 @@ function transModal(t){
 
 /* ---------------- TRA CỨU BẢO HÀNH ---------------- */
 let whQ='';
-function warrantyCatalog(){
-  const out=[];
-  Object.keys(CAT).forEach(cat=>{
-    if(cat==='service') return;
-    catList(cat).forEach(p=>{
-      if(!p||!p.name) return;
-      const years=Number(p.bh);
-      out.push({
-        cat, id:p.id, name:strip(p.name), brand:String(p.brand||'').trim(),
-        code:String(p.code||'').trim(),
-        years:Number.isFinite(years)&&years>0?years:0
-      });
-    });
-  });
-  return out;
+function warrantySerialTokens(series){
+  return String(series||'').split(/[\s,;]+/).map(s=>s.trim()).filter(Boolean);
 }
-function warrantyEndDate(start, years){
-  const m=String(start||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(!m||!years) return '';
-  const d=new Date(Date.UTC(+m[1]+years, +m[2]-1, +m[3]));
-  if(isNaN(+d)) return '';
-  return d.toISOString().slice(0,10);
+function warrantySerialKey(s){
+  return String(s||'').trim().toLowerCase();
 }
-function warrantyVnDate(iso){
-  const m=String(iso||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return m?m[3]+'/'+m[2]+'/'+m[1]:'—';
+function warrantyLineMatchesSerial(t, key){
+  if(!t||!key||t.active===false) return false;
+  return warrantySerialTokens(t.series).some(tok=>warrantySerialKey(tok)===key);
 }
-function warrantySearch(q){
-  const query=String(q||'').trim().toLowerCase();
-  if(!query) return {products:[], slips:[]};
-  const catalog=warrantyCatalog();
-  const byId=new Map(catalog.map(p=>[String(p.id), p]));
-  const products=catalog.filter(p=>{
-    const blob=[p.name,p.brand,p.code,CAT[p.cat]||''].join(' ').toLowerCase();
-    return blob.includes(query);
-  }).slice(0,80);
-  const prodIds=new Set(products.map(p=>String(p.id)));
-  const slips=(DB.trans||[]).filter(t=>{
-    if(!t||t.kind!=='out'||t.active===false) return false;
-    if(prodIds.has(String(t.pid))) return true;
-    const prod=byId.get(String(t.pid));
-    const blob=[t.code,t.name,t.party,t.partyPhone,t.ref,prod&&prod.brand,prod&&prod.code].join(' ').toLowerCase();
-    return blob.includes(query);
-  }).slice(0,80).map(t=>{
-    const prod=byId.get(String(t.pid));
-    const years=prod?prod.years:0;
-    const start=String(t.date||'').slice(0,10);
-    const end=warrantyEndDate(start, years);
-    const today=attDateKey(new Date());
-    let status='Chưa có hạn';
-    if(end) status=end>=today?'Còn bảo hành':'Hết bảo hành';
-    return {t, prod, years, start, end, status};
-  });
-  return {products, slips};
+function warrantyLatestLine(rows){
+  return rows.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0]||null;
+}
+function warrantyCatalogYears(t){
+  if(!t||t.pid==null||!t.cat) return '—';
+  const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
+  const years=p?Number(p.bh):NaN;
+  return Number.isFinite(years)&&years>0?years+' năm':'—';
+}
+function warrantyCatalogName(t){
+  if(!t||t.pid==null||!t.cat) return '';
+  const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
+  return p&&p.name?strip(p.name):'';
+}
+function warrantySerialRows(q){
+  const key=warrantySerialKey(q);
+  if(!key) return [];
+  const lines=(DB.trans||[]).filter(t=>t&&(t.kind==='in'||t.kind==='out')&&warrantyLineMatchesSerial(t, key));
+  if(!lines.length) return [];
+  const inbound=warrantyLatestLine(lines.filter(t=>t.kind==='in'));
+  const outbound=warrantyLatestLine(lines.filter(t=>t.kind==='out'));
+  const src=inbound||outbound;
+  let serial=String(q||'').trim();
+  for(let i=0;i<lines.length;i++){
+    const hit=warrantySerialTokens(lines[i].series).find(tok=>warrantySerialKey(tok)===key);
+    if(hit){ serial=hit; break; }
+  }
+  const name=strip((inbound&&inbound.name)||(outbound&&outbound.name)||'')||warrantyCatalogName(src)||'—';
+  const unitLine=(inbound&&String(inbound.unit||'').trim())?inbound:((outbound&&String(outbound.unit||'').trim())?outbound:src);
+  return [{
+    date:inbound?inboundDateText(inbound.date):'—',
+    name,
+    serial,
+    unit:inboundUnitText(unitLine),
+    outDate:outbound?inboundDateText(outbound.date):'—',
+    code:outbound&&String(outbound.code||'').trim()?String(outbound.code).trim():'—',
+    warranty:warrantyCatalogYears(src)
+  }];
 }
 function pageWarranty(){
   const q=String(whQ||'').trim();
-  const found=warrantySearch(q);
-  const prodBody=found.products.length?found.products.map(p=>`<tr>
-      <td><b>${esc(p.name)}</b>${p.brand?`<div style="color:var(--muted);font-size:12.5px">${esc(p.brand)}</div>`:''}</td>
-      <td>${esc(CAT[p.cat]||'')}</td>
-      <td class="mono">${p.years?p.years+' năm':'—'}</td>
-    </tr>`).join(''):`<tr><td colspan="3" class="empty">${q?'Không thấy sản phẩm khớp từ khóa.':'Nhập tên hàng hoặc hãng để xem số năm bảo hành.'}</td></tr>`;
-  const slipBody=found.slips.length?found.slips.map(r=>{
-    const pill=r.status==='Còn bảo hành'?'p-green':(r.status==='Hết bảo hành'?'p-red':'p-gray');
-    return `<tr>
-      <td><div class="mono" style="font-weight:600">${esc(r.t.code||'—')}</div><div>${esc(strip(r.t.name||''))}</div></td>
-      <td><div>${esc(r.t.party||'—')}</div>${r.t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${esc(r.t.partyPhone)}</div>`:''}</td>
-      <td class="mono">${warrantyVnDate(r.start)}</td>
-      <td class="mono">${r.years?warrantyVnDate(r.end):'—'}</td>
-      <td class="mono">${r.years?r.years+' năm':'—'}</td>
-      <td><span class="pill ${pill}">${esc(r.status)}</span></td>
-    </tr>`;
-  }).join(''):`<tr><td colspan="6" class="empty">${q?'Không có phiếu xuất khớp từ khóa.':'Phiếu xuất đang hoạt động sẽ hiện hạn bảo hành theo ngày xuất.'}</td></tr>`;
+  const rows=q?warrantySerialRows(q):[];
+  const body=!q
+    ?'<tr><td colspan="7" class="empty">Nhập số series để tra cứu.</td></tr>'
+    :(rows.length?rows.map(r=>`<tr>
+      <td class="mono">${esc(r.date)}</td>
+      <td class="wh-name">${esc(r.name)}</td>
+      <td class="mono wh-series">${esc(r.serial)}</td>
+      <td class="wh-mid">${esc(r.unit)}</td>
+      <td class="mono wh-mid">${esc(r.outDate)}</td>
+      <td class="mono wh-mid wh-code">${esc(r.code)}</td>
+      <td class="wh-mid">${esc(r.warranty)}</td>
+    </tr>`).join(''):'<tr><td colspan="7" class="empty">Không thấy số series này.</td></tr>');
   return `<div class="page-head"><div class="page-title">Tra cứu bảo hành</div></div>
-  <div class="page-sub" style="margin:-8px 0 16px">Tìm theo tên hàng, hãng, số phiếu xuất, tên khách hoặc số điện thoại trên phiếu xuất.</div>
-  <div class="search">${I.search}<input class="inp" id="whQ" placeholder="Tên hàng, hãng, số phiếu, khách hàng..." value="${esc(whQ)}" autocomplete="off"></div>
-  <div class="card-title">Thời hạn theo danh mục</div>
-  <div class="tbl-card" style="margin-bottom:18px"><div class="tbl-wrap"><table>
-    <thead><tr><th>Sản phẩm</th><th>Loại</th><th>Bảo hành</th></tr></thead>
-    <tbody>${prodBody}</tbody>
-  </table></div></div>
-  <div class="card-title">Phiếu xuất kho</div>
-  <div class="tbl-card"><div class="tbl-wrap"><table>
-    <thead><tr><th>Phiếu / Sản phẩm</th><th>Khách hàng</th><th>Ngày xuất</th><th>Hết hạn</th><th>Thời hạn</th><th>Trạng thái</th></tr></thead>
-    <tbody>${slipBody}</tbody>
+  <div class="page-sub" style="margin:-8px 0 16px">Nhập số series trên phiếu nhập hoặc phiếu xuất.</div>
+  <div class="search">${I.search}<input class="inp" id="whQ" placeholder="Số series" value="${esc(whQ)}" autocomplete="off"></div>
+  <div class="tbl-card"><div class="tbl-wrap"><table class="wh-tbl">
+    <colgroup><col class="wh-c-date"><col class="wh-c-name"><col class="wh-c-series"><col class="wh-c-unit"><col class="wh-c-out"><col class="wh-c-code"><col class="wh-c-bh"></colgroup>
+    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số series</th><th class="wh-mid">Đơn vị</th><th class="wh-mid">Ngày xuất</th><th class="wh-mid">Phiếu xuất kho</th><th class="wh-mid">Bảo hành</th></tr></thead>
+    <tbody>${body}</tbody>
   </table></div></div>`;
 }
 function bindWarranty(){
