@@ -259,10 +259,18 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .in-tbl .in-c-unit{width:70px}
 .in-tbl .in-c-qty{width:84px}
 .in-tbl .in-c-party{width:88px}
-.in-tbl .in-c-cocq{width:76px}
+.in-tbl .in-c-cocq{width:148px}
 .in-tbl th,.in-tbl td{padding:10px 8px}
 .in-tbl .in-name,.in-tbl .in-series{white-space:normal;overflow-wrap:anywhere;line-height:1.45}
 .in-tbl .in-tight{white-space:nowrap;padding-left:6px;padding-right:6px}
+.in-tbl td.cocq-cell{white-space:normal;overflow-wrap:anywhere;vertical-align:top;line-height:1.35;padding:8px 6px}
+.cocq-note{font-size:12px;margin-bottom:4px;overflow-wrap:anywhere}
+.cocq-name{font-size:11.5px;font-weight:600;line-height:1.35;overflow-wrap:anywhere;word-break:break-word;margin-bottom:4px}
+.cocq-acts{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.cocq-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;overflow:hidden}
+.cocq-btn:hover{background:var(--lime);border-color:transparent}
+.cocq-file{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+.cocq-form{display:flex;flex-direction:column;gap:8px}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -12479,6 +12487,89 @@ function inboundUnitText(t){
   const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
   return p&&p.unit?String(p.unit):'—';
 }
+const COCQ_MAX_BYTES=2*1024*1024;
+const COCQ_ACCEPT='.pdf,.png,.jpg,.jpeg,.gif,.webp,.bmp,.heic,.heif,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,application/pdf,image/*';
+function cocqFileAllowed(file){
+  const n=String(file&&file.name||'').toLowerCase();
+  const t=String(file&&file.type||'').toLowerCase();
+  if(t==='application/pdf'||/\.pdf$/.test(n)) return true;
+  if(t.indexOf('image/')===0||/\.(png|jpe?g|gif|webp|bmp|heic|heif)$/.test(n)) return true;
+  if(/\.(doc|docx|xls|xlsx|ppt|pptx|odt|ods|odp)$/.test(n)) return true;
+  if(/officedocument|msword|ms-excel|ms-powerpoint|opendocument/.test(t)) return true;
+  return false;
+}
+function cocqFileMeta(t){
+  const f=t&&t.cocqFile;
+  if(!f||typeof f!=='object') return null;
+  const name=String(f.name||'').trim();
+  const dataUrl=String(f.dataUrl||'');
+  if(!name||dataUrl.indexOf('data:')!==0) return null;
+  return {name, type:String(f.type||'application/octet-stream'), dataUrl};
+}
+async function readCocqUpload(file){
+  if(!file) return null;
+  if(file.size>COCQ_MAX_BYTES){
+    toast('File COCQ lớn hơn 2 MB. Hãy chọn file nhỏ hơn.','bad');
+    return null;
+  }
+  if(!cocqFileAllowed(file)){
+    toast('Chỉ nhận PDF, ảnh hoặc file Word, Excel, PowerPoint.','bad');
+    return null;
+  }
+  const dataUrl=await fileToDataUrl(file);
+  if(!dataUrl||dataUrl.indexOf('data:')!==0){
+    toast('Không đọc được file COCQ','bad');
+    return null;
+  }
+  return {name:file.name||'cocq', type:file.type||'application/octet-stream', dataUrl};
+}
+function cocqDataUrlToBlob(meta){
+  const url=String(meta&&meta.dataUrl||'');
+  const comma=url.indexOf(',');
+  if(comma<0) return null;
+  const head=url.slice(0, comma);
+  const body=url.slice(comma+1);
+  let bytes;
+  if(/;base64/i.test(head)){
+    const bin=atob(body);
+    bytes=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  }else{
+    bytes=new TextEncoder().encode(decodeURIComponent(body));
+  }
+  return new Blob([bytes], {type:(meta&&meta.type)||'application/octet-stream'});
+}
+function downloadCocqFile(meta){
+  const file=cocqFileMeta({cocqFile:meta});
+  if(!file){ toast('Không có file COCQ để tải','bad'); return; }
+  let blob;
+  try{ blob=cocqDataUrlToBlob(file); }catch(e){ blob=null; }
+  if(!blob){ toast('Không tải được file COCQ','bad'); return; }
+  const a=document.createElement('a');
+  const url=URL.createObjectURL(blob);
+  a.href=url;
+  a.download=file.name||'cocq';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2500);
+}
+function cocqCellHtml(t){
+  const f=cocqFileMeta(t);
+  const note=t&&String(t.cocq||'').trim();
+  const noteHtml=note?`<div class="mono cocq-note">${esc(note)}</div>`:'';
+  const id=esc(String(t&&t.id!=null?t.id:''));
+  const input=`<label class="cocq-btn">Tải lên<input type="file" class="cocq-file" data-cocq-up="${id}" accept="${COCQ_ACCEPT}" aria-label="Tải file COCQ"></label>`;
+  if(!f) return `<td class="cocq-cell">${noteHtml}<div class="cocq-acts">${input}</div></td>`;
+  return `<td class="cocq-cell">${noteHtml}<div class="cocq-name">${esc(f.name)}</div><div class="cocq-acts"><button type="button" class="cocq-btn" data-cocq-dl="${id}">Tải về</button>${input}<button type="button" class="cocq-btn" data-cocq-rm="${id}">Xóa</button></div></td>`;
+}
+function saveTransCocqFile(t, meta){
+  if(!t) return;
+  if(meta) t.cocqFile=meta;
+  else delete t.cocqFile;
+  saveDB();
+  renderPage();
+}
 function pageTrans(){
   const kind=transPageKind();
   const rows=(DB.trans||[]).filter(t=>t&&t.kind===kind&&(!trF.pid||t.pid==trF.pid)&&
@@ -12510,7 +12601,7 @@ function pageTrans(){
       <td class="in-tight">${esc(inboundUnitText(t))}</td>
       <td class="num mono in-tight" style="font-weight:700">${t.qty}</td>
       <td class="in-tight"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
-      <td class="mono">${t.cocq?esc(t.cocq):'<span style="color:var(--muted)">—</span>'}</td>
+      ${cocqCellHtml(t)}
     </tr>`).join(''):`<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
   </table></div></div>`;
 }
@@ -12556,6 +12647,29 @@ function bindTrans(){
     if(!t.active){toast('Phiếu này đã hủy trước đó');return;}
     if(!confirm('Hủy phiếu này? Tồn kho sẽ được hoàn lại.'))return;
     applyStock(t,-1);t.active=false;toast('Đã hủy phiếu và hoàn tồn kho','ok');saveDB();renderPage();});
+  $('#main').querySelectorAll('[data-cocq-up]').forEach(inp=>{
+    inp.onchange=async()=>{
+      const f=inp.files&&inp.files[0];
+      inp.value='';
+      if(!f) return;
+      const t=DB.trans.find(x=>x&&String(x.id)===String(inp.dataset.cocqUp));
+      if(!t) return;
+      const meta=await readCocqUpload(f);
+      if(!meta) return;
+      saveTransCocqFile(t, meta);
+      toast('Đã lưu file COCQ','ok');
+    };
+  });
+  $('#main').querySelectorAll('[data-cocq-dl]').forEach(b=>b.onclick=()=>{
+    const t=DB.trans.find(x=>x&&String(x.id)===String(b.dataset.cocqDl));
+    if(t) downloadCocqFile(t.cocqFile);
+  });
+  $('#main').querySelectorAll('[data-cocq-rm]').forEach(b=>b.onclick=()=>{
+    const t=DB.trans.find(x=>x&&String(x.id)===String(b.dataset.cocqRm));
+    if(!t||!t.cocqFile) return;
+    saveTransCocqFile(t, null);
+    toast('Đã xóa file COCQ','ok');
+  });
 }
 function transModal(t){
   const edit=!!t;const kind=t?t.kind:transPageKind();
@@ -12568,6 +12682,14 @@ function transModal(t){
       <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>
       <div class="row2"><div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
         <div class="field"><label>COCQ</label><input class="inp" id="tCocq" placeholder="Số CO/CQ" value="${esc(t&&t.cocq||'')}"></div></div>
+      <div class="field"><label>File COCQ</label>
+        <div class="cocq-form">
+          <div class="cocq-name" id="tCocqName">${esc((t&&t.cocqFile&&t.cocqFile.name)||'Chưa có file')}</div>
+          <div class="cocq-acts">
+            <label class="cocq-btn">Tải lên<input type="file" id="tCocqFile" class="cocq-file" accept="${COCQ_ACCEPT}" aria-label="Tải file COCQ"></label>
+            <button type="button" class="cocq-btn" id="tCocqClear" ${(t&&t.cocqFile)?'':'hidden'}>Xóa</button>
+          </div>
+        </div></div>
       <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
         <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
       <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
@@ -12577,7 +12699,8 @@ function transModal(t){
       <div class="field"><label>Mã tham chiếu</label><input class="inp" id="tRef" placeholder="Số hóa đơn, mã đơn hàng..." value="${esc(t?t.ref:'')}"></div>
       <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
       <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
-      kind==='in'?'Xác nhận nhập kho':'Xác nhận xuất kho',()=>{
+      kind==='in'?'Xác nhận nhập kho':'Xác nhận xuất kho',async()=>{
+        await cocqRead;
         const pid=+$('#tProd').value,c=$('#tCat').value,p=catList(c).find(x=>x.id==pid);
         const qty=+$('#tQty').value||0,pr=+$('#tPrice').value||0;
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
@@ -12594,6 +12717,10 @@ function transModal(t){
           code:(kind==='in'?'NK-':'XK-')+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
         Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,unit,cocq,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
           partyPhone:obj.partyPhone||'',ref:$('#tRef').value,note:$('#tNote').value});
+        if(cocqTouched){
+          if(cocqNext) obj.cocqFile=cocqNext;
+          else delete obj.cocqFile;
+        }
         if(!edit)DB.trans.unshift(obj);
         applyStock(obj,1);
         toast(kind==='in'?'Đã nhập kho '+qty+' '+strip(p.name):'Đã xuất kho '+qty+' '+strip(p.name),'ok');
@@ -12614,6 +12741,34 @@ function transModal(t){
       if(p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
       sum();};
     $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
+    let cocqNext=t&&cocqFileMeta(t)?cocqFileMeta(t):null;
+    let cocqTouched=false;
+    let cocqRead=Promise.resolve();
+    const cocqName=$('#tCocqName');
+    const cocqClear=$('#tCocqClear');
+    const paintCocq=()=>{
+      if(cocqName) cocqName.textContent=cocqNext&&cocqNext.name?cocqNext.name:'Chưa có file';
+      if(cocqClear) cocqClear.hidden=!cocqNext;
+    };
+    const cocqInp=$('#tCocqFile');
+    if(cocqInp) cocqInp.onchange=()=>{
+      const f=cocqInp.files&&cocqInp.files[0];
+      cocqInp.value='';
+      if(!f) return;
+      const job=(async()=>{
+        const meta=await readCocqUpload(f);
+        if(!meta) return;
+        cocqNext=meta;
+        cocqTouched=true;
+        paintCocq();
+      })();
+      cocqRead=cocqRead.then(()=>job,()=>job);
+    };
+    if(cocqClear) cocqClear.onclick=()=>{
+      cocqNext=null;
+      cocqTouched=true;
+      paintCocq();
+    };
     fill();
   };
   draw();
