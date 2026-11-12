@@ -252,6 +252,17 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .stock-tbl th,.stock-tbl td{padding:10px 14px;vertical-align:middle}
 .stock-tbl td,.stock-tbl th{white-space:nowrap}
 .stock-tbl .stk-name{font-weight:400;white-space:normal;overflow-wrap:anywhere;min-width:180px;width:auto;line-height:1.4}
+.in-tbl{width:100%;table-layout:fixed}
+.in-tbl .in-c-date{width:132px}
+.in-tbl .in-c-name{width:148px}
+.in-tbl .in-c-series{width:auto}
+.in-tbl .in-c-unit{width:70px}
+.in-tbl .in-c-qty{width:84px}
+.in-tbl .in-c-party{width:88px}
+.in-tbl .in-c-cocq{width:76px}
+.in-tbl th,.in-tbl td{padding:10px 8px}
+.in-tbl .in-name,.in-tbl .in-series{white-space:normal;overflow-wrap:anywhere;line-height:1.45}
+.in-tbl .in-tight{white-space:nowrap;padding-left:6px;padding-right:6px}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -12488,15 +12499,16 @@ function pageTrans(){
     <select class="sel" id="trSt"><option value="">Tất cả trạng thái</option>
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
-  <div class="tbl-card"><div class="tbl-wrap"><table>
-    ${kind==='in'?`<thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th>Đơn vị</th><th class="num">Số lượng</th><th>NCC / KH</th><th>COCQ</th></tr></thead>
+  <div class="tbl-card"><div class="tbl-wrap"><table class="${kind==='in'?'in-tbl':''}">
+    ${kind==='in'?`<colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
+    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight">Đơn vị</th><th class="num in-tight">Số lượng</th><th class="in-tight">NCC / KH</th><th>COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td class="mono">${esc(inboundDateText(t.date))}</td>
-      <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
-      <td class="mono">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
-      <td>${esc(inboundUnitText(t))}</td>
-      <td class="num mono" style="font-weight:700">${t.qty}</td>
-      <td><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
+      <td class="in-name"><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
+      <td class="mono in-series">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
+      <td class="in-tight">${esc(inboundUnitText(t))}</td>
+      <td class="num mono in-tight" style="font-weight:700">${t.qty}</td>
+      <td class="in-tight"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
       <td class="mono">${t.cocq?esc(t.cocq):'<span style="color:var(--muted)">—</span>'}</td>
     </tr>`).join(''):'<tr><td colspan="7" class="empty">Chưa có phiếu nhập nào khớp bộ lọc.</td></tr>'}</tbody>`
     :`<thead><tr><th>Số phiếu</th><th>Loại</th><th>Sản phẩm</th><th class="num">SL</th><th class="num">Tổng</th><th>NCC / KH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
