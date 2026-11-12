@@ -1577,6 +1577,40 @@ function applyUserAccountSeedOnce(){
   changed+=dedupeStoredUsers();
   return changed;
 }
+const TEST_KD_ACCOUNTS=[
+  {id:9100001,name:'Test KD 1',email:'test1@gmail.com'},
+  {id:9100002,name:'Test KD 2',email:'test2@gmail.com'},
+  {id:9100003,name:'Test KD 3',email:'test3@gmail.com'},
+  {id:9100004,name:'Test KD 4',email:'test4@gmail.com'},
+  {id:9100005,name:'Test KD 5',email:'test5@gmail.com'}
+];
+function applyTestKdAccountsOnce(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!Array.isArray(DB.users)) DB.users=[];
+  let changed=0;
+  TEST_KD_ACCOUNTS.forEach(row=>{
+    const email=String(row.email||'').trim().toLowerCase();
+    if(!email) return;
+    if((DB.deletedUserEmails||[]).some(x=>String(x||'').trim().toLowerCase()===email)) return;
+    let u=(DB.users||[]).find(x=>x&&String(x.email||'').trim().toLowerCase()===email)||null;
+    if(u){
+      if(u.role==='sales'&&u.pass==='123'&&u.active!==false&&u.name===row.name) return;
+      u.name=row.name;
+      u.role='sales';
+      u.pass='123';
+      u.active=true;
+      rememberAccountRole(email,'sales');
+      changed++;
+      return;
+    }
+    const id=allocUserAccountId(row.id);
+    DB.users.push({id,name:row.name,email:row.email,phone:'',role:'sales',active:true,pass:'123'});
+    rememberAccountRole(email,'sales');
+    changed++;
+  });
+  if(changed) bumpUserSeq();
+  return changed;
+}
 /* Một lệnh INSERT ... ON CONFLICT không được chứa hai dòng cùng id (khóa chính)
    hoặc cùng email (unique lower(email)) — Postgres báo
    "ON CONFLICT DO UPDATE command cannot affect row a second time".
@@ -3424,7 +3458,8 @@ const _seedPriceBoot=applySeedCatalogPricesOnce();
 const _assetSheetBoot=applyAssetSheetOnce();
 const _stockSheetBoot=applyStockSheetOnce();
 const _userSeedBoot=applyUserAccountSeedOnce();
-if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0||_stockSheetBoot>0||_userSeedBoot>0){ try{ saveDB(); }catch(e){} }
+const _testKdBoot=applyTestKdAccountsOnce();
+if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0||_stockSheetBoot>0||_userSeedBoot>0||_testKdBoot>0){ try{ saveDB(); }catch(e){} }
 // Gán lại ảnh thật từ PIMG sau khi load localStorage
 applyPimgToDB();
 try{ if(typeof pruneTombstonedUsersLocal==='function') pruneTombstonedUsersLocal(); }catch(e){}
@@ -4119,6 +4154,7 @@ async function pullDBFromSupabase(){
     const stockSheetN=applyStockSheetOnce();
     applyAssetSheetOnce();
     const userSeedN=applyUserAccountSeedOnce();
+    const testKdN=applyTestKdAccountsOnce();
     const remoteAssetBook=bundle.settings&&bundle.settings.data&&bundle.settings.data._assets;
     const remoteHasAssetRows=!!(remoteAssetBook&&Array.isArray(remoteAssetBook.rows)&&remoteAssetBook.rows.length>=ASSET_SHEET_ROWS.length);
     captureSyncBase();
@@ -4141,7 +4177,7 @@ async function pullDBFromSupabase(){
       if(p&&p.id!=null&&!idsBeforeSeed.has(String(p.id))) pending.keys.products.push(String(p.id));
     }));
     localOnly.forEach(u=>{ if(u&&u.id!=null) pending.keys.users.push(String(u.id)); });
-    if(userSeedN>0&&_syncBase){
+    if((userSeedN>0||testKdN>0)&&_syncBase){
       _syncBase.users={};
       _syncBase.settings='';
       persistSyncBase();
@@ -4151,7 +4187,7 @@ async function pullDBFromSupabase(){
       _saveDB();
       return 'local-pending';
     }
-    if(localOnly.length||userSeedN>0){
+    if(localOnly.length||userSeedN>0||testKdN>0){
       _saveDB();
       return 'users-sync';
     }
@@ -4666,6 +4702,7 @@ async function enterApp(u, opt){
     const assetN=applyAssetSheetOnce();
     const stockN=applyStockSheetOnce();
     const userN=applyUserAccountSeedOnce();
+    const testKdN=applyTestKdAccountsOnce();
     refreshSessionRole();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
     const stockSync=stockSheetNeedsPush();
@@ -4678,7 +4715,7 @@ async function enterApp(u, opt){
     ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||assetSync||stockSync||attSync){
+    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||assetSync||stockSync||attSync){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
       if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
@@ -4722,14 +4759,15 @@ async function enterApp(u, opt){
     const assetN=applyAssetSheetOnce();
     const stockN=applyStockSheetOnce();
     const userN=applyUserAccountSeedOnce();
+    const testKdN=applyTestKdAccountsOnce();
     refreshSessionRole();
     const brandFixedOffline=normalizeCatalogBrands();
-    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
+    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
     if(ordAdded>0||ordPruned>0) _saveDB();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
-    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0) renderPage();
+    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0) renderPage();
   }
 }
 
