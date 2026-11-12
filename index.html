@@ -245,11 +245,14 @@ body.collapsed .sb-kd .kd-switch button{min-height:32px;padding:0 4px;font-size:
 /* ============ TABLES ============ */
 .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;min-width:340px}
-.stock-tbl{width:max-content;min-width:0}
+.stock-tbl{width:100%;min-width:920px;table-layout:fixed}
+.stock-tbl .stk-c-stt{width:52px}
+.stock-tbl .stk-c-cat{width:112px}
+.stock-tbl .stk-c-num{width:104px}
 .stock-tbl th{text-transform:none;letter-spacing:.04em}
 .stock-tbl th,.stock-tbl td{padding:8px 6px}
 .stock-tbl td{white-space:nowrap}
-.stock-tbl .stk-name{font-weight:400;white-space:normal;max-width:280px;min-width:120px;line-height:1.35}
+.stock-tbl .stk-name{font-weight:400;white-space:normal;max-width:none;min-width:0;width:auto;line-height:1.35}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -12088,8 +12091,12 @@ function pageStock(){
     ${stockPagerHtml(stkPage, pages)}
   </div>
   <div class="tbl-card"><div class="tbl-wrap"><table class="stock-tbl" id="stkTable">
+    <colgroup>
+      <col class="stk-c-stt"><col class="stk-c-cat"><col class="stk-c-name">
+      <col class="stk-c-num" span="6">
+    </colgroup>
     <thead><tr>
-      <th style="width:56px">STT</th>
+      <th>STT</th>
       <th>Loại</th>
       <th>TÊN HÀNG HÓA</th>
       <th class="num">Trong Kho</th>
