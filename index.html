@@ -7723,28 +7723,35 @@ function ensureOrderKpiSeedOnce(){
   DB.settings.orderKpiSeedOct2026=true;
   return 1;
 }
-/** KPI tháng 11 của thành viên đã có mốc tháng 10 = đúng mốc tháng 10. Chỉ chạy một lần. */
+/** KPI tháng 11/2026 = đúng KPI tháng 10/2026 (mốc tiền và NV đang hiện). Chạy lại một lần. */
 function ensureOrderKpiNovFromOct(){
   if(!DB.settings) DB.settings={};
-  if(DB.settings.orderKpiNovFromOct==='2026-11') return 0;
+  if(DB.settings.orderKpiNovFromOct==='2026-11-match-oct') return 0;
   ensureOrderKpiSeedOnce();
+  orderKpiEnsureLists();
   const store=DB.settings.orderKpi;
   if(store&&typeof store==='object'&&!Array.isArray(store)){
     Object.keys(store).forEach(key=>{
       const raw=store[key];
-      if(!raw||typeof raw!=='object'||!raw.months||typeof raw.months!=='object') return;
-      if(!Object.prototype.hasOwnProperty.call(raw.months,'2026-10')) return;
-      raw.months['2026-11']=Math.max(0, Math.round(+raw.months['2026-10']||0));
+      if(typeof raw==='number'){
+        const oct=Math.max(0, Math.round(+raw||0));
+        store[key]={def:oct, months:{'2026-11':oct}};
+        return;
+      }
+      if(!raw||typeof raw!=='object') return;
+      const months=(raw.months&&typeof raw.months==='object'&&!Array.isArray(raw.months))?raw.months:{};
+      raw.months=months;
+      const oct=Object.prototype.hasOwnProperty.call(months,'2026-10')
+        ? Math.max(0, Math.round(+months['2026-10']||0))
+        : Math.max(0, Math.round(+raw.def||0));
+      months['2026-11']=oct;
     });
   }
-  orderKpiEnsureLists();
-  const hidOct=orderKpiHiddenForYm('2026-10');
-  const hidNov=Array.isArray(DB.settings.orderKpiHiddenMonths['2026-11'])?DB.settings.orderKpiHiddenMonths['2026-11']:[];
-  DB.settings.orderKpiHiddenMonths['2026-11']=hidNov.filter(k=>{
-    const key=orderKpiStorageKey(k)||orderStaffNameKey(k)||String(k||'').trim();
-    return key&&hidOct.has(key);
-  });
-  DB.settings.orderKpiNovFromOct='2026-11';
+  const rawOct=Array.isArray(DB.settings.orderKpiHiddenMonths['2026-10'])
+    ? DB.settings.orderKpiHiddenMonths['2026-10'].slice()
+    : [];
+  DB.settings.orderKpiHiddenMonths['2026-11']=rawOct;
+  DB.settings.orderKpiNovFromOct='2026-11-match-oct';
   return 1;
 }
 function mergeAnhThanhOrders(){
