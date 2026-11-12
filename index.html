@@ -1646,9 +1646,9 @@ function applyTestKdAccountsOnce(){
   return changed;
 }
 const TEST_INBOUND=[
-  {id:9200001,code:'NK-TEST-PIN-A',cat:'panel',name:'Tấm pin A',qty:10,series:'1, 2, 3, 4, 5, 6, 7, 8, 9, 10'},
-  {id:9200002,code:'NK-TEST-INV-B',cat:'inverter',name:'Biến tần B',qty:10,series:'11, 12, 13, 14, 15, 16, 17, 18, 19, 20'},
-  {id:9200003,code:'NK-TEST-BAT-C',cat:'battery',name:'Pin lưu trữ C',qty:10,series:'21, 22, 23, 24, 25, 26, 27, 28, 29, 30'}
+  {id:9200001,code:'NK-TEST-PIN-A',cat:'panel',name:'Tấm pin A',qty:10,unit:'Tấm',series:'1, 2, 3, 4, 5, 6, 7, 8, 9, 10'},
+  {id:9200002,code:'NK-TEST-INV-B',cat:'inverter',name:'Biến tần B',qty:10,unit:'Bộ',series:'11, 12, 13, 14, 15, 16, 17, 18, 19, 20'},
+  {id:9200003,code:'NK-TEST-BAT-C',cat:'battery',name:'Pin lưu trữ C',qty:10,unit:'Bộ',series:'21, 22, 23, 24, 25, 26, 27, 28, 29, 30'}
 ];
 function applyTestInboundOnce(){
   if(!Array.isArray(DB.trans)) DB.trans=[];
@@ -1667,6 +1667,7 @@ function applyTestInboundOnce(){
       pid:t&&t.pid!=null?t.pid:null,
       name:row.name,
       qty:row.qty,
+      unit:row.unit,
       series:row.series,
       price:t&&t.price!=null?t.price:0,
       party:'DAT',
@@ -1682,7 +1683,7 @@ function applyTestInboundOnce(){
       changed++;
       return;
     }
-    ['kind','cat','name','qty','series','party','active'].forEach(k=>{
+    ['kind','cat','name','qty','unit','series','party','active'].forEach(k=>{
       if(t[k]!==next[k]){ t[k]=next[k]; changed++; }
     });
   });
@@ -12384,6 +12385,8 @@ function mapExcelRow(obj){
     ref:String(get('ma tham chieu','tham chieu','ref')||'').trim(),
     note:String(get('ghi chu','note')||'').trim(),
     series:String(get('so series','serial','series')||'').trim(),
+    unit:String(get('don vi','unit')||'').trim(),
+    cocq:String(get('cocq','co cq','co/cq')||'').trim(),
     date: rawDate instanceof Date ? rawDate : String(rawDate||'').trim()
   };
 }
@@ -12431,6 +12434,8 @@ async function importTransFromExcelFile(file){
         name:hit.p.name,
         qty:r.qty,
         series:r.series||'',
+        unit:r.kind==='in'?(r.unit||hit.p.unit||''):'',
+        cocq:r.kind==='in'?(r.cocq||''):'',
         price,
         party:r.party||(r.kind==='in'?'Không chọn':'Khách lẻ'),
         partyPhone:'',
@@ -12452,6 +12457,17 @@ async function importTransFromExcelFile(file){
   }
 }
 function transPageKind(){ return ROUTE==='trans-out'?'out':'in'; }
+function inboundDateText(v){
+  const m=String(v||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?m[3]+'/'+m[2]+'/'+m[1]:'—';
+}
+function inboundUnitText(t){
+  const own=t&&String(t.unit||'').trim();
+  if(own) return own;
+  if(!t||t.pid==null||!t.cat) return '—';
+  const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
+  return p&&p.unit?String(p.unit):'—';
+}
 function pageTrans(){
   const kind=transPageKind();
   const rows=(DB.trans||[]).filter(t=>t&&t.kind===kind&&(!trF.pid||t.pid==trF.pid)&&
@@ -12473,14 +12489,16 @@ function pageTrans(){
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
   <div class="tbl-card"><div class="tbl-wrap"><table>
-    ${kind==='in'?`<thead><tr><th>Loại</th><th>Sản phẩm</th><th>Số Series</th><th class="num">Số lượng</th><th>NCC / KH</th></tr></thead>
+    ${kind==='in'?`<thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th>Đơn vị</th><th class="num">Số lượng</th><th>NCC / KH</th><th>COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
-      <td><span class="pill p-green">${I.dl} Nhập</span></td>
+      <td class="mono">${esc(inboundDateText(t.date))}</td>
       <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
       <td class="mono">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
+      <td>${esc(inboundUnitText(t))}</td>
       <td class="num mono" style="font-weight:700">${t.qty}</td>
       <td><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
-    </tr>`).join(''):'<tr><td colspan="5" class="empty">Chưa có phiếu nhập nào khớp bộ lọc.</td></tr>'}</tbody>`
+      <td class="mono">${t.cocq?esc(t.cocq):'<span style="color:var(--muted)">—</span>'}</td>
+    </tr>`).join(''):'<tr><td colspan="7" class="empty">Chưa có phiếu nhập nào khớp bộ lọc.</td></tr>'}</tbody>`
     :`<thead><tr><th>Số phiếu</th><th>Loại</th><th>Sản phẩm</th><th class="num">SL</th><th class="num">Tổng</th><th>NCC / KH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td><div class="mono t-blue" style="font-weight:600">${t.code||'-'}</div>
@@ -12548,7 +12566,9 @@ function transModal(t){
       <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
         ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select></div>
-      ${kind==='in'?`<div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>`:''}
+      ${kind==='in'?`<div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>
+      <div class="row2"><div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
+        <div class="field"><label>COCQ</label><input class="inp" id="tCocq" placeholder="Số CO/CQ" value="${esc(t&&t.cocq||'')}"></div></div>`:''}
       <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
         <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
       <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
@@ -12563,6 +12583,8 @@ function transModal(t){
         const qty=+$('#tQty').value||0,pr=+$('#tPrice').value||0;
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=kind==='in'?(($('#tSeries')&&$('#tSeries').value)||'').trim():String((edit&&t&&t.series)||'');
+        const unit=kind==='in'?(($('#tUnit')&&$('#tUnit').value)||'').trim():String((edit&&t&&t.unit)||'');
+        const cocq=kind==='in'?(($('#tCocq')&&$('#tCocq').value)||'').trim():String((edit&&t&&t.cocq)||'');
         if(!p){toast('Chọn sản phẩm','bad');return false;}
         if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
         if(kind==='out'){const s=DB.stock.find(x=>x.id===pid);const have=(s?s.qty:0)+(edit&&t.kind==='out'?t.qty:0);
@@ -12571,7 +12593,7 @@ function transModal(t){
         const now=new Date(),p2=n=>String(n).padStart(2,'0');
         const obj=edit?t:{id:++DB.seq.t,date:now.toISOString().slice(0,16),active:true,
           code:(kind==='in'?'NK-':'XK-')+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
-        Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
+        Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,unit,cocq,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
           partyPhone:obj.partyPhone||'',ref:$('#tRef').value,note:$('#tNote').value});
         if(!edit)DB.trans.unshift(obj);
         applyStock(obj,1);
@@ -12582,10 +12604,16 @@ function transModal(t){
       $('#tProd').innerHTML=catList(c).map(p=>`<option value="${p.id}" ${t&&t.pid==p.id?'selected':''}>${esc(strip(p.name))}</option>`).join('');
       const p=catList(c).find(x=>x.id==+$('#tProd').value);
       if(p&&!t)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
+      if(kind==='in'&&p&&p.unit){
+        const unitEl=$('#tUnit');
+        if(unitEl&&!String(unitEl.value||'').trim()) unitEl.value=p.unit;
+      }
       sum();};
     const sum=()=>{$('#tTotal').textContent=vnd((+$('#tQty').value||0)*(+$('#tPrice').value||0));};
     $('#tCat').onchange=fill;$('#tProd').onchange=()=>{const p=catList($('#tCat').value).find(x=>x.id==+$('#tProd').value);
-      if(p)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);sum();};
+      if(p)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
+      if(kind==='in'&&p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
+      sum();};
     $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
     fill();
   };
