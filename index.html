@@ -12329,6 +12329,7 @@ function mapExcelRow(obj){
     party:String(get('ncc/kh','nha cung cap','khach hang','party','ncc')||'').trim(),
     ref:String(get('ma tham chieu','tham chieu','ref')||'').trim(),
     note:String(get('ghi chu','note')||'').trim(),
+    series:String(get('so series','serial','series')||'').trim(),
     date: rawDate instanceof Date ? rawDate : String(rawDate||'').trim()
   };
 }
@@ -12375,6 +12376,7 @@ async function importTransFromExcelFile(file){
         pid:hit.p.id,
         name:hit.p.name,
         qty:r.qty,
+        series:r.series||'',
         price,
         party:r.party||(r.kind==='in'?'Không chọn':'Khách lẻ'),
         partyPhone:'',
@@ -12417,12 +12419,20 @@ function pageTrans(){
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
   <div class="tbl-card"><div class="tbl-wrap"><table>
-    <thead><tr><th>Số phiếu</th><th>Loại</th><th>Sản phẩm</th><th class="num">SL</th><th class="num">Tổng</th><th>NCC / KH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+    ${kind==='in'?`<thead><tr><th>Loại</th><th>Sản phẩm</th><th>Số Series</th><th class="num">Số lượng</th><th>NCC / KH</th></tr></thead>
+    <tbody>${rows.length?rows.map(t=>`<tr>
+      <td><span class="pill p-green">${I.dl} Nhập</span></td>
+      <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
+      <td class="mono">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
+      <td class="num mono" style="font-weight:700">${t.qty}</td>
+      <td><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
+    </tr>`).join(''):'<tr><td colspan="5" class="empty">Chưa có phiếu nhập nào khớp bộ lọc.</td></tr>'}</tbody>`
+    :`<thead><tr><th>Số phiếu</th><th>Loại</th><th>Sản phẩm</th><th class="num">SL</th><th class="num">Tổng</th><th>NCC / KH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td><div class="mono t-blue" style="font-weight:600">${t.code||'-'}</div>
         <div class="mono" style="color:var(--muted);font-size:12.5px">${dt(t.date)}</div></td>
-      <td>${t.kind==='in'?`<span class="pill p-green">${I.dl} Nhập</span>`:`<span class="pill p-red">${I.up} Xuất</span>`}</td>
-      <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]}</div></td>
+      <td><span class="pill p-red">${I.up} Xuất</span></td>
+      <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
       <td class="num mono" style="font-weight:700">${t.qty}</td>
       <td class="num mono">${vnd(t.qty*t.price)}</td>
       <td><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
@@ -12430,7 +12440,7 @@ function pageTrans(){
       <td><div class="act"><button data-vt="${t.id}" title="Xem">${I.eye}</button>
         <button class="warn" data-et="${t.id}" title="Sửa">${I.pen}</button>
         <button class="del" data-xt="${t.id}" title="Hủy phiếu">${I.ban}</button></div></td></tr>`).join('')
-      :`<tr><td colspan="8" class="empty">Chưa có phiếu ${kind==='in'?'nhập':'xuất'} nào khớp bộ lọc.</td></tr>`}</tbody>
+      :'<tr><td colspan="8" class="empty">Chưa có phiếu xuất nào khớp bộ lọc.</td></tr>'}</tbody>`}
   </table></div></div>`;
 }
 function applyStock(t,sign){
@@ -12484,6 +12494,7 @@ function transModal(t){
       <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
         ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select></div>
+      ${kind==='in'?`<div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>`:''}
       <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
         <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
       <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
@@ -12497,6 +12508,7 @@ function transModal(t){
         const pid=+$('#tProd').value,c=$('#tCat').value,p=catList(c).find(x=>x.id==pid);
         const qty=+$('#tQty').value||0,pr=+$('#tPrice').value||0;
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
+        const series=kind==='in'?(($('#tSeries')&&$('#tSeries').value)||'').trim():String((edit&&t&&t.series)||'');
         if(!p){toast('Chọn sản phẩm','bad');return false;}
         if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
         if(kind==='out'){const s=DB.stock.find(x=>x.id===pid);const have=(s?s.qty:0)+(edit&&t.kind==='out'?t.qty:0);
@@ -12505,7 +12517,7 @@ function transModal(t){
         const now=new Date(),p2=n=>String(n).padStart(2,'0');
         const obj=edit?t:{id:++DB.seq.t,date:now.toISOString().slice(0,16),active:true,
           code:(kind==='in'?'NK-':'XK-')+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
-        Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
+        Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
           partyPhone:obj.partyPhone||'',ref:$('#tRef').value,note:$('#tNote').value});
         if(!edit)DB.trans.unshift(obj);
         applyStock(obj,1);
