@@ -3400,7 +3400,31 @@ let userSelected=new Set();
 /* ---- Persist danh mục thiết bị & dữ liệu nghiệp vụ ---- */
 const DB_STORE_KEY='qts_erp_db_v1';
 const DB_PERSIST_KEYS=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services','stock','trans','quotes','customers','crm','attendance','workPlans','assets','contracts','suppliers','users','settings','seq','deletedProductCodes','deletedUserIds','deletedUserEmails','deletedCrmIds','deletedQuoteCodes','deletedSupplierIds'];
-function cloneDBForLocalStorage(){
+function slimCrmFileMeta(files, dropThumb){
+  return (Array.isArray(files)?files:[]).filter(f=>f&&f.id).map(f=>({
+    id:f.id, name:f.name||'', mime:f.mime||'', size:Number(f.size)||0, kind:f.kind||'',
+    thumb:dropThumb?'':((typeof f.thumb==='string'&&f.thumb.length<8000)?f.thumb:'')
+  }));
+}
+function slimSettingsForLocal(st, dropThumb){
+  if(!st||typeof st!=='object') return st||{};
+  const copy=Object.assign({}, st);
+  const src=copy.crmOverrides;
+  if(src&&typeof src==='object'&&!Array.isArray(src)){
+    const ov={};
+    Object.keys(src).forEach(id=>{
+      const o=src[id];
+      if(!o) return;
+      ov[id]=Object.assign({}, o, {
+        surveyFiles:slimCrmFileMeta(o.surveyFiles, dropThumb),
+        quoteFiles:slimCrmFileMeta(o.quoteFiles, dropThumb)
+      });
+    });
+    copy.crmOverrides=ov;
+  }
+  return copy;
+}
+function cloneDBForLocalStorage(aggressive){
   // Không ghi data URL ảnh vào DB chính (đã nằm PIMG override / RAM / Supabase)
   const prodKeys=['panels','inverters','batteries','cabinets','lights','pumps','accessories','mounts','cables','services'];
   const data={};
@@ -3423,40 +3447,62 @@ function cloneDBForLocalStorage(){
         if(!r) return r;
         let files=(typeof crmSurveyMetaOnly==='function')?crmSurveyMetaOnly(r):[];
         if((!files||!files.length) && metaMap[String(r.id)]) files=metaMap[String(r.id)];
-        const copy=Object.assign({},r,{surveyFiles:files||[]});
+        const copy=Object.assign({},r,{surveyFiles:slimCrmFileMeta(files, aggressive)});
         let qfiles=(typeof crmQuoteMetaOnly==='function')?crmQuoteMetaOnly(r):[];
         const qmap=(typeof loadCrmQuoteMetaMap==='function')?loadCrmQuoteMetaMap():{};
         if((!qfiles||!qfiles.length) && qmap[String(r.id)]) qfiles=qmap[String(r.id)];
-        copy.quoteFiles=qfiles||[];
+        copy.quoteFiles=slimCrmFileMeta(qfiles, aggressive);
         delete copy.surveyImgs;
         return copy;
       });
     }else if(k==='attendance'){
       // Ảnh gốc nằm IndexedDB — localStorage chỉ giữ field chấm công và thumb nhỏ
-      data[k]=attLocalSlim(DB.attendance);
+      const rows=attLocalSlim(DB.attendance);
+      data[k]=aggressive?rows.map(r=>{
+        const c=Object.assign({}, r);
+        ['img','checkInImg','checkOutImg'].forEach(f=>{ if(typeof c[f]==='string'&&c[f].startsWith('data:')) c[f]=''; });
+        return c;
+      }):rows;
+    }else if(k==='settings'){
+      data[k]=slimSettingsForLocal(DB.settings, !!aggressive);
     }else data[k]=DB[k];
   });
   return data;
 }
+let _localQuotaWarned=false;
 function saveDB(){
+  const write=aggressive=>{
+    if(aggressive){
+      try{ localStorage.removeItem('qts_erp_db_backup_v1'); }catch(e){}
+      try{ localStorage.removeItem('qts_erp_db_backup_at'); }catch(e){}
+      try{
+        const slim={};
+        const o=loadPimgOverrides();
+        Object.keys(o).forEach(k=>{
+          const v=o[k];
+          if(typeof v==='string'&&v.startsWith('http')) slim[k]=v;
+        });
+        localStorage.setItem(PIMG_OVERRIDE_KEY, JSON.stringify(slim));
+      }catch(e){
+        try{ localStorage.removeItem(PIMG_OVERRIDE_KEY); }catch(e2){}
+      }
+    }
+    localStorage.setItem(DB_STORE_KEY, JSON.stringify(cloneDBForLocalStorage(aggressive)));
+  };
   try{
-    localStorage.setItem(DB_STORE_KEY,JSON.stringify(cloneDBForLocalStorage()));
+    write(false);
   }catch(e){
     console.warn('saveDB',e);
     try{
-      // Thử lại: bỏ hết data URL khỏi override cũ (giữ ảnh trong RAM để vẫn push Supabase)
-      const slim={};
-      const o=loadPimgOverrides();
-      Object.keys(o).forEach(k=>{
-        const v=o[k];
-        if(typeof v==='string'&&v.startsWith('http')) slim[k]=v;
-      });
-      localStorage.setItem(PIMG_OVERRIDE_KEY, JSON.stringify(slim));
-      localStorage.setItem(DB_STORE_KEY,JSON.stringify(cloneDBForLocalStorage()));
+      write(true);
     }catch(e2){
       console.warn('saveDB retry',e2);
+      // Đã đăng nhập thì Supabase đang giữ dữ liệu. Không hiện lỗi này lặp lại trên mỗi lần lưu.
+      let signedIn=false;
+      try{ signedIn=!!SB_USER; }catch(e3){}
+      if(signedIn||_localQuotaWarned) return;
+      _localQuotaWarned=true;
       toast('Không lưu được dữ liệu cục bộ (bộ nhớ trình duyệt đầy). Hãy dùng ảnh nhỏ hơn hoặc đăng nhập để đồng bộ Supabase.','bad');
-      return;
     }
   }
 }
