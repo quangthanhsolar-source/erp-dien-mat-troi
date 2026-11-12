@@ -12689,8 +12689,133 @@ function bindTrans(){
     toast('Đã xóa file COCQ','ok');
   });
 }
+function outboundSeriesText(raw){
+  return String(raw==null?'':raw).split(',').map(s=>s.trim()).filter(Boolean).join(', ');
+}
+function stockDisplayUnit(s){
+  const u=s&&String(s.unit||'').trim();
+  if(u&&u.indexOf('#tk|')!==0) return u;
+  if(!s||!s.cat) return '';
+  const p=catList(s.cat).find(x=>String(x.id)===String(s.id));
+  return p&&p.unit?String(p.unit):'';
+}
+function outboundStockQty(s, slip){
+  let have=Number(s&&s.qty)||0;
+  if(slip&&slip.kind==='out'&&s&&String(slip.pid)===String(s.id)) have+=Number(slip.qty)||0;
+  return have;
+}
+function outboundStockChoices(cat, slip){
+  const rows=(DB.stock||[]).filter(s=>s&&s.name&&(!cat||s.cat===cat)&&outboundStockQty(s, slip)>0);
+  const byName=new Map();
+  rows.forEach(s=>{
+    const key=stockNameKey(s.name);
+    if(!key) return;
+    const prev=byName.get(key);
+    if(!prev){ byName.set(key, s); return; }
+    const prefer=slip&&String(slip.pid)===String(s.id);
+    const prevPrefer=slip&&String(slip.pid)===String(prev.id);
+    if(prefer&&!prevPrefer){ byName.set(key, s); return; }
+    if(!prevPrefer&&outboundStockQty(s, slip)>outboundStockQty(prev, slip)) byName.set(key, s);
+  });
+  return [...byName.values()];
+}
+function transModalOut(t){
+  const edit=!!t;
+  const draw=()=>{
+    const cat=$('#tCat')?$('#tCat').value:(t&&t.cat?t.cat:'inverter');
+    openModal('Tạo phiếu xuất kho',`
+      <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
+        <option value="" ${cat===''?'selected':''}>Tất cả</option>
+        ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
+      <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select>
+        <div id="tProdHint" style="display:none;color:var(--muted);font-size:12.5px;margin-top:6px"></div></div>
+      <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series, cách nhau bằng dấu phẩy" value="${esc(t&&t.series||'')}"></div>
+      <div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
+      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
+        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
+      <div class="field"><label>Khách hàng</label><input class="inp" id="tParty" placeholder="Tên khách hàng" value="${esc(t?t.party:'')}"></div>
+      <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
+      <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
+      'Xác nhận xuất kho',()=>{
+        const pid=+$('#tProd').value;
+        const s=DB.stock.find(x=>x.id===pid);
+        const qty=+$('#tQty').value||0, pr=+$('#tPrice').value||0;
+        const party=$('#tParty')?($('#tParty').value||'').trim():'';
+        const series=outboundSeriesText($('#tSeries')&&$('#tSeries').value);
+        const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
+        if(!s){toast('Chọn sản phẩm','bad');return false;}
+        if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
+        const have=(s.qty||0)+(edit&&t.kind==='out'?t.qty:0);
+        if(have<qty){toast(`Tồn kho chỉ còn ${s.qty||0} – không đủ để xuất`,'bad');return false;}
+        if(edit)applyStock(t,-1);
+        const now=new Date(),p2=n=>String(n).padStart(2,'0');
+        const obj=edit?t:{id:++DB.seq.t,date:now.toISOString().slice(0,16),active:true,
+          code:'XK-'+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
+        Object.assign(obj,{kind:'out',cat:s.cat,pid:s.id,name:s.name,qty,series,unit,
+          cocq:edit?(t.cocq||''):'',price:pr,party:party||'Khách lẻ',
+          partyPhone:obj.partyPhone||'',ref:edit?(t.ref||''):'',note:$('#tNote').value});
+        if(!edit)DB.trans.unshift(obj);
+        applyStock(obj,1);
+        toast('Đã xuất kho '+qty+' '+strip(s.name),'ok');
+        saveDB();renderPage();return true;},
+      {okClass:'btn-primary',cancel:'Đóng'});
+    const priceOf=s=>{
+      if(!s||!s.cat) return null;
+      const p=catList(s.cat).find(x=>String(x.id)===String(s.id));
+      if(!p) return null;
+      return p.retail||p.price||0;
+    };
+    const fill=()=>{
+      const c=$('#tCat').value;
+      const list=outboundStockChoices(c, edit?t:null);
+      const hint=$('#tProdHint');
+      const sel=$('#tProd');
+      if(!list.length){
+        sel.innerHTML='<option value="">—</option>';
+        if(hint){
+          hint.style.display='';
+          hint.textContent=c?'Không có sản phẩm tồn kho trong loại này.':'Không có sản phẩm tồn kho.';
+        }
+      }else{
+        if(hint) hint.style.display='none';
+        const prefer=(sel.value||(t&&t.pid!=null?String(t.pid):''));
+        sel.innerHTML=list.map(s=>`<option value="${s.id}" ${String(s.id)===String(prefer)?'selected':''}>${esc(strip(s.name))}</option>`).join('');
+        if(prefer&&![...sel.options].some(o=>o.value===String(prefer))) sel.selectedIndex=0;
+      }
+      const s=DB.stock.find(x=>x.id==+$('#tProd').value);
+      if(s&&!t){
+        const pr=priceOf(s);
+        if(pr!=null) $('#tPrice').value=pr;
+      }
+      if(s){
+        const u=stockDisplayUnit(s);
+        const unitEl=$('#tUnit');
+        if(u&&unitEl&&!String(unitEl.value||'').trim()) unitEl.value=u;
+      }
+      sum();
+    };
+    const sum=()=>{$('#tTotal').textContent=vnd((+$('#tQty').value||0)*(+$('#tPrice').value||0));};
+    $('#tCat').onchange=fill;
+    $('#tProd').onchange=()=>{
+      const s=DB.stock.find(x=>x.id==+$('#tProd').value);
+      if(s){
+        const pr=priceOf(s);
+        if(pr!=null) $('#tPrice').value=pr;
+        const u=stockDisplayUnit(s);
+        const unitEl=$('#tUnit');
+        if(u&&unitEl) unitEl.value=u;
+      }
+      sum();
+    };
+    $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
+    fill();
+  };
+  draw();
+}
 function transModal(t){
-  const edit=!!t;const kind=t?t.kind:transPageKind();
+  const kind=t?t.kind:transPageKind();
+  if(kind==='out'){ transModalOut(t); return; }
+  const edit=!!t;
   const draw=()=>{
     const cat=$('#tCat')?$('#tCat').value:(t?t.cat:'inverter');
     openModal(kind==='in'?'Tạo phiếu nhập kho':'Tạo phiếu xuất kho',`
