@@ -4190,6 +4190,10 @@ async function pullDBFromSupabase(){
     const testKdN=applyTestKdAccountsOnce();
     const remoteAssetBook=bundle.settings&&bundle.settings.data&&bundle.settings.data._assets;
     const remoteHasAssetRows=!!(remoteAssetBook&&Array.isArray(remoteAssetBook.rows)&&remoteAssetBook.rows.length>=ASSET_SHEET_ROWS.length);
+    try{
+      const {data:kdRow,error:kdErr}=await sb.from('erp_settings').select('data').eq('id','kd-avail').maybeSingle();
+      if(!kdErr) applyRemoteKdAvail(kdRow&&kdRow.data);
+    }catch(e){ console.warn('kd avail pull', e); }
     captureSyncBase();
     if(!remoteHasAssetRows&&_syncBase){
       _syncBase.assets='';
@@ -4232,6 +4236,8 @@ async function pullDBFromSupabase(){
     console.warn('pullDB',e);
     toast('Không tải được dữ liệu Supabase','bad');
     return false;
+  }finally{
+    _kdAvailHydrated=true;
   }
 }
 async function pushDBToSupabase(){
@@ -4535,6 +4541,7 @@ async function softCloudSync(reason){
       const r=routeFromUrl();
       // Giữ form báo giá đang soạn; các trang khác refresh ngay
       if(r && r!=='quote-new') renderPage();
+      try{ renderSidebar(); }catch(e){}
       return true;
     }
     return false;
@@ -4590,6 +4597,7 @@ saveDB=function(){
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){
     if(isDBDirty()&&_syncBase&&SB_READY&&SB_USER) schedulePushDB(true);
+    if(SB_READY&&SB_USER) pushKdAvailNow();
   }else if(document.visibilityState==='visible'){
     softCloudSync('visible');
   }
@@ -4597,6 +4605,7 @@ document.addEventListener('visibilitychange',()=>{
 window.addEventListener('pagehide',()=>{
   persistQtDraft();
   if(isDBDirty()&&_syncBase&&SB_READY&&SB_USER) schedulePushDB(true);
+  if(SB_READY&&SB_USER) pushKdAvailNow();
 });
 window.addEventListener('beforeunload',()=>{
   persistQtDraft();
@@ -4726,8 +4735,10 @@ async function enterApp(u, opt){
       }
     }
     if(skipPull){
+      _kdAvailHydrated=true;
       applyPimgToDB();
       renderPage();
+      try{ renderSidebar(); }catch(e){}
     }else{
     toast('Đang đồng bộ dữ liệu từ Supabase…','');
     const ok=await pullDBFromSupabase();
@@ -4786,8 +4797,10 @@ async function enterApp(u, opt){
     _localSyncStamp=await fetchErpSyncStamp();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
     renderPage();
+    try{ renderSidebar(); }catch(e){}
     }
   }else{
+    _kdAvailHydrated=true;
     const restored=mergeSeedCatalog();
     const exVatN=applyEquipPricesExVatOnce();
     const seedPriceN=applySeedCatalogPricesOnce();
@@ -5214,6 +5227,17 @@ function kdAssignBlocked(ownerName, previousOwner){
   if(!u) return false;
   return !kdIsFree(u);
 }
+let _kdAvailHydrated=false;
+let _kdAvailPushedHash='';
+function kdAvailHash(){
+  try{ return JSON.stringify(kdAvailMap()); }catch(e){ return ''; }
+}
+function applyRemoteKdAvail(remote){
+  if(!remote||typeof remote!=='object'||Array.isArray(remote)) return;
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  DB.settings.kdAvail=mergeKdAvailMaps(DB.settings.kdAvail, remote);
+  _kdAvailPushedHash=kdAvailHash();
+}
 function setMyKdAvail(status){
   if(!ME||effectiveUserRole(ME)!=='sales') return '';
   if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
@@ -5226,6 +5250,32 @@ function setMyKdAvail(status){
   DB.settings.kdAvail=map;
   saveDB();
   return 'ok';
+}
+/** Ghi riêng trạng thái nhận data — không nằm trong bản settings lớn, vẫn còn khi tắt máy. */
+async function pushKdAvailNow(){
+  if(!sb||!SB_USER) return false;
+  try{
+    const {data:cur,error:readErr}=await sb.from('erp_settings').select('data').eq('id','kd-avail').maybeSingle();
+    if(readErr) throw readErr;
+    const remote=cur&&cur.data&&typeof cur.data==='object'&&!Array.isArray(cur.data)?cur.data:{};
+    const merged=mergeKdAvailMaps(remote, kdAvailMap());
+    if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+    DB.settings.kdAvail=merged;
+    if(JSON.stringify(merged)===_kdAvailPushedHash) return true;
+    const now=new Date().toISOString();
+    const {error}=await sb.from('erp_settings').upsert({id:'kd-avail', data:merged, updated_at:now});
+    if(error) throw error;
+    const seq=DB.seq||{q:0,t:0,u:0,p:0};
+    await sb.from('erp_seq').upsert({
+      id:'main', q:Number(seq.q)||0, t:Number(seq.t)||0, u:Number(seq.u)||0, p:Number(seq.p)||0, updated_at:now
+    });
+    try{ if(typeof _saveDB==='function') _saveDB(); }catch(e){}
+    _kdAvailPushedHash=JSON.stringify(merged);
+    return true;
+  }catch(e){
+    console.warn('pushKdAvail', e);
+    return false;
+  }
 }
 function kdFreeSalesUsers(){
   const seen=new Set();
@@ -5265,12 +5315,21 @@ function kdFreeBoardHtml(){
 }
 function bindKdAvail(){
   document.querySelectorAll('[data-kd-avail]').forEach(btn=>{
-    btn.onclick=()=>{
+    btn.onclick=async()=>{
+      if(!_kdAvailHydrated && SB_READY && SB_USER){
+        toast('Đang tải trạng thái đã lưu…','');
+        return;
+      }
       const next=btn.getAttribute('data-kd-avail')==='free'?'free':'busy';
       const res=setMyKdAvail(next);
       if(res!=='ok') return;
-      toast(next==='free'?'Đã bật Rảnh — có thể nhận data':'Đã chuyển sang Bận — tạm không nhận data','ok');
       renderSidebar();
+      const ok=await pushKdAvailNow();
+      if(!ok){
+        toast('Chưa lưu được lên hệ thống. Giữ mạng và bấm lại, nếu tắt máy lúc này trạng thái chưa giữ.','bad');
+        return;
+      }
+      toast(next==='free'?'Đã bật Rảnh — tắt máy vẫn nhận data cho đến khi chuyển Bận':'Đã chuyển Bận — không nhận data mới','ok');
     };
   });
 }
