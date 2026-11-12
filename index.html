@@ -4677,6 +4677,7 @@ async function sbEnsureProfile(user, meta){
 function routeFromUrl(){
   const h=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
   if(h==='quote-list') return 'dashboard';
+  if(h==='trans') return 'trans-in';
   if(h==='login'||h==='') return '';
   return h;
 }
@@ -5051,7 +5052,7 @@ const NAV=[
  {k:'assets',t:'Quản lý tài sản',i:'build'},
  {k:'users',t:'Nhân sự',i:'users'},
  {k:'device',t:'Thiết bị',i:'cpu',sub:[{k:'dev-panel',t:'Tấm pin'},{k:'dev-inverter',t:'Biến tần'},{k:'dev-battery',t:'Pin lưu trữ'},{k:'dev-cabinet',t:'Tủ điện'},{k:'dev-accessory',t:'Phụ kiện & Giám sát'},{k:'dev-mount',t:'Khung đỡ & Vật tư'},{k:'dev-cable',t:'Dây cáp'}]},
- {k:'wh',t:'Kho hàng',i:'box',sub:[{k:'stock',t:'Tồn kho'},{k:'trans',t:'Nhập/Xuất kho'}]},
+ {k:'wh',t:'Kho hàng',i:'box',sub:[{k:'stock',t:'Tồn kho'},{k:'trans-in',t:'Nhập kho'},{k:'trans-out',t:'Xuất kho'},{k:'warranty',t:'Tra cứu bảo hành'}]},
  {k:'attendance',t:'Chấm công',i:'clock',sub:[{k:'attendance',t:'Check-in'},{k:'attendance-board',t:'Bảng chấm công'},{k:'work-plan',t:'Kế Hoạch Công Tác'}]},
  {k:'settings',t:'Cài đặt',i:'gear'},
 ];
@@ -5180,6 +5181,7 @@ function go(r, opt){
   if(!r) return;
   if(r==='quote-list') r='dashboard';
   if(r==='dev-pump') r='dev-inverter';
+  if(r==='trans') r='trans-in';
   if(!routeAllowed(r)) r=defaultRouteForRole();
   ROUTE=r;
   devSelected.clear();userSelected.clear();
@@ -12393,20 +12395,22 @@ async function importTransFromExcelFile(file){
     toast('Lỗi đọc Excel: '+(err&&err.message||err),'bad');
   }
 }
+function transPageKind(){ return ROUTE==='trans-out'?'out':'in'; }
 function pageTrans(){
-  const rows=DB.trans.filter(t=>(!trF.kind||t.kind===trF.kind)&&(!trF.pid||t.pid==trF.pid)&&
+  const kind=transPageKind();
+  const rows=(DB.trans||[]).filter(t=>t&&t.kind===kind&&(!trF.pid||t.pid==trF.pid)&&
     (!trF.st||(trF.st==='on'?t.active:!t.active)));
-  const prods=[...new Map(DB.trans.map(t=>[t.pid,t.name])).entries()];
-  return `<div class="page-head"><div class="page-title">Nhập / Xuất kho</div>
+  const prods=[...new Map((DB.trans||[]).filter(t=>t&&t.kind===kind).map(t=>[t.pid,t.name])).entries()];
+  const title=kind==='in'?'Nhập kho':'Xuất kho';
+  const addLabel=kind==='in'?'Tạo phiếu nhập':'Tạo phiếu xuất';
+  return `<div class="page-head"><div class="page-title">${title}</div>
     <div class="head-actions">
       <button class="btn btn-ghost" id="trTpl" type="button">⬇ Mẫu Excel</button>
       <button class="btn btn-ghost" id="trImport" type="button">⬆ Tải Excel</button>
       <input type="file" id="trFile" accept=".xlsx,.xls,.csv" hidden>
-      <button class="btn btn-primary" id="trAdd">${I.plus} Tạo phiếu</button>
+      <button class="btn btn-primary" id="trAdd">${I.plus} ${addLabel}</button>
     </div></div>
   <div class="filters">
-    <select class="sel" id="trKind"><option value="">Tất cả loại</option>
-      <option value="in" ${trF.kind==='in'?'selected':''}>Nhập kho</option><option value="out" ${trF.kind==='out'?'selected':''}>Xuất kho</option></select>
     <select class="sel" id="trProd"><option value="">Tất cả sản phẩm</option>
       ${prods.map(([id,n])=>`<option value="${id}" ${trF.pid==id?'selected':''}>${esc(strip(n))}</option>`).join('')}</select>
     <select class="sel" id="trSt"><option value="">Tất cả trạng thái</option>
@@ -12426,7 +12430,7 @@ function pageTrans(){
       <td><div class="act"><button data-vt="${t.id}" title="Xem">${I.eye}</button>
         <button class="warn" data-et="${t.id}" title="Sửa">${I.pen}</button>
         <button class="del" data-xt="${t.id}" title="Hủy phiếu">${I.ban}</button></div></td></tr>`).join('')
-      :'<tr><td colspan="8" class="empty">Chưa có phiếu nào khớp bộ lọc.</td></tr>'}</tbody>
+      :`<tr><td colspan="8" class="empty">Chưa có phiếu ${kind==='in'?'nhập':'xuất'} nào khớp bộ lọc.</td></tr>`}</tbody>
   </table></div></div>`;
 }
 function applyStock(t,sign){
@@ -12436,7 +12440,7 @@ function applyStock(t,sign){
   if(s.qty<0)s.qty=0;
 }
 function bindTrans(){
-  $('#trKind').onchange=e=>{trF.kind=e.target.value;renderPage();};
+  const kindEl=$('#trKind'); if(kindEl) kindEl.onchange=e=>{trF.kind=e.target.value;renderPage();};
   $('#trProd').onchange=e=>{trF.pid=e.target.value;renderPage();};
   $('#trSt').onchange=e=>{trF.st=e.target.value;renderPage();};
   $('#trAdd').onclick=()=>transModal(null);
@@ -12473,12 +12477,10 @@ function bindTrans(){
     applyStock(t,-1);t.active=false;toast('Đã hủy phiếu và hoàn tồn kho','ok');saveDB();renderPage();});
 }
 function transModal(t){
-  const edit=!!t;let kind=t?t.kind:'in';
+  const edit=!!t;const kind=t?t.kind:transPageKind();
   const draw=()=>{
     const cat=$('#tCat')?$('#tCat').value:(t?t.cat:'inverter');
     openModal(kind==='in'?'Tạo phiếu nhập kho':'Tạo phiếu xuất kho',`
-      <div class="seg"><button id="segIn" class="${kind==='in'?'on-in':''}">${I.dl} Nhập kho</button>
-        <button id="segOut" class="${kind==='out'?'on-out':''}">${I.up} Xuất kho</button></div>
       <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
         ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select></div>
@@ -12519,10 +12521,105 @@ function transModal(t){
     $('#tCat').onchange=fill;$('#tProd').onchange=()=>{const p=catList($('#tCat').value).find(x=>x.id==+$('#tProd').value);
       if(p)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);sum();};
     $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
-    $('#segIn').onclick=()=>{kind='in';draw();};$('#segOut').onclick=()=>{kind='out';draw();};
     fill();
   };
   draw();
+}
+
+/* ---------------- TRA CỨU BẢO HÀNH ---------------- */
+let whQ='';
+function warrantyCatalog(){
+  const out=[];
+  Object.keys(CAT).forEach(cat=>{
+    if(cat==='service') return;
+    catList(cat).forEach(p=>{
+      if(!p||!p.name) return;
+      const years=Number(p.bh);
+      out.push({
+        cat, id:p.id, name:strip(p.name), brand:String(p.brand||'').trim(),
+        code:String(p.code||'').trim(),
+        years:Number.isFinite(years)&&years>0?years:0
+      });
+    });
+  });
+  return out;
+}
+function warrantyEndDate(start, years){
+  const m=String(start||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m||!years) return '';
+  const d=new Date(Date.UTC(+m[1]+years, +m[2]-1, +m[3]));
+  if(isNaN(+d)) return '';
+  return d.toISOString().slice(0,10);
+}
+function warrantyVnDate(iso){
+  const m=String(iso||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?m[3]+'/'+m[2]+'/'+m[1]:'—';
+}
+function warrantySearch(q){
+  const query=String(q||'').trim().toLowerCase();
+  if(!query) return {products:[], slips:[]};
+  const catalog=warrantyCatalog();
+  const byId=new Map(catalog.map(p=>[String(p.id), p]));
+  const products=catalog.filter(p=>{
+    const blob=[p.name,p.brand,p.code,CAT[p.cat]||''].join(' ').toLowerCase();
+    return blob.includes(query);
+  }).slice(0,80);
+  const prodIds=new Set(products.map(p=>String(p.id)));
+  const slips=(DB.trans||[]).filter(t=>{
+    if(!t||t.kind!=='out'||t.active===false) return false;
+    if(prodIds.has(String(t.pid))) return true;
+    const prod=byId.get(String(t.pid));
+    const blob=[t.code,t.name,t.party,t.partyPhone,t.ref,prod&&prod.brand,prod&&prod.code].join(' ').toLowerCase();
+    return blob.includes(query);
+  }).slice(0,80).map(t=>{
+    const prod=byId.get(String(t.pid));
+    const years=prod?prod.years:0;
+    const start=String(t.date||'').slice(0,10);
+    const end=warrantyEndDate(start, years);
+    const today=attDateKey(new Date());
+    let status='Chưa có hạn';
+    if(end) status=end>=today?'Còn bảo hành':'Hết bảo hành';
+    return {t, prod, years, start, end, status};
+  });
+  return {products, slips};
+}
+function pageWarranty(){
+  const q=String(whQ||'').trim();
+  const found=warrantySearch(q);
+  const prodBody=found.products.length?found.products.map(p=>`<tr>
+      <td><b>${esc(p.name)}</b>${p.brand?`<div style="color:var(--muted);font-size:12.5px">${esc(p.brand)}</div>`:''}</td>
+      <td>${esc(CAT[p.cat]||'')}</td>
+      <td class="mono">${p.years?p.years+' năm':'—'}</td>
+    </tr>`).join(''):`<tr><td colspan="3" class="empty">${q?'Không thấy sản phẩm khớp từ khóa.':'Nhập tên hàng hoặc hãng để xem số năm bảo hành.'}</td></tr>`;
+  const slipBody=found.slips.length?found.slips.map(r=>{
+    const pill=r.status==='Còn bảo hành'?'p-green':(r.status==='Hết bảo hành'?'p-red':'p-gray');
+    return `<tr>
+      <td><div class="mono" style="font-weight:600">${esc(r.t.code||'—')}</div><div>${esc(strip(r.t.name||''))}</div></td>
+      <td><div>${esc(r.t.party||'—')}</div>${r.t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${esc(r.t.partyPhone)}</div>`:''}</td>
+      <td class="mono">${warrantyVnDate(r.start)}</td>
+      <td class="mono">${r.years?warrantyVnDate(r.end):'—'}</td>
+      <td class="mono">${r.years?r.years+' năm':'—'}</td>
+      <td><span class="pill ${pill}">${esc(r.status)}</span></td>
+    </tr>`;
+  }).join(''):`<tr><td colspan="6" class="empty">${q?'Không có phiếu xuất khớp từ khóa.':'Phiếu xuất đang hoạt động sẽ hiện hạn bảo hành theo ngày xuất.'}</td></tr>`;
+  return `<div class="page-head"><div class="page-title">Tra cứu bảo hành</div></div>
+  <div class="page-sub" style="margin:-8px 0 16px">Tìm theo tên hàng, hãng, số phiếu xuất, tên khách hoặc số điện thoại trên phiếu xuất.</div>
+  <div class="search">${I.search}<input class="inp" id="whQ" placeholder="Tên hàng, hãng, số phiếu, khách hàng..." value="${esc(whQ)}" autocomplete="off"></div>
+  <div class="card-title">Thời hạn theo danh mục</div>
+  <div class="tbl-card" style="margin-bottom:18px"><div class="tbl-wrap"><table>
+    <thead><tr><th>Sản phẩm</th><th>Loại</th><th>Bảo hành</th></tr></thead>
+    <tbody>${prodBody}</tbody>
+  </table></div></div>
+  <div class="card-title">Phiếu xuất kho</div>
+  <div class="tbl-card"><div class="tbl-wrap"><table>
+    <thead><tr><th>Phiếu / Sản phẩm</th><th>Khách hàng</th><th>Ngày xuất</th><th>Hết hạn</th><th>Thời hạn</th><th>Trạng thái</th></tr></thead>
+    <tbody>${slipBody}</tbody>
+  </table></div></div>`;
+}
+function bindWarranty(){
+  const el=$('#whQ');
+  if(!el) return;
+  el.oninput=e=>{ whQ=e.target.value; renderPage(); const n=$('#whQ'); if(n){ n.focus(); const v=n.value; n.setSelectionRange(v.length,v.length); } };
 }
 
 /* ---------------- NHÀ CUNG CẤP ---------------- */
@@ -13108,7 +13205,7 @@ function bindSettings(){
 const EYE={dashboard:'Tổng quan',crm:'Khách hàng',"quote-new":'Báo giá NLMT',customers:'Doanh số',contracts:'Hợp đồng',
  "dev-inverter":'Thiết bị',"dev-panel":'Thiết bị',"dev-battery":'Thiết bị',"dev-cabinet":'Thiết bị',"dev-service":'Thiết bị',
  "dev-light":'Thiết bị',"dev-pump":'Thiết bị',"dev-accessory":'Thiết bị',"dev-mount":'Thiết bị',"dev-cable":'Thiết bị',
- stock:'Kho hàng',trans:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công','attendance-board':'Chấm công','work-plan':'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
+ stock:'Kho hàng','trans-in':'Kho hàng','trans-out':'Kho hàng',warranty:'Kho hàng',suppliers:'Kho hàng',attendance:'Chấm công','attendance-board':'Chấm công','work-plan':'Chấm công',assets:'Quản lý tài sản',users:'Hệ thống',settings:'Hệ thống'};
 function attPad(n){ return String(n).padStart(2,'0'); }
 /** Ngày lịch Asia/Ho_Chi_Minh. Chuỗi YYYY-MM-DD giữ nguyên — không parse qua UTC. */
 function attDateKey(d){
@@ -15449,7 +15546,8 @@ function renderPage(){
     case 'dev-pump': case 'dev-accessory': case 'dev-mount': case 'dev-cable': case 'dev-service':{
       const c=ROUTE.slice(4);m.innerHTML=pageDevice(c);bindDevice(c);break;}
     case 'stock': m.innerHTML=pageStock();bindStock();break;
-    case 'trans': m.innerHTML=pageTrans();bindTrans();break;
+    case 'trans': case 'trans-in': case 'trans-out': m.innerHTML=pageTrans();bindTrans();break;
+    case 'warranty': m.innerHTML=pageWarranty();bindWarranty();break;
     case 'suppliers': m.innerHTML=pageSuppliers();bindSuppliers();break;
     case 'attendance': m.innerHTML=pageAttendance();bindAttendance();break;
     case 'attendance-board': m.innerHTML=pageAttendanceAdmin();bindAttendanceAdmin();break;
@@ -15467,7 +15565,7 @@ function renderPage(){
   const TITLES={dashboard:'Dashboard',crm:'Khách hàng CRM','quote-new':'Tạo báo giá',customers:'Doanh số',contracts:'Hợp đồng',
     'dev-inverter':'Biến tần','dev-panel':'Tấm pin','dev-battery':'Pin lưu trữ',
     'dev-cabinet':'Tủ điện','dev-light':'Đèn NLMT','dev-accessory':'Phụ kiện','dev-service':'Dịch vụ',
-    stock:'Tồn kho',trans:'Nhập/Xuất kho',suppliers:'Nhà cung cấp',
+    stock:'Tồn kho','trans-in':'Nhập kho','trans-out':'Xuất kho',warranty:'Tra cứu bảo hành',suppliers:'Nhà cung cấp',
     attendance:'Chấm công','attendance-board':'Bảng chấm công','work-plan':'Kế Hoạch Công Tác',assets:'Quản lý tài sản',
     users:'Người dùng',settings:'Cài đặt'};
   if(tbT) tbT.textContent=TITLES[ROUTE]||'Quang Thanh Solar';
