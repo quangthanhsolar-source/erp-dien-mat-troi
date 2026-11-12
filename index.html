@@ -12486,6 +12486,7 @@ function pageTrans(){
   const prods=[...new Map((DB.trans||[]).filter(t=>t&&t.kind===kind).map(t=>[t.pid,t.name])).entries()];
   const title=kind==='in'?'Nhập kho':'Xuất kho';
   const addLabel=kind==='in'?'Tạo phiếu nhập':'Tạo phiếu xuất';
+  const emptyMsg=kind==='in'?'Chưa có phiếu nhập nào khớp bộ lọc.':'Chưa có phiếu xuất nào khớp bộ lọc.';
   return `<div class="page-head"><div class="page-title">${title}</div>
     <div class="head-actions">
       <button class="btn btn-ghost" id="trTpl" type="button">⬇ Mẫu Excel</button>
@@ -12499,8 +12500,8 @@ function pageTrans(){
     <select class="sel" id="trSt"><option value="">Tất cả trạng thái</option>
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
-  <div class="tbl-card"><div class="tbl-wrap"><table class="${kind==='in'?'in-tbl':''}">
-    ${kind==='in'?`<colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
+  <div class="tbl-card"><div class="tbl-wrap"><table class="in-tbl">
+    <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
     <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight">Đơn vị</th><th class="num in-tight">Số lượng</th><th class="in-tight">NCC / KH</th><th>COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td class="mono">${esc(inboundDateText(t.date))}</td>
@@ -12510,21 +12511,7 @@ function pageTrans(){
       <td class="num mono in-tight" style="font-weight:700">${t.qty}</td>
       <td class="in-tight"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
       <td class="mono">${t.cocq?esc(t.cocq):'<span style="color:var(--muted)">—</span>'}</td>
-    </tr>`).join(''):'<tr><td colspan="7" class="empty">Chưa có phiếu nhập nào khớp bộ lọc.</td></tr>'}</tbody>`
-    :`<thead><tr><th>Số phiếu</th><th>Loại</th><th>Sản phẩm</th><th class="num">SL</th><th class="num">Tổng</th><th>NCC / KH</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-    <tbody>${rows.length?rows.map(t=>`<tr>
-      <td><div class="mono t-blue" style="font-weight:600">${t.code||'-'}</div>
-        <div class="mono" style="color:var(--muted);font-size:12.5px">${dt(t.date)}</div></td>
-      <td><span class="pill p-red">${I.up} Xuất</span></td>
-      <td><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
-      <td class="num mono" style="font-weight:700">${t.qty}</td>
-      <td class="num mono">${vnd(t.qty*t.price)}</td>
-      <td><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
-      <td>${t.active?'<span class="pill p-green">Hoạt động</span>':'<span class="pill p-gray">Đã hủy</span>'}</td>
-      <td><div class="act"><button data-vt="${t.id}" title="Xem">${I.eye}</button>
-        <button class="warn" data-et="${t.id}" title="Sửa">${I.pen}</button>
-        <button class="del" data-xt="${t.id}" title="Hủy phiếu">${I.ban}</button></div></td></tr>`).join('')
-      :'<tr><td colspan="8" class="empty">Chưa có phiếu xuất nào khớp bộ lọc.</td></tr>'}</tbody>`}
+    </tr>`).join(''):`<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
   </table></div></div>`;
 }
 function applyStock(t,sign){
@@ -12578,9 +12565,9 @@ function transModal(t){
       <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
         ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select></div>
-      ${kind==='in'?`<div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>
+      <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>
       <div class="row2"><div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
-        <div class="field"><label>COCQ</label><input class="inp" id="tCocq" placeholder="Số CO/CQ" value="${esc(t&&t.cocq||'')}"></div></div>`:''}
+        <div class="field"><label>COCQ</label><input class="inp" id="tCocq" placeholder="Số CO/CQ" value="${esc(t&&t.cocq||'')}"></div></div>
       <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
         <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
       <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
@@ -12594,9 +12581,9 @@ function transModal(t){
         const pid=+$('#tProd').value,c=$('#tCat').value,p=catList(c).find(x=>x.id==pid);
         const qty=+$('#tQty').value||0,pr=+$('#tPrice').value||0;
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
-        const series=kind==='in'?(($('#tSeries')&&$('#tSeries').value)||'').trim():String((edit&&t&&t.series)||'');
-        const unit=kind==='in'?(($('#tUnit')&&$('#tUnit').value)||'').trim():String((edit&&t&&t.unit)||'');
-        const cocq=kind==='in'?(($('#tCocq')&&$('#tCocq').value)||'').trim():String((edit&&t&&t.cocq)||'');
+        const series=(($('#tSeries')&&$('#tSeries').value)||'').trim();
+        const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
+        const cocq=(($('#tCocq')&&$('#tCocq').value)||'').trim();
         if(!p){toast('Chọn sản phẩm','bad');return false;}
         if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
         if(kind==='out'){const s=DB.stock.find(x=>x.id===pid);const have=(s?s.qty:0)+(edit&&t.kind==='out'?t.qty:0);
@@ -12616,7 +12603,7 @@ function transModal(t){
       $('#tProd').innerHTML=catList(c).map(p=>`<option value="${p.id}" ${t&&t.pid==p.id?'selected':''}>${esc(strip(p.name))}</option>`).join('');
       const p=catList(c).find(x=>x.id==+$('#tProd').value);
       if(p&&!t)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
-      if(kind==='in'&&p&&p.unit){
+      if(p&&p.unit){
         const unitEl=$('#tUnit');
         if(unitEl&&!String(unitEl.value||'').trim()) unitEl.value=p.unit;
       }
@@ -12624,7 +12611,7 @@ function transModal(t){
     const sum=()=>{$('#tTotal').textContent=vnd((+$('#tQty').value||0)*(+$('#tPrice').value||0));};
     $('#tCat').onchange=fill;$('#tProd').onchange=()=>{const p=catList($('#tCat').value).find(x=>x.id==+$('#tProd').value);
       if(p)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
-      if(kind==='in'&&p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
+      if(p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
       sum();};
     $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
     fill();
