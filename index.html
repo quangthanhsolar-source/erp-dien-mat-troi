@@ -8289,7 +8289,7 @@ function orderStaffFilterOptions(){
     seen.add(key);
     (orderStaffIsShortName(name)?short:full).push(name);
   };
-  crmOwnerNames().forEach(push);
+  orderSalesStaff().forEach(s=>push(s.name));
   (DB.quotes||[]).forEach(q=>{
     const raw=orderNvCanon(q.nv);
     if(!raw) return;
@@ -10656,38 +10656,40 @@ function crmStatusClass(st){
   if(st==='Đã báo giá') return 'p-yellow';
   return 'p-gray';
 }
+function crmAssigneeLabel(u){
+  const name=String(u&&u.name||'').trim();
+  if(name) return name;
+  return String(u&&u.email||'').trim();
+}
 function crmSalesStaff(){
-  const seen=new Set();
-  const out=[];
+  const byKey=new Map();
   (DB.users||[]).forEach(u=>{
-    if(!u||u.active===false||(u.role!=='sales'&&u.role!=='telesales')) return;
-    const name=String(u.name||'').trim();
+    if(!u||(typeof isTombstonedUser==='function'&&isTombstonedUser(u))) return;
+    const role=effectiveUserRole(u);
+    if(role!=='sales'&&role!=='telesales') return;
+    const name=crmAssigneeLabel(u);
     if(!name) return;
     const key=orderStaffNameKey(name);
-    if(seen.has(key)) return;
-    seen.add(key);
-    out.push({id:u.id,name});
+    if(!key) return;
+    const prev=byKey.get(key);
+    if(!prev){ byKey.set(key,{id:u.id,name,active:u.active!==false}); return; }
+    if(prev.active===false&&u.active!==false) byKey.set(key,{id:u.id,name,active:true});
   });
-  out.sort((a,b)=>a.name.localeCompare(b.name,'vi'));
-  return out;
+  return [...byKey.values()].sort((a,b)=>a.name.localeCompare(b.name,'vi'));
 }
 function crmIsUnassigned(owner){
   const s=String(owner||'').trim();
   return !s || s==='Trống' || s==='—';
 }
 function crmStaffOptions(selected){
-  let staff=crmSalesStaff();
+  const staff=crmSalesStaff();
   const sel=String(selected||'').trim();
-  if(kdCanSeeAvail()){
-    staff=staff.filter(s=>{
-      const u=(DB.users||[]).find(x=>String(x.id)===String(s.id))||kdSalesUserByName(s.name);
-      if(!u||effectiveUserRole(u)!=='sales') return true;
-      if(sel && orderStaffNameKey(s.name)===orderStaffNameKey(sel)) return true;
-      return kdIsFree(u);
-    });
-  }
   const empty=!sel || crmIsUnassigned(sel);
-  return `<option value="" ${empty?'selected':''}>Trống</option>`+staff.map(s=>`<option value="${esc(s.name)}" ${!empty && orderStaffNameKey(s.name)===orderStaffNameKey(sel)?'selected':''}>${esc(s.name)}</option>`).join('');
+  const known=!empty&&staff.some(s=>orderStaffNameKey(s.name)===orderStaffNameKey(sel));
+  const rows=staff.slice();
+  if(!empty&&!known) rows.push({id:'current',name:sel});
+  rows.sort((a,b)=>a.name.localeCompare(b.name,'vi'));
+  return `<option value="" ${empty?'selected':''}>Trống</option>`+rows.map(s=>`<option value="${esc(s.name)}" ${!empty && orderStaffNameKey(s.name)===orderStaffNameKey(sel)?'selected':''}>${esc(s.name)}</option>`).join('');
 }
 function crmOwnerNames(){
   return crmSalesStaff().map(s=>s.name);
