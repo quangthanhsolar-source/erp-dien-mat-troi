@@ -664,6 +664,9 @@ textarea.inp{height:88px;padding:12px 16px;resize:vertical;border-radius:14px}
 .crm-filters .sel{width:100%;min-width:0;height:40px;font-size:13px;padding:0 32px 0 12px;background-position:right 10px center}
 .crm-filters .search{grid-column:1 / -1;min-width:0;flex:none;margin:0}
 .crm-filters .search .inp{height:40px;font-size:14px}
+@media(max-width:767px){
+  .crm-filters .search .inp{font-size:16px}
+}
 .crm-stats-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 14px}
 .crm-stats-head .card-title{margin:0}
 .ord-tbl td.crm-trong-cell{background:#ffe08a}
@@ -1236,10 +1239,12 @@ const I={
 const $=(s,r)=>(r||document).querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const strip=s=>String(s==null?'':s).replace(/<[^>]*>/g,'');
-/** Gắn ô tìm kiếm — debounce + bỏ qua lúc gõ tiếng Việt (IME) để không nhảy ký tự. */
-function bindSearchInput(id, applyVal){
+/** Gắn ô tìm kiếm — debounce + bỏ qua lúc gõ tiếng Việt (IME) để không nhảy ký tự.
+ *  preserve: không gỡ ô đang gõ và không gọi focus() lại (mobile sẽ đóng bàn phím). */
+function bindSearchInput(id, applyVal, opt){
   const el=typeof id==='string'?document.getElementById(id):id;
   if(!el) return;
+  const preserve=!!(opt&&opt.preserve);
   let timer=null, composing=false, lastPos=null;
   const run=()=>{
     clearTimeout(timer);
@@ -1247,11 +1252,15 @@ function bindSearchInput(id, applyVal){
       const cur=document.getElementById(el.id);
       const val=cur?cur.value:'';
       lastPos=cur&&typeof cur.selectionStart==='number'?cur.selectionStart:null;
+      const wasFocused=!!(cur&&document.activeElement===cur);
       applyVal(val);
+      const still=document.getElementById(el.id);
+      if(preserve && wasFocused && still===cur && document.activeElement===cur) return;
       requestAnimationFrame(()=>{
         const n=document.getElementById(el.id);
         if(!n) return;
-        n.focus();
+        if(preserve && document.activeElement===n) return;
+        try{ n.focus({preventScroll:true}); }catch(e){ n.focus(); }
         if(lastPos!=null){
           try{ const p=Math.min(lastPos, n.value.length); n.setSelectionRange(p,p); }catch(e){}
         }
@@ -10742,15 +10751,11 @@ function nextCrmId(){
   while(ids.has(id)) id++;
   return id;
 }
-function pageCrm(){
+function crmListState(){
   if(!Array.isArray(DB.crm)) DB.crm=[];
   const rows=crmFiltered();
   const stats=crmStats(rows);
   const surveyed=rows.filter(r=>r.status==='Đã khảo sát').length;
-  const years=[...new Set((DB.crm||[]).map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
-  if(crmFilter.y&&!years.includes(crmFilter.y)) years.unshift(crmFilter.y);
-  const owners=crmOwnerNames();
-  if(crmFilter.owner && !owners.some(n=>orderStaffNameKey(n)===orderStaffNameKey(crmFilter.owner))) crmFilter.owner='';
   const pageCount=Math.max(1, Math.ceil(rows.length/CRM_PAGE_SIZE));
   if(crmPage>pageCount) crmPage=pageCount;
   if(crmPage<1) crmPage=1;
@@ -10758,73 +10763,18 @@ function pageCrm(){
   const pageRows=rows.slice(from, from+CRM_PAGE_SIZE);
   const shownFrom=rows.length?from+1:0;
   const shownTo=Math.min(from+pageRows.length, rows.length);
-  const pageBtns=[];
-  const addPageBtn=n=>pageBtns.push(`<button type="button" data-crmpage="${n}" class="${n===crmPage?'active':''}">${n}</button>`);
-  if(pageCount<=9){
-    for(let n=1;n<=pageCount;n++) addPageBtn(n);
-  }else{
-    addPageBtn(1);
-    const start=Math.max(2, crmPage-2), end=Math.min(pageCount-1, crmPage+2);
-    if(start>2) pageBtns.push(`<span style="padding:0 4px;color:var(--muted)">…</span>`);
-    for(let n=start;n<=end;n++) addPageBtn(n);
-    if(end<pageCount-1) pageBtns.push(`<span style="padding:0 4px;color:var(--muted)">…</span>`);
-    addPageBtn(pageCount);
-  }
-  return `${kdFreeBoardHtml()}<div class="page-head"><div class="page-title">Khách hàng CRM</div>
-    <button class="btn btn-primary" id="crmAdd">${I.plus} Thêm khách hàng</button></div>
-  <div class="page-sub" style="margin:-8px 0 16px">Telesales xem tất cả khách. Nhân viên KD chỉ thấy khách «Trống» và khách do mình phụ trách. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
-  <div class="sales-summary">
-    <div class="ss-card">
-      <div class="ss-lbl">Số khách</div>
-      <div class="ss-val count mono">${rows.length}</div>
-      <div class="ss-hint">Theo bộ lọc hiện tại</div>
-    </div>
-    <div class="ss-card">
-      <div class="ss-lbl">Đã khảo sát</div>
-      <div class="ss-val count mono">${surveyed}</div>
-      <div class="ss-hint">${rows.length?Math.round(surveyed/rows.length*100)+'% số khách trong bộ lọc':'Chưa có khách'}</div>
-    </div>
-  </div>
-  <div class="crm-stats-head">
-    <div class="card-title">Thống kê sale theo tháng</div>
-    <button type="button" class="btn btn-ghost" id="crmStatsToggle">${crmStatsOpen?'Ẩn thống kê':'Hiện thống kê'}</button>
-  </div>
-  ${crmStatsOpen?`<div class="tbl-card" style="margin-bottom:18px"><div class="tbl-wrap"><table class="ord-tbl">
-    <thead><tr><th>Người phụ trách</th><th>Tháng</th><th class="num">Số khách</th><th class="num">Đã khảo sát</th></tr></thead>
-    <tbody>${stats.length?stats.map(g=>`<tr>
+  return {rows, stats, surveyed, pageCount, pageRows, shownFrom, shownTo};
+}
+function crmStatsBodyHtml(stats){
+  return stats.length?stats.map(g=>`<tr>
       <td class="${g.owner==='Trống'?'crm-trong-cell':''}"><b>${esc(g.owner)}</b></td>
       <td class="mono">${esc(crmMonthLabel(g.month))}</td>
       <td class="num mono">${g.n}</td>
       <td class="num mono">${g.survey}</td>
-    </tr>`).join(''):'<tr><td colspan="4" class="empty">Chưa có khách để thống kê.</td></tr>'}</tbody>
-  </table></div></div>`:''}
-  <div class="card-title" id="crmListTitle" style="margin:8px 0 14px">Danh sách khách hàng</div>
-  <div class="filters-bar crm-filters">
-    <select class="sel" id="crmY" title="Năm"><option value="">Tất cả năm</option>
-      ${years.map(y=>`<option value="${y}" ${crmFilter.y===y?'selected':''}>${y}</option>`).join('')}</select>
-    <select class="sel" id="crmM" title="Tháng"><option value="">Tất cả tháng</option>
-      ${Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');return `<option value="${m}" ${crmFilter.m===m?'selected':''}>Tháng ${i+1}</option>`;}).join('')}</select>
-    <select class="sel" id="crmOwner" title="Người phụ trách"><option value="">Tất cả phụ trách</option>
-      ${owners.map(n=>`<option value="${esc(n)}" ${orderStaffNameKey(crmFilter.owner)===orderStaffNameKey(n)?'selected':''}>${esc(n)}</option>`).join('')}</select>
-    <select class="sel" id="crmSource" title="Nguồn"><option value="">Tất cả nguồn</option>
-      ${CRM_SOURCE.map(s=>`<option value="${esc(s)}" ${crmFilter.source===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
-    <select class="sel" id="crmStatus" title="Trạng thái"><option value="">Tất cả trạng thái</option>
-      ${CRM_STATUS.map(s=>`<option value="${esc(s)}" ${crmFilter.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
-    <div class="search">${I.search}<input class="inp" id="crmQ" placeholder="Tìm tên, SĐT, địa chỉ..." value="${esc(crmFilter.q)}" autocomplete="off"></div>
-  </div>
-  <div class="tbl-card"><div class="tbl-wrap"><table class="ord-tbl">
-    <thead><tr>
-      <th>Người phụ trách</th>
-      <th>Ngày/Tháng/Năm</th>
-      <th>Nguồn</th>
-      <th>Thông tin khách hàng</th>
-      <th>Trạng thái</th>
-      <th>Ghi chú</th>
-      <th>Hình ảnh khảo sát</th>
-      <th>File Báo Giá</th>
-      <th>Thao tác</th>
-    </tr></thead>
-    <tbody>${pageRows.length?pageRows.map(r=>{
+    </tr>`).join(''):'<tr><td colspan="4" class="empty">Chưa có khách để thống kê.</td></tr>';
+}
+function crmDataRowsHtml(pageRows){
+  return pageRows.length?pageRows.map(r=>{
       const canEd=canEditCrmRow(r);
       const canDel=canDeleteCrmData();
       const edCls=canEd?'ord-ed':'ord-ed ord-ro';
@@ -10854,16 +10804,108 @@ function pageCrm(){
         ${!canEd&&!canDel?'<span style="color:var(--muted);font-size:11px">Chỉ xem</span>':''}
       </div></td>
     </tr>`;
-    }).join(''):'<tr><td colspan="9" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>'}</tbody>
-  </table></div></div>
-  ${pageCount>1?`<div class="pager">
-    <div class="pager-info">Trang ${crmPage}/${pageCount} · ${shownFrom}–${shownTo} / ${rows.length} khách</div>
+    }).join(''):'<tr><td colspan="9" class="empty">Chưa có khách hàng. Bấm “Thêm khách hàng”.</td></tr>';
+}
+function crmPagerHtml(st){
+  if(st.pageCount<=1) return '';
+  const pageBtns=[];
+  const addPageBtn=n=>pageBtns.push(`<button type="button" data-crmpage="${n}" class="${n===crmPage?'active':''}">${n}</button>`);
+  if(st.pageCount<=9){
+    for(let n=1;n<=st.pageCount;n++) addPageBtn(n);
+  }else{
+    addPageBtn(1);
+    const start=Math.max(2, crmPage-2), end=Math.min(st.pageCount-1, crmPage+2);
+    if(start>2) pageBtns.push(`<span style="padding:0 4px;color:var(--muted)">…</span>`);
+    for(let n=start;n<=end;n++) addPageBtn(n);
+    if(end<st.pageCount-1) pageBtns.push(`<span style="padding:0 4px;color:var(--muted)">…</span>`);
+    addPageBtn(st.pageCount);
+  }
+  return `<div class="pager">
+    <div class="pager-info">Trang ${crmPage}/${st.pageCount} · ${st.shownFrom}–${st.shownTo} / ${st.rows.length} khách</div>
     <div class="pager-btns">
       <button type="button" data-crmpage="${crmPage-1}" ${crmPage<=1?'disabled':''}>‹</button>
       ${pageBtns.join('')}
-      <button type="button" data-crmpage="${crmPage+1}" ${crmPage>=pageCount?'disabled':''}>›</button>
+      <button type="button" data-crmpage="${crmPage+1}" ${crmPage>=st.pageCount?'disabled':''}>›</button>
     </div>
-  </div>`:''}`;
+  </div>`;
+}
+/** Lọc danh sách CRM mà không tạo lại ô tìm kiếm — giữ bàn phím mobile. */
+function paintCrmResults(){
+  const st=crmListState();
+  const count=$('#crmCountVal');
+  if(count) count.textContent=String(st.rows.length);
+  const sv=$('#crmSurveyVal');
+  if(sv) sv.textContent=String(st.surveyed);
+  const hint=$('#crmSurveyHint');
+  if(hint) hint.textContent=st.rows.length?Math.round(st.surveyed/st.rows.length*100)+'% số khách trong bộ lọc':'Chưa có khách';
+  const statsBody=$('#crmStatsRows');
+  if(statsBody) statsBody.innerHTML=crmStatsBodyHtml(st.stats);
+  const tb=$('#crmRows');
+  if(tb) tb.innerHTML=crmDataRowsHtml(st.pageRows);
+  const pager=$('#crmPagerMount');
+  if(pager) pager.innerHTML=crmPagerHtml(st);
+  bindCrmResultActions();
+}
+function pageCrm(){
+  if(!Array.isArray(DB.crm)) DB.crm=[];
+  const st=crmListState();
+  const rows=st.rows, stats=st.stats, surveyed=st.surveyed, pageRows=st.pageRows;
+  const years=[...new Set((DB.crm||[]).map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
+  if(crmFilter.y&&!years.includes(crmFilter.y)) years.unshift(crmFilter.y);
+  const owners=crmOwnerNames();
+  if(crmFilter.owner && !owners.some(n=>orderStaffNameKey(n)===orderStaffNameKey(crmFilter.owner))) crmFilter.owner='';
+  return `${kdFreeBoardHtml()}<div class="page-head"><div class="page-title">Khách hàng CRM</div>
+    <button class="btn btn-primary" id="crmAdd">${I.plus} Thêm khách hàng</button></div>
+  <div class="page-sub" style="margin:-8px 0 16px">Telesales xem tất cả khách. Nhân viên KD chỉ thấy khách «Trống» và khách do mình phụ trách. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
+  <div class="sales-summary">
+    <div class="ss-card">
+      <div class="ss-lbl">Số khách</div>
+      <div class="ss-val count mono" id="crmCountVal">${rows.length}</div>
+      <div class="ss-hint">Theo bộ lọc hiện tại</div>
+    </div>
+    <div class="ss-card">
+      <div class="ss-lbl">Đã khảo sát</div>
+      <div class="ss-val count mono" id="crmSurveyVal">${surveyed}</div>
+      <div class="ss-hint" id="crmSurveyHint">${rows.length?Math.round(surveyed/rows.length*100)+'% số khách trong bộ lọc':'Chưa có khách'}</div>
+    </div>
+  </div>
+  <div class="crm-stats-head">
+    <div class="card-title">Thống kê sale theo tháng</div>
+    <button type="button" class="btn btn-ghost" id="crmStatsToggle">${crmStatsOpen?'Ẩn thống kê':'Hiện thống kê'}</button>
+  </div>
+  ${crmStatsOpen?`<div class="tbl-card" style="margin-bottom:18px"><div class="tbl-wrap"><table class="ord-tbl">
+    <thead><tr><th>Người phụ trách</th><th>Tháng</th><th class="num">Số khách</th><th class="num">Đã khảo sát</th></tr></thead>
+    <tbody id="crmStatsRows">${crmStatsBodyHtml(stats)}</tbody>
+  </table></div></div>`:''}
+  <div class="card-title" id="crmListTitle" style="margin:8px 0 14px">Danh sách khách hàng</div>
+  <div class="filters-bar crm-filters">
+    <select class="sel" id="crmY" title="Năm"><option value="">Tất cả năm</option>
+      ${years.map(y=>`<option value="${y}" ${crmFilter.y===y?'selected':''}>${y}</option>`).join('')}</select>
+    <select class="sel" id="crmM" title="Tháng"><option value="">Tất cả tháng</option>
+      ${Array.from({length:12},(_,i)=>{const m=String(i+1).padStart(2,'0');return `<option value="${m}" ${crmFilter.m===m?'selected':''}>Tháng ${i+1}</option>`;}).join('')}</select>
+    <select class="sel" id="crmOwner" title="Người phụ trách"><option value="">Tất cả phụ trách</option>
+      ${owners.map(n=>`<option value="${esc(n)}" ${orderStaffNameKey(crmFilter.owner)===orderStaffNameKey(n)?'selected':''}>${esc(n)}</option>`).join('')}</select>
+    <select class="sel" id="crmSource" title="Nguồn"><option value="">Tất cả nguồn</option>
+      ${CRM_SOURCE.map(s=>`<option value="${esc(s)}" ${crmFilter.source===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+    <select class="sel" id="crmStatus" title="Trạng thái"><option value="">Tất cả trạng thái</option>
+      ${CRM_STATUS.map(s=>`<option value="${esc(s)}" ${crmFilter.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+    <div class="search">${I.search}<input class="inp" id="crmQ" type="text" inputmode="text" enterkeyhint="done" placeholder="Tìm tên, SĐT, địa chỉ..." value="${esc(crmFilter.q)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></div>
+  </div>
+  <div class="tbl-card"><div class="tbl-wrap"><table class="ord-tbl">
+    <thead><tr>
+      <th>Người phụ trách</th>
+      <th>Ngày/Tháng/Năm</th>
+      <th>Nguồn</th>
+      <th>Thông tin khách hàng</th>
+      <th>Trạng thái</th>
+      <th>Ghi chú</th>
+      <th>Hình ảnh khảo sát</th>
+      <th>File Báo Giá</th>
+      <th>Thao tác</th>
+    </tr></thead>
+    <tbody id="crmRows">${crmDataRowsHtml(pageRows)}</tbody>
+  </table></div></div>
+  <div id="crmPagerMount">${crmPagerHtml(st)}</div>`;
 }
 function normalizeCrmPhone(phone){
   let d=String(phone||'').replace(/\D/g,'');
@@ -11230,8 +11272,13 @@ function bindCrm(){
   const o=$('#crmOwner'); if(o) o.onchange=set('owner');
   const s=$('#crmSource'); if(s) s.onchange=set('source');
   const st=$('#crmStatus'); if(st) st.onchange=set('status');
-  bindSearchInput('crmQ', v=>{ crmFilter.q=v; crmPage=1; renderPage(); });
-  $('#main').querySelectorAll('[data-crmpage]').forEach(b=>{
+  bindSearchInput('crmQ', v=>{ crmFilter.q=v; crmPage=1; paintCrmResults(); }, {preserve:true});
+  bindCrmInlineEdit();
+  bindCrmResultActions();
+}
+function bindCrmResultActions(){
+  const root=$('#main'); if(!root) return;
+  root.querySelectorAll('[data-crmpage]').forEach(b=>{
     if(b.disabled) return;
     b.onclick=()=>{
       const n=+b.dataset.crmpage;
@@ -11242,8 +11289,7 @@ function bindCrm(){
       if(title) title.scrollIntoView({block:'start',behavior:'smooth'});
     };
   });
-  bindCrmInlineEdit();
-  $('#main').querySelectorAll('[data-crm-edit]').forEach(b=>b.onclick=()=>{
+  root.querySelectorAll('[data-crm-edit]').forEach(b=>b.onclick=()=>{
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmEdit));
     if(!row || !canEditCrmRow(row)){
       toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
@@ -11251,7 +11297,7 @@ function bindCrm(){
     }
     openCrmModal(row);
   });
-  $('#main').querySelectorAll('[data-crm-del]').forEach(b=>b.onclick=()=>{
+  root.querySelectorAll('[data-crm-del]').forEach(b=>b.onclick=()=>{
     if(!canDeleteCrmData()){ toast('Chỉ Admin được xóa khách hàng CRM','bad'); return; }
     const row=(DB.crm||[]).find(x=>String(x.id)===String(b.dataset.crmDel));
     if(!row) return;
@@ -15934,6 +15980,10 @@ function bindAssets(){
   });
 }
 function renderPage(){
+  if(ROUTE==='crm' && document.activeElement && document.activeElement.id==='crmQ' && document.getElementById('crmRows')){
+    paintCrmResults();
+    return;
+  }
   if(ME&&!routeAllowed(ROUTE)){
     const next=defaultRouteForRole();
     if(ROUTE!==next){
