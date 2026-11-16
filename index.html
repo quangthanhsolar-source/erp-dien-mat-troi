@@ -16376,6 +16376,18 @@ function quoteNvUnitBrand(r){
   if(/Dây\s*cáp\s*DC\s*màu\s*(đỏ|đen)/i.test(n)) return ' (Helukabel - Đức)';
   return '';
 }
+function quoteVnToday(){
+  try{
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const y=(parts.find(p=>p.type==='year')||{}).value;
+    const mo=(parts.find(p=>p.type==='month')||{}).value;
+    const d=(parts.find(p=>p.type==='day')||{}).value;
+    if(y&&mo&&d) return String(d)+'/'+String(mo)+'/'+String(y);
+  }catch(e){}
+  const n=new Date();
+  const p=x=>String(x).padStart(2,'0');
+  return p(n.getDate())+'/'+p(n.getMonth()+1)+'/'+n.getFullYear();
+}
 function buildQtPdf3(pngMap){
   const st=DB.settings, cus=QT.cus||{}, items=QT.items, t=totals(), c=effectiveCalc();
   const showCusHdr=hasQuoteCusInfo(cus);
@@ -16581,7 +16593,7 @@ table.kpi-bar td:last-child{border-right:none}
 .meta .lbl{padding-right:5mm;text-align:right;color:#444}
 .meta .val{min-width:18mm;text-align:center;padding-right:4mm;color:#111}
 .intro{font-size:7.5pt;line-height:1.4;margin:1mm 0 calc(.4mm + 10px);text-align:justify;color:#333}
-.quote-mid{display:flex;justify-content:space-between;align-items:baseline;gap:4mm;margin:0 0 .4mm;width:190mm}
+.quote-mid{display:flex;justify-content:space-between;align-items:flex-start;gap:4mm;margin:0 0 .4mm;width:190mm}
 .quote-staff{font-size:8pt;font-weight:700;color:#111;flex:1;min-width:0;line-height:1.35}
 .unit-txt{text-align:right;font-style:italic;font-size:7pt;text-decoration:underline;margin-bottom:0;color:#555;flex:0 0 auto;white-space:nowrap}
 
@@ -16708,7 +16720,7 @@ thead{display:table-header-group}
 <div class="intro">Quang Thanh trân trọng gửi đến Quý khách hàng bảng báo giá hệ thống năng lượng mặt trời Hybrid. Rất mong được đồng hành cùng Quý khách trên hành trình sử dụng năng lượng xanh – sạch – bền vững.</div>
 ${kpiBar}
 <div class="quote-mid">
-  <div class="quote-staff">Nhân Viên Báo Giá: ${E((ME&&ME.name)||'')}</div>
+  <div class="quote-staff"><div>Nhân Viên Báo Giá: ${E((ME&&ME.name)||'')}</div><div>Ngày/Tháng/Năm: ${E(quoteVnToday())}</div></div>
   <div class="unit-txt">Đơn vị tính : VND</div>
 </div>
 
