@@ -1383,6 +1383,7 @@ const ROLE={
   admin:{t:'Admin',c:'p-red'},
   manager:{t:'Quản lý',c:'p-yellow'},
   sales:{t:'Nhân viên KD',c:'p-blue'},
+  sales_mien_tay:{t:'Nhân viên KD miền Tây',c:'p-blue'},
   telesales:{t:'Telesales',c:'p-green'},
   kythuat:{t:'Kỹ Thuật',c:'p-orange'},
   kythuat_truong:{t:'Kỹ Thuật Trưởng',c:'p-red'},
@@ -1391,7 +1392,7 @@ const ROLE={
   phaply:{t:'Pháp Lý',c:'p-gray'},
   kho:{t:'Kho',c:'p-orange'}
 };
-const APP_ROLES=['admin','manager','sales','telesales','kythuat','kythuat_truong','lead_telesales','ketoan','phaply','kho'];
+const APP_ROLES=['admin','manager','sales','sales_mien_tay','telesales','kythuat','kythuat_truong','lead_telesales','ketoan','phaply','kho'];
 function normalizeAppRole(role){
   return APP_ROLES.includes(role)?role:'sales';
 }
@@ -1440,7 +1441,7 @@ function roleFold(s){
 }
 const ROLE_ALIAS={
   'admin':'admin','quan ly':'manager','manager':'manager',
-  'nhan vien kd':'sales','sales':'sales','telesales':'telesales',
+  'nhan vien kd':'sales','nhan vien kd mien tay':'sales_mien_tay','sales':'sales','sales mien tay':'sales_mien_tay','telesales':'telesales',
   'ky thuat':'kythuat','kythuat':'kythuat',
   'ky thuat truong':'kythuat_truong','kythuat truong':'kythuat_truong',
   'lead telesales':'lead_telesales',
@@ -1449,7 +1450,7 @@ const ROLE_ALIAS={
   'kho':'kho'
 };
 const ROLE_ALIAS_COMPACT={
-  admin:'admin',quanly:'manager',manager:'manager',nhanvienkd:'sales',sales:'sales',
+  admin:'admin',quanly:'manager',manager:'manager',nhanvienkd:'sales',nhanvienkdmientay:'sales_mien_tay',sales:'sales',salesmientay:'sales_mien_tay',
   telesales:'telesales',kythuat:'kythuat',kythuattruong:'kythuat_truong',
   leadtelesales:'lead_telesales',ketoan:'ketoan',phaply:'phaply',kho:'kho'
 };
@@ -1704,6 +1705,48 @@ function applyTestKdAccountsOnce(){
   });
   if(changed) bumpUserSeq();
   return changed;
+}
+/** Tài khoản KD miền Tây — tạo một lần, đẩy cùng đường app_users như seed khác.
+ *  Mật khẩu chỉ ghi khi tạo mới hoặc khi cờ một lần chưa có, để đổi mật khẩu sau không bị kéo lại. */
+const MIEN_TAY_KD_PASS_FLAG='mienTayKdPassSet';
+function applyMienTayKdAccountOnce(opt){
+  opt=opt||{};
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!Array.isArray(DB.users)) DB.users=[];
+  const email='fxnguyenhoangvu@gmail.com';
+  const name='Nguyễn Hoàng Vũ';
+  const phone='0946610265';
+  const role='sales_mien_tay';
+  const pass='2707';
+  if((DB.deletedUserEmails||[]).some(x=>String(x||'').trim().toLowerCase()===email)) return 0;
+  let u=(DB.users||[]).find(x=>x&&String(x.email||'').trim().toLowerCase()===email)||null;
+  if(u&&typeof isTombstonedUser==='function'&&isTombstonedUser(u)) return 0;
+  let changed=0;
+  const cloudFlagKnown=Object.prototype.hasOwnProperty.call(opt,'cloudFlag');
+  const needPass=!DB.settings[MIEN_TAY_KD_PASS_FLAG]||(cloudFlagKnown&&!opt.cloudFlag);
+  if(!u){
+    const id=allocUserAccountId(9100101);
+    u={id,name,email,phone,role,active:true,pass};
+    DB.users.push(u);
+    DB.settings[MIEN_TAY_KD_PASS_FLAG]=true;
+    rememberAccountRole(email, role);
+    bumpUserSeq();
+    return 1;
+  }
+  if(u.name!==name){ u.name=name; changed++; }
+  if(String(u.phone||'')!==phone){ u.phone=phone; changed++; }
+  if(u.role!==role){ u.role=role; changed++; }
+  if(u.active===false){ u.active=true; changed++; }
+  if(needPass){
+    if(String(u.pass||'')!==pass) u.pass=pass;
+    DB.settings[MIEN_TAY_KD_PASS_FLAG]=true;
+    changed++;
+  }
+  const mapped=DB.settings.userAccountRoleByEmail&&DB.settings.userAccountRoleByEmail[email];
+  rememberAccountRole(email, role);
+  if(mapped!==role) changed++;
+  if(changed) bumpUserSeq();
+  return changed?1:0;
 }
 const TEST_INBOUND=[
   {id:9200001,code:'NK-TEST-PIN-A',cat:'panel',name:'Tấm pin A',qty:10,unit:'Tấm',series:'1, 2, 3, 4, 5, 6, 7, 8, 9, 10'},
@@ -1989,6 +2032,10 @@ function salesHasPerm(key){
 function isSalesRole(){
   const r=effectiveUserRole(ME);
   return r!=='admin'&&r!=='manager';
+}
+/** Nhân viên KD và Nhân viên KD miền Tây — cùng quyền KD, khác vùng CRM. */
+function isKdFamilyRole(role){
+  return role==='sales'||role==='sales_mien_tay';
 }
 function isTelesalesRole(){ return effectiveUserRole(ME)==='telesales'; }
 function isAdmin(){ return effectiveUserRole(ME)==='admin'; }
@@ -3636,6 +3683,7 @@ attHydratePhotosFromIdb().catch(()=>{});
 try{ if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB(); }catch(e){}
 try{ if(typeof crmApplyQuoteMetaToDB==='function') crmApplyQuoteMetaToDB(); }catch(e){}
 try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
+try{ if(typeof crmApplyRegionsToDB==='function') crmApplyRegionsToDB(); }catch(e){}
 if(!Array.isArray(DB.deletedCrmIds)) DB.deletedCrmIds=[];
 if(!Array.isArray(DB.deletedQuoteCodes)) DB.deletedQuoteCodes=[];
 if(!Array.isArray(DB.deletedSupplierIds)) DB.deletedSupplierIds=[];
@@ -3651,8 +3699,9 @@ const _assetSheetBoot=applyAssetSheetOnce();
 const _stockSheetBoot=applyStockSheetOnce();
 const _userSeedBoot=applyUserAccountSeedOnce();
 const _testKdBoot=applyTestKdAccountsOnce();
+const _mienTayBoot=applyMienTayKdAccountOnce();
 const _inboundBoot=applyTestInboundOnce();
-if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0||_stockSheetBoot>0||_userSeedBoot>0||_testKdBoot>0||_inboundBoot>0){ try{ saveDB(); }catch(e){} }
+if(_seedAddedBoot>0||_brandNormBoot>0||_exVatBoot>0||_seedPriceBoot>0||_assetSheetBoot>0||_stockSheetBoot>0||_userSeedBoot>0||_testKdBoot>0||_mienTayBoot>0||_inboundBoot>0){ try{ saveDB(); }catch(e){} }
 // Gán lại ảnh thật từ PIMG sau khi load localStorage
 applyPimgToDB();
 try{ if(typeof pruneTombstonedUsersLocal==='function') pruneTombstonedUsersLocal(); }catch(e){}
@@ -3755,7 +3804,10 @@ function applyDBPayload(data){
         if(a && (!b || (Number(a.updatedAt)||0)>(Number(b.updatedAt)||0))) mergedOv[id]=a;
       });
       const mergedAvail=mergeKdAvailMaps(prev.kdAvail, incoming.kdAvail);
-      DB.settings=Object.assign({}, prev, incoming, {crmOverrides:mergedOv, kdAvail:mergedAvail});
+      const mergedRegions=mergeCrmRegionMaps(prev.crmRegions, incoming.crmRegions);
+      const settingsExtra={crmOverrides:mergedOv, kdAvail:mergedAvail};
+      if(Object.keys(mergedRegions).length||prev.crmRegions||incoming.crmRegions) settingsExtra.crmRegions=mergedRegions;
+      DB.settings=Object.assign({}, prev, incoming, settingsExtra);
       try{ if(typeof saveCrmOverrides==='function') saveCrmOverrides(mergedOv); }catch(e){}
       try{ if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB(); }catch(e){}
       return;
@@ -3805,7 +3857,7 @@ function applyDBPayload(data){
         }
         // Giữ các field local nếu remote trống / cũ (trước khi apply overlay)
         if(prev){
-          ['note','status','owner','name','phone','address','demand','source','date'].forEach(f=>{
+          ['note','status','owner','name','phone','address','demand','source','date','region'].forEach(f=>{
             const pv=prev[f], rv=r[f];
             const pEmpty=pv==null||String(pv).trim()===''||String(pv)==='Trống';
             const rEmpty=rv==null||String(rv).trim()===''||String(rv)==='Trống';
@@ -3850,6 +3902,7 @@ function applyDBPayload(data){
     }
     DB[k]=data[k];
   });
+  try{ if(typeof crmApplyRegionsToDB==='function') crmApplyRegionsToDB(); }catch(e){}
   bumpUserSeq();
   const brandN=normalizeCatalogBrands();
   applyPimgToDB();
@@ -4338,6 +4391,7 @@ async function pullDBFromSupabase(){
     try{ crmApplyOverridesToDB(); }catch(e){}
     try{ crmApplySurveyMetaToDB(); }catch(e){}
     try{ crmApplyQuoteMetaToDB(); }catch(e){}
+    try{ crmApplyRegionsToDB(); }catch(e){}
     const idsBeforeSeed=new Set();
     SB_PRODUCT_KEYS.forEach(k=>(DB[k]||[]).forEach(p=>{ if(p&&p.id!=null) idsBeforeSeed.add(String(p.id)); }));
     const restored=mergeSeedCatalog();
@@ -4370,6 +4424,8 @@ async function pullDBFromSupabase(){
     applyAssetSheetOnce();
     const userSeedN=applyUserAccountSeedOnce();
     const testKdN=applyTestKdAccountsOnce();
+    const mienTayCloudFlag=!!(bundle.settings&&bundle.settings.data&&bundle.settings.data[MIEN_TAY_KD_PASS_FLAG]);
+    const mienTayN=applyMienTayKdAccountOnce({cloudFlag:mienTayCloudFlag});
     const remoteAssetBook=bundle.settings&&bundle.settings.data&&bundle.settings.data._assets;
     const remoteHasAssetRows=!!(remoteAssetBook&&Array.isArray(remoteAssetBook.rows)&&remoteAssetBook.rows.length>=ASSET_SHEET_ROWS.length);
     try{
@@ -4397,7 +4453,7 @@ async function pullDBFromSupabase(){
       if(p&&p.id!=null&&!idsBeforeSeed.has(String(p.id))) pending.keys.products.push(String(p.id));
     }));
     localOnly.forEach(u=>{ if(u&&u.id!=null) pending.keys.users.push(String(u.id)); });
-    if((userSeedN>0||testKdN>0)&&_syncBase){
+    if((userSeedN>0||testKdN>0||mienTayN>0)&&_syncBase){
       _syncBase.users={};
       _syncBase.settings='';
       persistSyncBase();
@@ -4412,7 +4468,7 @@ async function pullDBFromSupabase(){
       _saveDB();
       return 'local-pending';
     }
-    if(localOnly.length||userSeedN>0||testKdN>0){
+    if(localOnly.length||userSeedN>0||testKdN>0||mienTayN>0){
       _saveDB();
       return 'users-sync';
     }
@@ -4938,6 +4994,7 @@ async function enterApp(u, opt){
     const stockN=applyStockSheetOnce();
     const userN=applyUserAccountSeedOnce();
     const testKdN=applyTestKdAccountsOnce();
+    const mienTayN=applyMienTayKdAccountOnce();
     const inboundN=applyTestInboundOnce();
     refreshSessionRole();
     const assetSync=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
@@ -4951,7 +5008,7 @@ async function enterApp(u, opt){
     ensureTelesalesRoles();
     let needPush=false;
     let usersOnlyPush=false;
-    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||inboundN>0||testInboundPendingPush()||assetSync||stockSync||attSync){
+    if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0||testInboundPendingPush()||assetSync||stockSync||attSync){
       _saveDB(); needPush=true;
       if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
       if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
@@ -4998,15 +5055,16 @@ async function enterApp(u, opt){
     const stockN=applyStockSheetOnce();
     const userN=applyUserAccountSeedOnce();
     const testKdN=applyTestKdAccountsOnce();
+    const mienTayN=applyMienTayKdAccountOnce();
     const inboundN=applyTestInboundOnce();
     refreshSessionRole();
     const brandFixedOffline=normalizeCatalogBrands();
-    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||inboundN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
+    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
     if(ordAdded>0||ordPruned>0) _saveDB();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
-    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||inboundN>0) renderPage();
+    if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0) renderPage();
   }
 }
 
@@ -5368,6 +5426,35 @@ function bars(data,h){
 }
 
 /* ---------------- DASHBOARD ---------------- */
+function mergeCrmRegionMaps(a,b){
+  const norm=src=>{
+    const out={};
+    if(!src||typeof src!=='object'||Array.isArray(src)) return out;
+    Object.keys(src).forEach(id=>{
+      const row=src[id];
+      if(row==null||row==='') return;
+      if(typeof row==='string'){
+        out[String(id)]={region:row==='mien_tay'?'mien_tay':'hcm', updatedAt:0};
+        return;
+      }
+      if(typeof row==='object'){
+        out[String(id)]={region:row.region==='mien_tay'?'mien_tay':'hcm', updatedAt:Number(row.updatedAt)||0};
+      }
+    });
+    return out;
+  };
+  const A=norm(a), B=norm(b);
+  const out=Object.assign({}, A);
+  Object.keys(B).forEach(id=>{
+    const x=out[id], y=B[id];
+    if(!x||(Number(y.updatedAt)||0)>=(Number(x.updatedAt)||0)) out[id]=y;
+  });
+  Object.keys(A).forEach(id=>{
+    const x=A[id], y=out[id];
+    if(x&&(!y||(Number(x.updatedAt)||0)>(Number(y.updatedAt)||0))) out[id]=x;
+  });
+  return out;
+}
 function mergeKdAvailMaps(a,b){
   const out={};
   const take=src=>{
@@ -5393,7 +5480,7 @@ function kdAvailMap(){
   return raw;
 }
 function kdIsSalesUser(u){
-  return !!(u&&u.active!==false&&effectiveUserRole(u)==='sales'&&String(u.name||'').trim());
+  return !!(u&&u.active!==false&&isKdFamilyRole(effectiveUserRole(u))&&String(u.name||'').trim());
 }
 function kdIsFree(u){
   if(!kdIsSalesUser(u)) return false;
@@ -5431,7 +5518,7 @@ function applyRemoteKdAvail(remote){
   _kdAvailPushedHash=kdAvailHash();
 }
 function setMyKdAvail(status){
-  if(!ME||effectiveUserRole(ME)!=='sales') return '';
+  if(!ME||!isKdFamilyRole(effectiveUserRole(ME))) return '';
   if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
   const next=status==='free'?'free':'busy';
   const key=kdAvailKey(ME);
@@ -5483,7 +5570,7 @@ function kdFreeSalesUsers(){
   return out;
 }
 function kdAvailSwitchHtml(){
-  if(!ME||effectiveUserRole(ME)!=='sales') return '';
+  if(!ME||!isKdFamilyRole(effectiveUserRole(ME))) return '';
   const free=kdIsFree(ME);
   return `<div class="sb-kd">
     <div class="kd-switch" role="group" aria-label="Trạng thái nhận data">
@@ -8014,7 +8101,7 @@ function orderNameWordsMatch(query, full){
   return false;
 }
 function orderAccountUsers(){
-  return (DB.users||[]).filter(u=>u&&u.active!==false&&(u.role==='sales'||u.role==='telesales'||u.role==='admin')&&String(u.name||'').trim());
+  return (DB.users||[]).filter(u=>u&&u.active!==false&&(u.role==='sales'||u.role==='sales_mien_tay'||u.role==='telesales'||u.role==='admin')&&String(u.name||'').trim());
 }
 function orderFindUserForName(raw){
   const name=orderNvCanon(raw);
@@ -9053,7 +9140,7 @@ function orderSalesStaff(){
   const seen=new Set();
   const out=[];
   (DB.users||[]).forEach(u=>{
-    if(!u||u.active===false||(u.role!=='sales'&&u.role!=='telesales')) return;
+    if(!u||u.active===false||(u.role!=='sales'&&u.role!=='sales_mien_tay'&&u.role!=='telesales')) return;
     const name=String(u.name||'').trim();
     if(!name) return;
     const key=orderStaffNameKey(name);
@@ -9947,6 +10034,7 @@ function crmVnMonth(){
   return String(new Date().getMonth()+1).padStart(2,'0');
 }
 let crmFilter={q:'',y:'',m:'',owner:'',source:'',status:''};
+let crmRegionTab='hcm';
 let crmStatsOpen=true;
 let crmPage=1;
 const CRM_PAGE_SIZE=50;
@@ -10220,6 +10308,7 @@ function crmApplyQuoteMetaToDB(){
 try{ crmApplySurveyMetaToDB(); }catch(e){}
 try{ crmApplyQuoteMetaToDB(); }catch(e){}
 try{ crmApplyOverridesToDB(); }catch(e){}
+try{ crmApplyRegionsToDB(); }catch(e){}
 let _crmBootRecoverDone=false;
 setTimeout(()=>{
   if(_crmBootRecoverDone) return;
@@ -10840,7 +10929,7 @@ function crmSalesStaff(){
   (DB.users||[]).forEach(u=>{
     if(!u||(typeof isTombstonedUser==='function'&&isTombstonedUser(u))) return;
     const role=effectiveUserRole(u);
-    if(role!=='sales'&&role!=='telesales') return;
+    if(role!=='sales'&&role!=='sales_mien_tay'&&role!=='telesales') return;
     const name=crmAssigneeLabel(u);
     if(!name) return;
     const key=orderStaffNameKey(name);
@@ -10868,9 +10957,62 @@ function crmStaffOptions(selected){
 function crmOwnerNames(){
   return crmSalesStaff().map(s=>s.name);
 }
+function crmRegionMap(){
+  const m=DB.settings&&DB.settings.crmRegions;
+  if(!m||typeof m!=='object'||Array.isArray(m)) return {};
+  return m;
+}
+function crmRememberRegion(r){
+  if(!r||r.id==null) return;
+  const region=r.region==='mien_tay'?'mien_tay':'hcm';
+  r.region=region;
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!DB.settings.crmRegions||typeof DB.settings.crmRegions!=='object'||Array.isArray(DB.settings.crmRegions)) DB.settings.crmRegions={};
+  DB.settings.crmRegions[String(r.id)]={region, updatedAt:Date.now()};
+}
+function crmApplyRegionsToDB(){
+  const map=crmRegionMap();
+  let n=0;
+  (DB.crm||[]).forEach(r=>{
+    if(!r||r.id==null) return;
+    const rec=map[String(r.id)];
+    let region='hcm';
+    if(rec) region=(typeof rec==='object'?rec.region:rec)==='mien_tay'?'mien_tay':'hcm';
+    else if(r.region==='mien_tay') region='mien_tay';
+    if(r.region!==region){ r.region=region; n++; }
+  });
+  return n;
+}
+function crmRegionOf(r){
+  if(!r) return 'hcm';
+  const rec=r.id!=null?crmRegionMap()[String(r.id)]:null;
+  if(rec) return (typeof rec==='object'?rec.region:rec)==='mien_tay'?'mien_tay':'hcm';
+  return r.region==='mien_tay'?'mien_tay':'hcm';
+}
+function crmRoleRegionLock(){
+  const role=effectiveUserRole(ME);
+  if(role==='sales') return 'hcm';
+  if(role==='sales_mien_tay') return 'mien_tay';
+  return '';
+}
+function crmActiveRegion(){
+  const tab=crmRegionTab==='mien_tay'?'mien_tay':'hcm';
+  const lock=crmRoleRegionLock();
+  if(lock&&tab!==lock) return '';
+  return lock||tab;
+}
+function crmDefaultRegionForCreate(){
+  const role=effectiveUserRole(ME);
+  if(role==='sales_mien_tay') return 'mien_tay';
+  if(role==='sales') return 'hcm';
+  return crmRegionTab==='mien_tay'?'mien_tay':'hcm';
+}
 function crmFiltered(){
+  const region=crmActiveRegion();
+  if(!region) return [];
   const q=String(crmFilter.q||'').trim().toLowerCase();
   return (DB.crm||[]).filter(r=>{
+    if(!r||crmRegionOf(r)!==region) return false;
     if(!canViewCrmRow(r)) return false;
     const d=String(r.date||'');
     if(crmFilter.y && d.slice(0,4)!==crmFilter.y) return false;
@@ -11015,13 +11157,22 @@ function pageCrm(){
   if(!Array.isArray(DB.crm)) DB.crm=[];
   const st=crmListState();
   const rows=st.rows, stats=st.stats, surveyed=st.surveyed, pageRows=st.pageRows;
-  const years=[...new Set((DB.crm||[]).map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
+  const yearSource=(DB.crm||[]).filter(r=>{
+    const lock=crmRoleRegionLock();
+    if(lock&&crmRegionOf(r)!==lock) return false;
+    return canViewCrmRow(r);
+  });
+  const years=[...new Set(yearSource.map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
   if(crmFilter.y&&!years.includes(crmFilter.y)) years.unshift(crmFilter.y);
   const owners=crmOwnerNames();
   if(crmFilter.owner && !owners.some(n=>orderStaffNameKey(n)===orderStaffNameKey(crmFilter.owner))) crmFilter.owner='';
   return `${kdFreeBoardHtml()}<div class="page-head"><div class="page-title">Khách hàng CRM</div>
     <button class="btn btn-primary" id="crmAdd">${I.plus} Thêm khách hàng</button></div>
   <div class="page-sub" style="margin:-8px 0 16px">Telesales xem tất cả khách. Nhân viên KD chỉ thấy khách «Trống» và khách do mình phụ trách. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
+  <div class="stk-tabs" role="tablist" data-crm-region-tabs="1">
+    <button type="button" class="stk-tab ${crmRegionTab==='mien_tay'?'':'active'}" data-crm-region="hcm" role="tab" aria-selected="${crmRegionTab!=='mien_tay'}">data HCM</button>
+    <button type="button" class="stk-tab ${crmRegionTab==='mien_tay'?'active':''}" data-crm-region="mien_tay" role="tab" aria-selected="${crmRegionTab==='mien_tay'}">data Miền Tây</button>
+  </div>
   <div class="sales-summary">
     <div class="ss-card">
       <div class="ss-lbl">Số khách</div>
@@ -11107,6 +11258,7 @@ function openCrmModal(row){
     toast(isSalesRole()?'Không sửa được khách này':'Chỉ Admin được sửa khách hàng CRM','bad');
     return;
   }
+  const regionVal=isEdit?crmRegionOf(row):crmDefaultRegionForCreate();
   const now=new Date();
   const dateVal=String((row&&row.date)||'').slice(0,10)||now.toISOString().slice(0,10);
   const y0=Number((dateVal.match(/^(\d{4})/)||[])[1])||now.getFullYear();
@@ -11226,6 +11378,12 @@ function openCrmModal(row){
         </select>
       </div>
     </div>
+    <div class="field"><label>Khu vực data *</label>
+      <select class="sel" style="width:100%" id="crmRegionIn">
+        <option value="hcm" ${regionVal!=='mien_tay'?'selected':''}>data HCM</option>
+        <option value="mien_tay" ${regionVal==='mien_tay'?'selected':''}>data Miền Tây</option>
+      </select>
+    </div>
     <div class="field"><label>Tên *</label><input class="inp" id="crmName" value="${esc((row&&row.name)||'')}"></div>
     <div class="row2">
       <div class="field"><label>SĐT</label><input class="inp mono" id="crmPhone" value="${esc((row&&row.phone)||'')}"></div>
@@ -11256,7 +11414,12 @@ function openCrmModal(row){
     if(phone){
       const dup=findCrmByPhone(phone, isEdit?row.id:null);
       if(dup){
-        toast('SĐT trùng với khách «'+(dup.name||'không tên')+'». Giữ thông tin khách cũ, không thêm khách mới.','bad');
+        const lock=crmRoleRegionLock();
+        const hidden=!!lock&&crmRegionOf(dup)!==lock;
+        toast(hidden
+          ?'SĐT đã có trong hệ thống. Giữ thông tin khách cũ, không thêm khách mới.'
+          :('SĐT trùng với khách «'+(dup.name||'không tên')+'». Giữ thông tin khách cũ, không thêm khách mới.'),
+        'bad');
         return false;
       }
     }
@@ -11287,9 +11450,11 @@ function openCrmModal(row){
       date,
       source,
       status:CRM_STATUS.includes(status)?status:'',
+      region:(($('#crmRegionIn')||{}).value)==='mien_tay'?'mien_tay':'hcm',
       quoteFiles:crmQuoteMetaOnly(isEdit?((DB.crm||[]).find(x=>String(x.id)===String(row.id))||row):null)
     };
     crmPersistSurveyMeta(nextId, next.surveyFiles);
+    crmRememberRegion(next);
     crmRememberOverride(next);
     if(!Array.isArray(DB.crm)) DB.crm=[];
     if(isEdit){
@@ -11429,6 +11594,15 @@ function bindCrm(){
   }
   const add=$('#crmAdd');
   if(add) add.onclick=()=>openCrmModal(null);
+  $('#main').querySelectorAll('[data-crm-region]').forEach(b=>{
+    b.onclick=()=>{
+      const next=b.getAttribute('data-crm-region')==='mien_tay'?'mien_tay':'hcm';
+      if(crmRegionTab===next) return;
+      crmRegionTab=next;
+      crmPage=1;
+      renderPage();
+    };
+  });
   const statsToggle=$('#crmStatsToggle');
   if(statsToggle) statsToggle.onclick=()=>{ crmStatsOpen=!crmStatsOpen; renderPage(); };
   const set=k=>e=>{ crmFilter[k]=e.target.value; crmPage=1; renderPage(); };
@@ -11476,6 +11650,7 @@ function bindCrmResultActions(){
       delete map[String(id)];
       saveCrmOverrides(map);
       if(DB.settings&&DB.settings.crmOverrides) delete DB.settings.crmOverrides[String(id)];
+      if(DB.settings&&DB.settings.crmRegions) delete DB.settings.crmRegions[String(id)];
       const sm=loadCrmSurveyMetaMap();
       delete sm[String(id)];
       saveCrmSurveyMetaMap(sm);
@@ -15637,7 +15812,7 @@ function wpIsKdAccount(u){
   if(!u||u.id==null) return false;
   if(u.active===false) return false;
   if(typeof isTombstonedUser==='function'&&isTombstonedUser(u)) return false;
-  return effectiveUserRole(u)==='sales';
+  return isKdFamilyRole(effectiveUserRole(u));
 }
 function wpKdAccounts(){
   const list=(Array.isArray(DB.users)?DB.users:[]).filter(wpIsKdAccount);
@@ -15653,13 +15828,13 @@ function wpKdAccounts(){
 function wpVisibleKdUsers(){
   const all=wpKdAccounts();
   const role=effectiveUserRole(ME);
-  if(role==='admin'||role==='sales') return all;
+  if(role==='admin'||isKdFamilyRole(role)) return all;
   const meId=ME&&ME.id!=null?Number(ME.id):NaN;
   return all.filter(u=>Number(u.id)===meId);
 }
 function wpCanEditRow(userId){
   if(!ME||ME.id==null) return false;
-  if(effectiveUserRole(ME)!=='sales') return false;
+  if(!isKdFamilyRole(effectiveUserRole(ME))) return false;
   return Number(ME.id)===Number(userId);
 }
 function wpCellKey(uid, date, slot){
@@ -15861,7 +16036,7 @@ function pageWorkPlan(){
   const role=effectiveUserRole(ME);
   const users=wpVisibleKdUsers();
   const monthLabel='Tháng '+m+' / '+y;
-  const hint=role==='sales'
+  const hint=isKdFamilyRole(role)
     ?'Ghi chữ và tải ảnh cho buổi sáng, buổi chiều. Chỉ sửa được dòng của bạn. Mỗi ảnh tối đa 8MB.'
     :(role==='admin'
       ?'Xem chữ và ảnh kế hoạch đi làm của Nhân viên KD.'
@@ -15880,7 +16055,7 @@ function pageWorkPlan(){
       </div>
     </div>`;
   if(!users.length){
-    const empty=(role==='admin'||role==='sales')
+    const empty=(role==='admin'||isKdFamilyRole(role))
       ?'Chưa có tài khoản Nhân viên KD.'
       :'Kế hoạch công tác chỉ hiện với tài khoản Nhân viên KD.';
     return head+`<div class="tbl-card wp-card"><div class="empty">${empty}</div></div>`;
