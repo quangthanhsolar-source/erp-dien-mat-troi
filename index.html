@@ -267,6 +267,20 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .in-tbl td.cocq-cell{white-space:normal;overflow-wrap:anywhere;vertical-align:top;line-height:1.35;padding:8px 6px;text-align:center}
 .in-tbl td.cocq-cell .cocq-note,.in-tbl td.cocq-cell .cocq-name{text-align:center}
 .in-tbl td.cocq-cell .cocq-acts{justify-content:center}
+/* Nhập kho only (.in-tbl-in). Xuất kho giữ nguyên .in-tbl phía trên. */
+.tbl-wrap.in-slip{display:block;width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+.in-tbl.in-tbl-in{width:100%;min-width:1040px;table-layout:fixed}
+.in-tbl.in-tbl-in .in-c-date{width:132px}
+.in-tbl.in-tbl-in .in-c-name{width:148px}
+.in-tbl.in-tbl-in .in-c-series{width:auto}
+.in-tbl.in-tbl-in .in-c-unit{width:70px}
+.in-tbl.in-tbl-in .in-c-qty{width:84px}
+.in-tbl.in-tbl-in .in-c-party{width:88px}
+.in-tbl.in-tbl-in .in-c-cocq{width:148px}
+.in-tbl.in-tbl-in .in-name{white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.35}
+.in-tbl.in-tbl-in .in-series{white-space:normal;overflow-wrap:break-word;word-break:normal;line-height:1.45;hyphens:manual}
+.in-tbl.in-tbl-in th:nth-child(3),
+.in-tbl.in-tbl-in td.in-series{min-width:360px}
 .cocq-note{font-size:12px;margin-bottom:4px;overflow-wrap:anywhere}
 .cocq-name{font-size:11.5px;font-weight:600;line-height:1.35;overflow-wrap:anywhere;word-break:break-word;margin-bottom:4px}
 .cocq-acts{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
@@ -12809,7 +12823,7 @@ function pageTrans(){
     <select class="sel" id="trSt"><option value="">Tất cả trạng thái</option>
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
-  <div class="tbl-card"><div class="tbl-wrap"><table class="in-tbl">
+  <div class="tbl-card"><div class="tbl-wrap${kind==='in'?' in-slip':''}"><table class="in-tbl${kind==='in'?' in-tbl-in':''}">
     <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
     <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">NCC / KH</th><th class="in-mid">COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
