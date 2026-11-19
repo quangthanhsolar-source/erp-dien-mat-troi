@@ -13635,18 +13635,48 @@ function warrantyCatalogYears(t){
   const label=Number.isInteger(years)?String(years):String(Math.round(years*10)/10).replace(/\.0$/,'');
   return label+' năm';
 }
-function warrantyExpireText(outbound, years){
-  if(!outbound||!(years>0)) return '—';
-  const m=String(outbound.date||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(!m) return '—';
+function warrantyParseYears(raw){
+  if(typeof raw==='number') return Number.isFinite(raw)&&raw>0?raw:0;
+  const s=String(raw==null?'':raw).trim().toLowerCase();
+  if(!s||s==='—'||s==='-'||s==='–') return 0;
+  const m=s.match(/(\d+(?:[.,]\d+)?)/);
+  if(!m) return 0;
+  let n=Number(m[1].replace(',','.'));
+  if(!Number.isFinite(n)||n<=0) return 0;
+  if(/th[aá]ng|month/.test(s)) n=n/12;
+  return n>0?n:0;
+}
+function warrantyVnToday(){
+  try{
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const y=+(parts.find(p=>p.type==='year')||{}).value;
+    const mo=+(parts.find(p=>p.type==='month')||{}).value;
+    const d=+(parts.find(p=>p.type==='day')||{}).value;
+    if(y&&mo&&d) return {y,m:mo,d};
+  }catch(e){}
+  const n=new Date();
+  return {y:n.getFullYear(),m:n.getMonth()+1,d:n.getDate()};
+}
+/** Ngày hết hạn: đã xuất kho thì cộng từ ngày xuất, chưa xuất thì cộng từ hôm nay (Asia/Ho_Chi_Minh). */
+function warrantyExpireText(outbound, yearsRaw){
+  const years=warrantyParseYears(yearsRaw);
+  if(!(years>0)) return '—';
+  let y,m,d;
+  if(outbound){
+    const match=String(outbound.date||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!match) return '—';
+    y=+match[1]; m=+match[2]; d=+match[3];
+  }else{
+    const t=warrantyVnToday();
+    y=t.y; m=t.m; d=t.d;
+  }
   const whole=Math.floor(years);
-  let month=(+m[2]-1)+Math.round((years-whole)*12);
-  let year=+m[1]+whole+Math.floor(month/12);
-  month=((month%12)+12)%12;
-  const day=+m[3];
-  const dim=new Date(Date.UTC(year, month+1, 0)).getUTCDate();
-  const iso=new Date(Date.UTC(year, month, Math.min(day, dim))).toISOString().slice(0,10);
-  return inboundDateText(iso);
+  const extraMonths=Math.round((years-whole)*12);
+  const dt=new Date(y, m-1, d);
+  dt.setFullYear(dt.getFullYear()+whole);
+  if(extraMonths) dt.setMonth(dt.getMonth()+extraMonths);
+  const pad=n=>String(n).padStart(2,'0');
+  return pad(dt.getDate())+'/'+pad(dt.getMonth()+1)+'/'+dt.getFullYear();
 }
 function warrantyCatalogName(t){
   if(!t||t.pid==null||!t.cat) return '';
@@ -13673,6 +13703,7 @@ function warrantySerialRows(q){
   }
   const name=strip((inbound&&inbound.name)||(outbound&&outbound.name)||'')||warrantyCatalogName(src)||'—';
   const unitLine=(inbound&&String(inbound.unit||'').trim())?inbound:((outbound&&String(outbound.unit||'').trim())?outbound:src);
+  const warranty=warrantyCatalogYears(src);
   return [{
     date:inbound?inboundDateText(inbound.date):'—',
     name,
@@ -13681,8 +13712,8 @@ function warrantySerialRows(q){
     outDate:outbound?inboundDateText(outbound.date):'—',
     customer:warrantyPartyText(outbound),
     supplier:warrantyPartyText(inbound),
-    warranty:warrantyCatalogYears(src),
-    end:warrantyExpireText(outbound, warrantyTermYears(src))
+    warranty,
+    end:warrantyExpireText(outbound, warranty)
   }];
 }
 function pageWarranty(){
