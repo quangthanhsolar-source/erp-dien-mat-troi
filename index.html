@@ -8139,29 +8139,87 @@ function ensureOrderKpiNovFromOct(){
   DB.settings.orderKpiNovFromOct='2026-11-match-oct';
   return 1;
 }
+/** Nguyễn Xuân Thanh Thanh / Xuân Thanh / Anh Thanh — đúng một người. */
+function orderKpiIsThanhPerson(raw){
+  const names=[raw, orderNvCanon(raw)];
+  for(let i=0;i<names.length;i++){
+    const k=orderStaffNameKey(names[i]);
+    if(k==='xuân thanh'||k==='nguyễn xuân thanh thanh'||k==='anh thanh') return true;
+  }
+  return false;
+}
+function orderKpiThanhMonth(ym){
+  if(ym==='2026-09'||ym==='2026-10'||ym==='2026-11') return 950000000;
+  return null;
+}
+function orderKpiCoerceRec(prev){
+  if(typeof prev==='number') return {def:+prev||0, months:{}};
+  if(prev&&typeof prev==='object'&&!Array.isArray(prev)){
+    const months=(prev.months&&typeof prev.months==='object'&&!Array.isArray(prev.months))?{...prev.months}:{};
+    return {def:+prev.def||0, months};
+  }
+  return null;
+}
+/**
+ * Ghi 950 triệu vào mọi key mà biểu đồ / form KPI có thể đọc
+ * (họ tên đầy đủ, «xuân thanh», «anh thanh»). Tháng khác và người khác giữ nguyên.
+ * Không tin cờ một lần: cloud có thể trả orderKpi cũ sau khi cờ đã gắn.
+ */
+function orderKpiApplyThanh950(){
+  if(!DB.settings) DB.settings={};
+  if(!DB.settings.orderKpi||typeof DB.settings.orderKpi!=='object'||Array.isArray(DB.settings.orderKpi)) DB.settings.orderKpi={};
+  const store=DB.settings.orderKpi;
+  const yms=['2026-09','2026-10','2026-11'];
+  const amt=950000000;
+  const canon=orderKpiStorageKey('Nguyễn Xuân Thanh Thanh')||orderNvKey('Nguyễn Xuân Thanh Thanh')||'nguyễn xuân thanh thanh';
+  const keys=[];
+  const add=k=>{ const s=String(k||'').trim(); if(s && keys.indexOf(s)<0) keys.push(s); };
+  add(canon);
+  add('nguyễn xuân thanh thanh');
+  add('xuân thanh');
+  Object.keys(store).forEach(k=>{ if(orderKpiIsThanhPerson(k)) add(k); });
+  let base=null;
+  keys.forEach(k=>{
+    const rec=orderKpiCoerceRec(store[k]);
+    if(!rec) return;
+    if(!base) base={def:+rec.def||0, months:{...rec.months}};
+    else{
+      if(!base.def && rec.def) base.def=+rec.def||0;
+      Object.keys(rec.months).forEach(ym=>{
+        if(!Object.prototype.hasOwnProperty.call(base.months, ym)) base.months[ym]=rec.months[ym];
+        else if(yms.indexOf(ym)>=0 && Math.round(+rec.months[ym]||0)===amt) base.months[ym]=amt;
+      });
+    }
+  });
+  if(!base) base={def:0, months:{}};
+  yms.forEach(ym=>{ base.months[ym]=amt; });
+  let changed=0;
+  keys.forEach(k=>{
+    const prev=orderKpiCoerceRec(store[k]);
+    if(prev){
+      const pinnedOk=yms.every(ym=>Math.round(+prev.months[ym]||0)===amt);
+      if(pinnedOk) return;
+      const months={...prev.months};
+      yms.forEach(ym=>{ months[ym]=amt; });
+      store[k]={def:+prev.def||0, months};
+      changed++;
+      return;
+    }
+    store[k]={def:+base.def||0, months:{...base.months}};
+    changed++;
+  });
+  return changed;
+}
 /** KPI Nguyễn Xuân Thanh Thanh: 950 triệu cho tháng 9, 10, 11/2026. Tháng khác giữ nguyên. */
 function ensureOrderKpiThanh950(){
   if(!DB.settings) DB.settings={};
-  if(DB.settings.orderKpiThanh950==='2026-09-10-11') return 0;
-  ensureOrderKpiSeedOnce();
-  ensureOrderKpiNovFromOct();
-  const amt=950000000;
-  const yms=['2026-09','2026-10','2026-11'];
-  orderKpiSetMonth('Nguyễn Xuân Thanh Thanh', yms[0], amt);
-  yms.slice(1).forEach(ym=>orderKpiSetMonth('Nguyễn Xuân Thanh Thanh', ym, amt));
-  if(!DB.settings.orderKpi||typeof DB.settings.orderKpi!=='object'||Array.isArray(DB.settings.orderKpi)) DB.settings.orderKpi={};
-  ['nguyễn xuân thanh thanh','xuân thanh'].forEach(key=>{
-    const prev=DB.settings.orderKpi[key];
-    if(prev==null) return;
-    const rec=typeof prev==='number'?{def:prev, months:{}}:(prev&&typeof prev==='object'?prev:null);
-    if(!rec) return;
-    const months=(rec.months&&typeof rec.months==='object'&&!Array.isArray(rec.months))?{...rec.months}:{};
-    yms.forEach(ym=>{ months[ym]=amt; });
-    DB.settings.orderKpi[key]={def:+rec.def||0, months};
-  });
-  delete DB.settings.orderKpi['anh thanh'];
-  DB.settings.orderKpiThanh950='2026-09-10-11';
-  return 1;
+  const prior=(ensureOrderKpiSeedOnce()|ensureOrderKpiNovFromOct())?1:0;
+  const n=orderKpiApplyThanh950();
+  if(DB.settings.orderKpiThanh950!=='2026-09-10-11-v2'){
+    DB.settings.orderKpiThanh950='2026-09-10-11-v2';
+    return 1;
+  }
+  return (prior||n)?1:0;
 }
 function mergeAnhThanhOrders(){
   let n=0;
@@ -8175,14 +8233,16 @@ function mergeAnhThanhOrders(){
     n++;
   }
   const store=DB.settings&&DB.settings.orderKpi;
-  if(store && typeof store==='object'){
-    const to='xuân thanh';
-    ['nguyễn xuân thanh thanh','anh thanh'].forEach(from=>{
-      if(store[from]==null) return;
-      if(store[to]==null) store[to]=store[from];
-      delete store[from];
+  if(store && typeof store==='object' && !Array.isArray(store)){
+    // Không dồn/xóa key KPI của Xuân Thanh. Biểu đồ đọc theo tài khoản
+    // («nguyễn xuân thanh thanh») còn bản cũ nằm ở «xuân thanh».
+    // Xóa một bên khi bên kia còn mốc 1,2 tỷ làm rơi 950 triệu.
+    if(store['anh thanh']!=null){
+      const canon=orderKpiStorageKey('Nguyễn Xuân Thanh Thanh')||'xuân thanh';
+      if(store[canon]==null) store[canon]=store['anh thanh'];
+      delete store['anh thanh'];
       n++;
-    });
+    }
   }
   if(n){ try{ saveDB(); }catch(e){} }
   return n;
@@ -8449,21 +8509,48 @@ function orderKpiRead(name){
   if(!store||typeof store!=='object'||Array.isArray(store)) return {def:0,months:{}};
   const key=orderKpiStorageKey(name)||orderNvKey(name);
   let raw=store[key];
-  if(raw==null && (key==='xuân thanh'||key==='nguyễn xuân thanh thanh')){
-    raw=store['nguyễn xuân thanh thanh']||store['xuân thanh']||store['anh thanh'];
+  if(raw==null && (key==='xuân thanh'||key==='nguyễn xuân thanh thanh'||orderKpiIsThanhPerson(name))){
+    raw=store['nguyễn xuân thanh thanh']||store['xuân thanh']||store['anh thanh']||store[key];
   }
-  if(typeof raw==='number') return {def:+raw||0, months:{}};
-  if(raw && typeof raw==='object'){
-    const months=(raw.months&&typeof raw.months==='object'&&!Array.isArray(raw.months))?raw.months:{};
-    return {def:+raw.def||0, months};
+  const pick=rec=>{
+    if(typeof rec==='number') return {def:+rec||0, months:{}};
+    if(rec && typeof rec==='object'){
+      const months=(rec.months&&typeof rec.months==='object'&&!Array.isArray(rec.months))?{...rec.months}:{};
+      return {def:+rec.def||0, months};
+    }
+    return null;
+  };
+  const primary=pick(raw)||{def:0, months:{}};
+  if(orderKpiIsThanhPerson(name)){
+    ['nguyễn xuân thanh thanh','xuân thanh','anh thanh',key].forEach(k=>{
+      const alt=pick(store[k]);
+      if(!alt) return;
+      if(!primary.def && alt.def) primary.def=alt.def;
+      Object.keys(alt.months).forEach(ym=>{
+        const pinned=orderKpiThanhMonth(ym);
+        const altAmt=Math.round(+alt.months[ym]||0);
+        if(!Object.prototype.hasOwnProperty.call(primary.months, ym)) primary.months[ym]=alt.months[ym];
+        else if(pinned!=null && altAmt===pinned) primary.months[ym]=pinned;
+      });
+    });
   }
-  return {def:0, months:{}};
+  return primary;
 }
 function orderKpiTarget(name, ym){
+  const pinned=ym?orderKpiThanhMonth(ym):null;
+  if(pinned!=null && orderKpiIsThanhPerson(name)) return pinned;
   const rec=orderKpiRead(name);
   if(ym && rec.months && Object.prototype.hasOwnProperty.call(rec.months, ym)) return Math.max(0, +rec.months[ym]||0);
   if(rec.def>0) return rec.def;
   return ORDER_KPI_DEFAULT;
+}
+function orderKpiRevenue(q){
+  if(!q) return 0;
+  const raw=q.total;
+  if(typeof raw==='number' && Number.isFinite(raw)) return raw;
+  if(typeof parseOrderMoney==='function') return parseOrderMoney(raw);
+  const n=+raw;
+  return Number.isFinite(n)?n:0;
 }
 function orderKpiSetMonth(name, ym, amount){
   if(!DB.settings) DB.settings={};
@@ -8471,10 +8558,22 @@ function orderKpiSetMonth(name, ym, amount){
   const key=orderKpiStorageKey(name)||orderNvKey(name);
   const rec=orderKpiRead(name);
   const months={...rec.months};
-  months[ym]=Math.max(0, Math.round(+amount||0));
+  let amountN=Math.max(0, Math.round(+amount||0));
+  const pinned=orderKpiThanhMonth(ym);
+  if(pinned!=null && orderKpiIsThanhPerson(name)) amountN=pinned;
+  months[ym]=amountN;
   DB.settings.orderKpi[key]={def:rec.def>0?rec.def:0, months};
-  delete DB.settings.orderKpi['anh thanh'];
-  if(key==='nguyễn xuân thanh thanh') delete DB.settings.orderKpi['xuân thanh'];
+  if(orderKpiIsThanhPerson(name)){
+    ['nguyễn xuân thanh thanh','xuân thanh'].forEach(k=>{
+      if(!k||k===key) return;
+      const prev=orderKpiCoerceRec(DB.settings.orderKpi[k]);
+      if(!prev) return;
+      if(Math.round(+prev.months[ym]||0)===amountN) return;
+      const m={...prev.months};
+      m[ym]=amountN;
+      DB.settings.orderKpi[k]={def:+prev.def||0, months:m};
+    });
+  }
 }
 function orderKpiRows(orders){
   const map=new Map();
@@ -8485,7 +8584,8 @@ function orderKpiRows(orders){
     const label=orderStaffLabel(raw)||raw;
     const cur=map.get(key)||{name:label,key,sum:0,months:new Set()};
     if(label.length>(cur.name||'').length) cur.name=label;
-    cur.sum+=(+q.total||0);
+    // Doanh số đạt = tổng đơn trong bộ lọc (mọi trạng thái), cùng key với cột KPI. Không cộng vào mốc KPI.
+    cur.sum+=orderKpiRevenue(q);
     const p=quoteDateParts(q);
     if(p) cur.months.add(p.y+'-'+p.m);
     map.set(key,cur);
@@ -8979,7 +9079,7 @@ function openOrderModal(q){
   const isEdit=!!q;
   const peeked=isEdit?null:peekQuoteCode();
   const code=isEdit?q.code:peeked.code;
-  const dateVal=((q&&q.date)||'').slice(0,10)||new Date().toISOString().slice(0,10);
+  const dateVal=((q&&q.date)||'').slice(0,10)||attDateKey(new Date());
   const y0=Number((dateVal.match(/^(\d{4})/)||[])[1])||new Date().getFullYear();
   const m0=Number((dateVal.match(/^\d{4}-(\d{2})/)||[])[1])||(new Date().getMonth()+1);
   const d0=Number((dateVal.match(/^\d{4}-\d{2}-(\d{2})/)||[])[1])||new Date().getDate();
