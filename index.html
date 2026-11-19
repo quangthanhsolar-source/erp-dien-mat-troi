@@ -287,7 +287,19 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .cocq-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;height:26px;padding:0 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;overflow:hidden}
 .cocq-btn:hover{background:var(--lime);border-color:transparent}
 .cocq-file{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
-.cocq-form{display:flex;flex-direction:column;gap:8px}
+.cocq-form{display:flex;flex-direction:row;align-items:center;gap:8px;flex-wrap:wrap}
+.cocq-form .cocq-name{flex:1 1 140px;min-width:0;margin:0;font-size:14px;font-weight:600;color:var(--ink);line-height:1.35}
+.field .cocq-form label.cocq-btn,
+.cocq-form .cocq-btn{
+  display:inline-flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+  height:36px;padding:0 14px;margin:0;border-radius:999px;border:1px solid var(--line);
+  background:#fff;color:var(--ink);font-size:13px;font-weight:700;letter-spacing:0;text-transform:none;
+  line-height:1;white-space:nowrap;cursor:pointer;
+}
+.party-add{display:flex;gap:8px;align-items:center}
+.party-add .sel{flex:1 1 auto;min-width:0}
+.party-add .btn{flex:none;height:var(--tap);padding:0 16px}
+.in-tbl .in-c-bh{width:84px}
 .wh-tbl{width:100%;min-width:1040px;table-layout:fixed}
 .wh-tbl .wh-c-date{width:11%}
 .wh-tbl .wh-c-name{width:14%}
@@ -12907,6 +12919,51 @@ function findStockProduct(code, name){
   }
   return null;
 }
+function catalogProductByName(cat, name){
+  const key=stockNameKey(name);
+  if(!key) return null;
+  const order=[];
+  if(cat) order.push(cat);
+  Object.keys(CAT).forEach(k=>{ if(k!=='service'&&order.indexOf(k)<0) order.push(k); });
+  for(let i=0;i<order.length;i++){
+    const hit=catList(order[i]).find(p=>p&&stockNameKey(p.name)===key);
+    if(hit) return {cat:order[i], p:hit};
+  }
+  return null;
+}
+const INBOUND_SUPPLIER_BASE=['DAT','SolarViet','SolarHive'];
+function inboundSupplierNames(){
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  const extra=Array.isArray(DB.settings.inboundSuppliers)?DB.settings.inboundSuppliers:[];
+  const out=[];
+  const seen=new Set();
+  INBOUND_SUPPLIER_BASE.concat(extra).forEach(n=>{
+    const s=String(n||'').trim();
+    if(!s) return;
+    const k=s.toLowerCase();
+    if(seen.has(k)) return;
+    seen.add(k);
+    out.push(s);
+  });
+  return out;
+}
+function rememberInboundSupplier(name){
+  const s=String(name||'').trim();
+  if(!s) return false;
+  if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
+  if(!Array.isArray(DB.settings.inboundSuppliers)) DB.settings.inboundSuppliers=[];
+  if(inboundSupplierNames().some(n=>n.toLowerCase()===s.toLowerCase())) return false;
+  DB.settings.inboundSuppliers.push(s);
+  saveDB();
+  return true;
+}
+function inboundSupplierOptions(current){
+  const names=inboundSupplierNames().slice();
+  const cur=String(current||'').trim();
+  const blank=!cur||cur==='Không chọn'||cur==='-- Không chọn --';
+  if(!blank && !names.some(n=>n.toLowerCase()===cur.toLowerCase())) names.push(cur);
+  return names;
+}
 function parseTransKind(v){
   const s=String(v||'').trim().toLowerCase();
   if(!s) return '';
@@ -13148,7 +13205,8 @@ function pageTrans(){
   const prods=[...new Map((DB.trans||[]).filter(t=>t&&t.kind===kind).map(t=>[t.pid,t.name])).entries()];
   const title=kind==='in'?'Nhập kho':'Xuất kho';
   const addLabel=kind==='in'?'Tạo phiếu nhập':'Tạo phiếu xuất';
-  const partyHead=kind==='in'?'Nhà CC':'NCC / KH';
+  const partyHead='Nhà CC';
+  const outBh=kind==='out';
   const emptyMsg=kind==='in'?'Chưa có phiếu nhập nào khớp bộ lọc.':'Chưa có phiếu xuất nào khớp bộ lọc.';
   const inTabs=kind==='in'?`<div class="stk-tabs" role="tablist" data-in-tabs="1">
     <button type="button" class="stk-tab ${wh==='hcm'?'active':''}" data-in-wh="hcm" role="tab" aria-selected="${wh==='hcm'}">Kho HCM</button>
@@ -13169,8 +13227,8 @@ function pageTrans(){
       <option value="on" ${trF.st==='on'?'selected':''}>Hoạt động</option><option value="off" ${trF.st==='off'?'selected':''}>Đã hủy</option></select>
   </div>
   <div class="tbl-card"><div class="tbl-wrap${kind==='in'?' in-slip':''}"><table class="in-tbl${kind==='in'?' in-tbl-in':''}">
-    <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
-    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">${partyHead}</th><th class="in-mid">COCQ</th></tr></thead>
+    <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party">${outBh?'<col class="in-c-bh">':''}<col class="in-c-cocq"></colgroup>
+    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>${outBh?'Số series':'Số Series'}</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">${partyHead}</th>${outBh?'<th class="in-tight in-mid">Bảo hành</th>':''}<th class="in-mid">COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td class="mono">${esc(inboundDateText(t.date))}</td>
       <td class="in-name"><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
@@ -13178,8 +13236,9 @@ function pageTrans(){
       <td class="in-tight in-mid">${esc(inboundUnitText(t))}</td>
       <td class="num mono in-tight in-mid" style="font-weight:700">${t.qty}</td>
       <td class="in-tight in-mid"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
+      ${outBh?`<td class="in-tight in-mid">${esc(warrantyBlankText(warrantyCatalogYears(t)))}</td>`:''}
       ${cocqCellHtml(t)}
-    </tr>`).join(''):`<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
+    </tr>`).join(''):`<tr><td colspan="${outBh?8:7}" class="empty">${emptyMsg}</td></tr>`}</tbody>
   </table></div></div>`;
 }
 function stockRowLinked(t){
@@ -13373,6 +13432,15 @@ function bindTrans(){
 function outboundSeriesText(raw){
   return String(raw==null?'':raw).split(',').map(s=>s.trim()).filter(Boolean).join(', ');
 }
+function seriesTokenQty(raw){
+  return String(raw==null?'':raw).split(',').map(s=>s.trim()).filter(Boolean).length;
+}
+function applySeriesQty(seriesEl, qtyEl){
+  if(!seriesEl||!qtyEl) return;
+  const n=seriesTokenQty(seriesEl.value);
+  if(n<1) return;
+  qtyEl.value=groupAmountInput(n,{decimal:false});
+}
 function stockDisplayUnit(s){
   const u=s&&String(s.unit||'').trim();
   if(u&&u.indexOf('#tk|')!==0) return u;
@@ -13412,15 +13480,15 @@ function transModalOut(t){
         <div id="tProdHint" style="display:none;color:var(--muted);font-size:12.5px;margin-top:6px"></div></div>
       <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series, cách nhau bằng dấu phẩy" value="${esc(t&&t.series||'')}"></div>
       <div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
-      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
-        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.price:0,{decimal:false}))}"></div></div>
+      <div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
       <div class="field"><label>Khách hàng</label><input class="inp" id="tParty" placeholder="Tên khách hàng" value="${esc(t?t.party:'')}"></div>
       <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
       <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
       'Xác nhận xuất kho',()=>{
         const pid=+$('#tProd').value;
         const s=DB.stock.find(x=>x.id===pid);
-        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false}))), pr=Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false})));
+        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})));
+        const pr=edit&&t&&t.price!=null?t.price:0;
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=outboundSeriesText($('#tSeries')&&$('#tSeries').value);
         const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
@@ -13440,12 +13508,6 @@ function transModalOut(t){
         toast('Đã xuất kho '+qty+' '+strip(s.name),'ok');
         saveDB();renderPage();return true;},
       {okClass:'btn-primary',cancel:'Đóng'});
-    const priceOf=s=>{
-      if(!s||!s.cat) return null;
-      const p=catList(s.cat).find(x=>String(x.id)===String(s.id));
-      if(!p) return null;
-      return p.retail||p.price||0;
-    };
     const fill=()=>{
       const c=$('#tCat').value;
       const list=outboundStockChoices(c, edit?t:null);
@@ -13464,10 +13526,6 @@ function transModalOut(t){
         if(prefer&&![...sel.options].some(o=>o.value===String(prefer))) sel.selectedIndex=0;
       }
       const s=DB.stock.find(x=>x.id==+$('#tProd').value);
-      if(s&&!t){
-        const pr=priceOf(s);
-        if(pr!=null) $('#tPrice').value=groupAmountInput(pr,{decimal:false});
-      }
       if(s){
         const u=stockDisplayUnit(s);
         const unitEl=$('#tUnit');
@@ -13475,20 +13533,25 @@ function transModalOut(t){
       }
       sum();
     };
-    const sum=()=>{$('#tTotal').textContent=vnd(Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})))*Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false}))));};
+    const sum=()=>{
+      const el=$('#tTotal');
+      if(!el) return;
+      const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})));
+      el.textContent=vnd(qty*0);
+    };
     $('#tCat').onchange=fill;
     $('#tProd').onchange=()=>{
       const s=DB.stock.find(x=>x.id==+$('#tProd').value);
       if(s){
-        const pr=priceOf(s);
-        if(pr!=null) $('#tPrice').value=groupAmountInput(pr,{decimal:false});
         const u=stockDisplayUnit(s);
         const unitEl=$('#tUnit');
         if(u&&unitEl) unitEl.value=u;
       }
       sum();
     };
-    $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
+    $('#tQty').oninput=sum;
+    const seriesEl=$('#tSeries'), qtyEl=$('#tQty');
+    if(seriesEl&&qtyEl) seriesEl.addEventListener('input', ()=>{ applySeriesQty(seriesEl, qtyEl); sum(); });
     fill();
   };
   draw();
@@ -13499,73 +13562,106 @@ function transModal(t){
   const edit=!!t;
   const draw=()=>{
     const cat=$('#tCat')?$('#tCat').value:(t?t.cat:'inverter');
+    const newPrefill=t&&!catList(t.cat).some(x=>x&&String(x.id)===String(t.pid))?String(t.name||''):'';
+    const partyOpts=inboundSupplierOptions(t&&t.party).map(n=>`<option value="${esc(n)}" ${String(t&&t.party||'').trim().toLowerCase()===n.toLowerCase()?'selected':''}>${esc(n)}</option>`).join('');
     openModal(kind==='in'?'Tạo phiếu nhập kho':'Tạo phiếu xuất kho',`
       <div class="field"><label>Loại sản phẩm</label><select class="sel" style="width:100%" id="tCat">
         ${Object.keys(CAT).filter(k=>k!=='service').map(k=>`<option value="${k}" ${cat===k?'selected':''}>${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Sản phẩm</label><select class="sel" style="width:100%" id="tProd"></select></div>
+      <div class="field"><label>Thêm sản phẩm mới</label><input class="inp" id="tNewProd" placeholder="Tên sản phẩm chưa có trong danh mục" value="${esc(newPrefill)}"></div>
       <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series của lô hàng" value="${esc(t&&t.series||'')}"></div>
-      <div class="row2"><div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
-        <div class="field"><label>COCQ</label><input class="inp" id="tCocq" placeholder="Số CO/CQ" value="${esc(t&&t.cocq||'')}"></div></div>
+      <div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
       <div class="field"><label>File COCQ</label>
         <div class="cocq-form">
           <div class="cocq-name" id="tCocqName">${esc((t&&t.cocqFile&&t.cocqFile.name)||'Chưa có file')}</div>
-          <div class="cocq-acts">
-            <label class="cocq-btn">Tải lên<input type="file" id="tCocqFile" class="cocq-file" accept="${COCQ_ACCEPT}" aria-label="Tải file COCQ"></label>
-            <button type="button" class="cocq-btn" id="tCocqClear" ${(t&&t.cocqFile)?'':'hidden'}>Xóa</button>
-          </div>
+          <label class="cocq-btn">Tải lên<input type="file" id="tCocqFile" class="cocq-file" accept="${COCQ_ACCEPT}" aria-label="Tải file COCQ"></label>
+          <button type="button" class="cocq-btn" id="tCocqClear" ${(t&&t.cocqFile)?'':'hidden'}>Xóa</button>
         </div></div>
       <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
         <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.price:0,{decimal:false}))}"></div></div>
-      <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
-        ${kind==='in'?`<select class="sel" style="width:100%" id="tParty"><option value="">-- Không chọn --</option>
-          ${DB.suppliers.map(s=>`<option ${t&&t.party===s.name?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`
-        :`<input class="inp" id="tParty" placeholder="Tên khách hàng" value="${esc(t?t.party:'')}">`}</div>
-      <div class="field"><label>Mã tham chiếu</label><input class="inp" id="tRef" placeholder="Số hóa đơn, mã đơn hàng..." value="${esc(t?t.ref:'')}"></div>
-      <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
-      <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
+      <div class="field"><label>Nhà cung cấp</label>
+        <div class="party-add"><select class="sel" id="tParty">${partyOpts}</select>
+          <button type="button" class="btn btn-ghost" id="tPartyAdd">Thêm</button></div></div>
+      <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>`,
       kind==='in'?'Xác nhận nhập kho':'Xác nhận xuất kho',async()=>{
         await cocqRead;
-        const pid=+$('#tProd').value,c=$('#tCat').value,p=catList(c).find(x=>x.id==pid);
-        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false}))), pr=Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false})));
+        const typed=(($('#tNewProd')&&$('#tNewProd').value)||'').trim();
+        let c=$('#tCat').value;
+        let p=null;
+        let custom=false;
+        if(typed){
+          const hit=catalogProductByName(c, typed);
+          if(hit){ c=hit.cat; p=hit.p; }
+          else { custom=true; p={id:null,name:typed,cost:0,unit:''}; }
+        }else{
+          p=catList(c).find(x=>x.id==+$('#tProd').value)||null;
+        }
+        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})));
+        const pr=Math.max(0, Math.round(parseAmountInput($('#tPrice')?$('#tPrice').value:'',{decimal:false})));
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=(($('#tSeries')&&$('#tSeries').value)||'').trim();
         const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
-        const cocq=(($('#tCocq')&&$('#tCocq').value)||'').trim();
-        if(!p){toast('Chọn sản phẩm','bad');return false;}
+        const cocq=edit?String(t.cocq||'').trim():'';
+        if(!p||!String(p.name||'').trim()){toast('Chọn sản phẩm','bad');return false;}
         if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
-        if(kind==='out'){const s=DB.stock.find(x=>x.id===pid);const have=(s?s.qty:0)+(edit&&t.kind==='out'?t.qty:0);
-          if(have<qty){toast(`Tồn kho chỉ còn ${s?s.qty:0} – không đủ để xuất`,'bad');return false;}}
         if(edit)applyStock(t,-1);
         const now=new Date(),p2=n=>String(n).padStart(2,'0');
         const obj=edit?t:{id:++DB.seq.t,date:now.toISOString().slice(0,16),active:true,
-          code:(kind==='in'?'NK-':'XK-')+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
-        Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,unit,cocq,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
-          partyPhone:obj.partyPhone||'',ref:$('#tRef').value,note:$('#tNote').value});
-        if(!edit && kind==='in') obj.warehouse=inWh==='bd'?'bd':'hcm';
+          code:'NK-'+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
+        Object.assign(obj,{kind:'in',cat:c,pid:custom?null:p.id,name:p.name,qty,series,unit,cocq,price:pr,party:party||'Không chọn',
+          partyPhone:obj.partyPhone||'',ref:edit?(t.ref||''):'',note:$('#tNote').value});
+        if(custom) obj.stockId=null;
+        if(!edit) obj.warehouse=inWh==='bd'?'bd':'hcm';
         if(cocqTouched){
           if(cocqNext) obj.cocqFile=cocqNext;
           else delete obj.cocqFile;
         }
         if(!edit)DB.trans.unshift(obj);
         applyStock(obj,1);
-        toast(kind==='in'?'Đã nhập kho '+qty+' '+strip(p.name):'Đã xuất kho '+qty+' '+strip(p.name),'ok');
+        if(custom){
+          if(obj.warehouse==='bd'){
+            const list=stockBdEnsure();
+            const key=stockNameKey(obj.name);
+            let s=null;
+            for(let i=0;i<list.length;i++){
+              const row=list[i];
+              if(!row||stockNameKey(row.name)!==key) continue;
+              if(obj.cat&&row.cat===obj.cat){ s=row; break; }
+              if(!s) s=row;
+            }
+            if(s){ obj.stockId=s.id; obj.pid=s.id; }
+          }else if(obj.stockId!=null) obj.pid=obj.stockId;
+        }
+        toast('Đã nhập kho '+qty+' '+strip(p.name),'ok');
         saveDB();renderPage();return true;},
       {okClass:kind==='in'?'btn-green':'btn-primary',cancel:'Đóng'});
     const fill=()=>{const c=$('#tCat').value;
-      $('#tProd').innerHTML=catList(c).map(p=>`<option value="${p.id}" ${t&&t.pid==p.id?'selected':''}>${esc(strip(p.name))}</option>`).join('');
+      $('#tProd').innerHTML=catList(c).map(p=>`<option value="${p.id}" ${t&&String(t.pid)===String(p.id)?'selected':''}>${esc(strip(p.name))}</option>`).join('');
       const p=catList(c).find(x=>x.id==+$('#tProd').value);
-      if(p&&!t)$('#tPrice').value=groupAmountInput(kind==='in'?p.cost:(p.retail||p.price||0),{decimal:false});
+      if(p&&!t&&$('#tPrice')) $('#tPrice').value=groupAmountInput(p.cost||0,{decimal:false});
       if(p&&p.unit){
         const unitEl=$('#tUnit');
         if(unitEl&&!String(unitEl.value||'').trim()) unitEl.value=p.unit;
       }
-      sum();};
-    const sum=()=>{$('#tTotal').textContent=vnd(Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})))*Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false}))));};
+    };
     $('#tCat').onchange=fill;$('#tProd').onchange=()=>{const p=catList($('#tCat').value).find(x=>x.id==+$('#tProd').value);
-      if(p)$('#tPrice').value=groupAmountInput(kind==='in'?p.cost:(p.retail||p.price||0),{decimal:false});
+      if(p&&$('#tPrice')) $('#tPrice').value=groupAmountInput(p.cost||0,{decimal:false});
       if(p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
-      sum();};
-    $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
+    };
+    const seriesEl=$('#tSeries'), qtyEl=$('#tQty');
+    if(seriesEl&&qtyEl) seriesEl.addEventListener('input', ()=>applySeriesQty(seriesEl, qtyEl));
+    const partyAdd=$('#tPartyAdd');
+    if(partyAdd) partyAdd.onclick=()=>{
+      const name=window.prompt('Tên nhà cung cấp');
+      if(name==null) return;
+      const s=String(name).trim();
+      if(!s){ toast('Nhập tên nhà cung cấp','bad'); return; }
+      rememberInboundSupplier(s);
+      const sel=$('#tParty');
+      if(!sel) return;
+      sel.innerHTML=inboundSupplierNames().map(n=>`<option value="${esc(n)}" ${n.toLowerCase()===s.toLowerCase()?'selected':''}>${esc(n)}</option>`).join('');
+      toast('Đã thêm nhà cung cấp','ok');
+    };
     let cocqNext=t&&cocqFileMeta(t)?cocqFileMeta(t):null;
     let cocqTouched=false;
     let cocqRead=Promise.resolve();
@@ -13614,9 +13710,25 @@ function warrantyLineMatchesSerial(t, key){
 function warrantyLatestLine(rows){
   return rows.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0]||null;
 }
+function warrantyCatalogProduct(t){
+  if(!t) return null;
+  if(t.cat&&t.pid!=null){
+    const byId=catList(t.cat).find(x=>x&&String(x.id)===String(t.pid));
+    if(byId) return byId;
+  }
+  const key=stockNameKey(t.name);
+  if(!key) return null;
+  const cats=[];
+  if(t.cat) cats.push(t.cat);
+  Object.keys(CAT).forEach(k=>{ if(k!=='service'&&cats.indexOf(k)<0) cats.push(k); });
+  for(let i=0;i<cats.length;i++){
+    const hit=catList(cats[i]).find(p=>p&&stockNameKey(p.name)===key);
+    if(hit) return hit;
+  }
+  return null;
+}
 function warrantyTermYears(t){
-  if(!t||t.pid==null||!t.cat) return 0;
-  const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
+  const p=warrantyCatalogProduct(t);
   if(!p||p.bh==null||p.bh==='') return 0;
   const raw=p.bh;
   let n=typeof raw==='number'?raw:NaN;
@@ -13631,14 +13743,14 @@ function warrantyTermYears(t){
 }
 function warrantyCatalogYears(t){
   const years=warrantyTermYears(t);
-  if(!(years>0)) return '—';
+  if(!(years>0)) return 'trống';
   const label=Number.isInteger(years)?String(years):String(Math.round(years*10)/10).replace(/\.0$/,'');
   return label+' năm';
 }
 function warrantyParseYears(raw){
   if(typeof raw==='number') return Number.isFinite(raw)&&raw>0?raw:0;
   const s=String(raw==null?'':raw).trim().toLowerCase();
-  if(!s||s==='—'||s==='-'||s==='–') return 0;
+  if(!s||s==='—'||s==='-'||s==='–'||s==='trống') return 0;
   const m=s.match(/(\d+(?:[.,]\d+)?)/);
   if(!m) return 0;
   let n=Number(m[1].replace(',','.'));
@@ -13660,11 +13772,11 @@ function warrantyVnToday(){
 /** Ngày hết hạn: đã xuất kho thì cộng từ ngày xuất, chưa xuất thì cộng từ hôm nay (Asia/Ho_Chi_Minh). */
 function warrantyExpireText(outbound, yearsRaw){
   const years=warrantyParseYears(yearsRaw);
-  if(!(years>0)) return '—';
+  if(!(years>0)) return 'trống';
   let y,m,d;
   if(outbound){
     const match=String(outbound.date||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(!match) return '—';
+    if(!match) return 'trống';
     y=+match[1]; m=+match[2]; d=+match[3];
   }else{
     const t=warrantyVnToday();
@@ -13683,38 +13795,71 @@ function warrantyCatalogName(t){
   const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
   return p&&p.name?strip(p.name):'';
 }
-function warrantyPartyText(line){
-  if(!line) return '—';
-  const s=String(line.party==null?'':line.party).trim();
-  return s||'—';
+function warrantyBlankText(v){
+  const s=String(v==null?'':v).trim();
+  if(!s||s==='—'||s==='-'||s==='–'||s==='--'||s==='---') return 'trống';
+  const n=s.toLowerCase().replace(/[\u2013\u2014\-]+/g,' ').replace(/\s+/g,' ').trim();
+  if(n==='không chọn'||n==='khong chon') return 'trống';
+  return s;
+}
+function warrantyDateOrBlank(v){
+  const m=String(v||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?m[3]+'/'+m[2]+'/'+m[1]:'trống';
+}
+function warrantyUnitOrBlank(t){
+  if(!t) return 'trống';
+  const own=String(t.unit||'').trim();
+  if(own&&own.indexOf('#tk|')!==0) return warrantyBlankText(own);
+  const p=warrantyCatalogProduct(t);
+  const u=p&&p.unit?String(p.unit).trim():'';
+  return u?warrantyBlankText(u):'trống';
+}
+function warrantySameProduct(a,b){
+  if(!a||!b) return false;
+  const an=stockNameKey(a.name), bn=stockNameKey(b.name);
+  if(an&&bn&&an===bn) return true;
+  if(a.cat&&b.cat&&a.cat===b.cat&&a.pid!=null&&b.pid!=null&&String(a.pid)===String(b.pid)) return true;
+  return false;
+}
+function warrantyMatchedToken(t, key){
+  return warrantySerialTokens(t&&t.series).find(tok=>warrantySerialKey(tok)===key)||'';
+}
+function warrantyBuildRow(slip, inbound, outbound, key){
+  const rawName=strip((slip&&slip.name)||'')||warrantyCatalogName(slip)||'';
+  const warranty=warrantyCatalogYears(slip);
+  const ship=outbound||null;
+  return {
+    date:inbound?warrantyDateOrBlank(inbound.date):'trống',
+    name:warrantyBlankText(rawName),
+    serial:warrantyBlankText(warrantyMatchedToken(slip, key)),
+    unit:warrantyUnitOrBlank(slip),
+    outDate:ship?warrantyDateOrBlank(ship.date):'trống',
+    customer:warrantyBlankText(ship&&ship.party),
+    supplier:warrantyBlankText(inbound&&inbound.party),
+    warranty:warrantyBlankText(warranty),
+    end:warrantyBlankText(warrantyExpireText(ship, warranty))
+  };
 }
 function warrantySerialRows(q){
   const key=warrantySerialKey(q);
   if(!key) return [];
   const lines=(DB.trans||[]).filter(t=>t&&(t.kind==='in'||t.kind==='out')&&warrantyLineMatchesSerial(t, key));
   if(!lines.length) return [];
-  const inbound=warrantyLatestLine(lines.filter(t=>t.kind==='in'));
-  const outbound=warrantyLatestLine(lines.filter(t=>t.kind==='out'));
-  const src=inbound||outbound;
-  let serial=String(q||'').trim();
-  for(let i=0;i<lines.length;i++){
-    const hit=warrantySerialTokens(lines[i].series).find(tok=>warrantySerialKey(tok)===key);
-    if(hit){ serial=hit; break; }
-  }
-  const name=strip((inbound&&inbound.name)||(outbound&&outbound.name)||'')||warrantyCatalogName(src)||'—';
-  const unitLine=(inbound&&String(inbound.unit||'').trim())?inbound:((outbound&&String(outbound.unit||'').trim())?outbound:src);
-  const warranty=warrantyCatalogYears(src);
-  return [{
-    date:inbound?inboundDateText(inbound.date):'—',
-    name,
-    serial,
-    unit:inboundUnitText(unitLine),
-    outDate:outbound?inboundDateText(outbound.date):'—',
-    customer:warrantyPartyText(outbound),
-    supplier:warrantyPartyText(inbound),
-    warranty,
-    end:warrantyExpireText(outbound, warranty)
-  }];
+  const inbound=lines.filter(t=>t.kind==='in');
+  const outbound=lines.filter(t=>t.kind==='out');
+  const ordered=lines.slice().sort((a,b)=>{
+    const d=String(b.date||'').localeCompare(String(a.date||''));
+    if(d) return d;
+    return (Number(b.id)||0)-(Number(a.id)||0);
+  });
+  return ordered.map(slip=>{
+    if(slip.kind==='out'){
+      const inn=warrantyLatestLine(inbound.filter(t=>warrantySameProduct(t, slip)));
+      return warrantyBuildRow(slip, inn, slip, key);
+    }
+    const out=warrantyLatestLine(outbound.filter(t=>warrantySameProduct(t, slip)));
+    return warrantyBuildRow(slip, slip, out, key);
+  });
 }
 function pageWarranty(){
   const q=String(whQ||'').trim();
