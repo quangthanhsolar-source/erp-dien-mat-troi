@@ -288,21 +288,22 @@ table{width:100%;border-collapse:collapse;min-width:340px}
 .cocq-btn:hover{background:var(--lime);border-color:transparent}
 .cocq-file{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
 .cocq-form{display:flex;flex-direction:column;gap:8px}
-.wh-tbl{width:100%;table-layout:fixed}
-.wh-tbl .wh-c-date{width:12%}
-.wh-tbl .wh-c-name{width:16%}
-.wh-tbl .wh-c-series{width:15%}
-.wh-tbl .wh-c-unit{width:8%}
-.wh-tbl .wh-c-out{width:12%}
-.wh-tbl .wh-c-code{width:13%}
-.wh-tbl .wh-c-bh{width:10%}
-.wh-tbl .wh-c-end{width:14%}
+.wh-tbl{width:100%;min-width:1040px;table-layout:fixed}
+.wh-tbl .wh-c-date{width:11%}
+.wh-tbl .wh-c-name{width:14%}
+.wh-tbl .wh-c-series{width:12%}
+.wh-tbl .wh-c-unit{width:7%}
+.wh-tbl .wh-c-out{width:11%}
+.wh-tbl .wh-c-kh{width:16%}
+.wh-tbl .wh-c-ncc{width:11%}
+.wh-tbl .wh-c-bh{width:8%}
+.wh-tbl .wh-c-end{width:10%}
 .wh-tbl th,.wh-tbl td{vertical-align:middle}
 .wh-tbl th{white-space:normal;overflow-wrap:anywhere;letter-spacing:.02em;padding:10px 6px;line-height:1.3}
 .wh-tbl td{padding:10px 8px}
 .wh-tbl th.wh-mid,.wh-tbl td.wh-mid{text-align:center}
-.wh-tbl td:nth-child(1),.wh-tbl td:nth-child(4),.wh-tbl td:nth-child(5),.wh-tbl td:nth-child(7),.wh-tbl td:nth-child(8){white-space:nowrap}
-.wh-tbl td.wh-name,.wh-tbl td.wh-series,.wh-tbl td.wh-code{white-space:normal;overflow-wrap:anywhere}
+.wh-tbl td:nth-child(1),.wh-tbl td:nth-child(4),.wh-tbl td:nth-child(5),.wh-tbl td:nth-child(8),.wh-tbl td:nth-child(9){white-space:nowrap}
+.wh-tbl td.wh-name,.wh-tbl td.wh-series,.wh-tbl td.wh-kh,.wh-tbl td.wh-ncc{white-space:normal;overflow-wrap:anywhere;word-break:break-word}
 .stk-tabs{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .stk-tab{height:40px;padding:0 16px;border-radius:999px;background:var(--surface);font-weight:700;font-size:14px;color:var(--ink-2)}
 .stk-tab.active{background:var(--lime);color:var(--ink)}
@@ -13147,6 +13148,7 @@ function pageTrans(){
   const prods=[...new Map((DB.trans||[]).filter(t=>t&&t.kind===kind).map(t=>[t.pid,t.name])).entries()];
   const title=kind==='in'?'Nhập kho':'Xuất kho';
   const addLabel=kind==='in'?'Tạo phiếu nhập':'Tạo phiếu xuất';
+  const partyHead=kind==='in'?'Nhà CC':'NCC / KH';
   const emptyMsg=kind==='in'?'Chưa có phiếu nhập nào khớp bộ lọc.':'Chưa có phiếu xuất nào khớp bộ lọc.';
   const inTabs=kind==='in'?`<div class="stk-tabs" role="tablist" data-in-tabs="1">
     <button type="button" class="stk-tab ${wh==='hcm'?'active':''}" data-in-wh="hcm" role="tab" aria-selected="${wh==='hcm'}">Kho HCM</button>
@@ -13168,7 +13170,7 @@ function pageTrans(){
   </div>
   <div class="tbl-card"><div class="tbl-wrap${kind==='in'?' in-slip':''}"><table class="in-tbl${kind==='in'?' in-tbl-in':''}">
     <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party"><col class="in-c-cocq"></colgroup>
-    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">NCC / KH</th><th class="in-mid">COCQ</th></tr></thead>
+    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số Series</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">${partyHead}</th><th class="in-mid">COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
       <td class="mono">${esc(inboundDateText(t.date))}</td>
       <td class="in-name"><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
@@ -13651,6 +13653,11 @@ function warrantyCatalogName(t){
   const p=catList(t.cat).find(x=>String(x.id)===String(t.pid));
   return p&&p.name?strip(p.name):'';
 }
+function warrantyPartyText(line){
+  if(!line) return '—';
+  const s=String(line.party==null?'':line.party).trim();
+  return s||'—';
+}
 function warrantySerialRows(q){
   const key=warrantySerialKey(q);
   if(!key) return [];
@@ -13672,7 +13679,8 @@ function warrantySerialRows(q){
     serial,
     unit:inboundUnitText(unitLine),
     outDate:outbound?inboundDateText(outbound.date):'—',
-    code:outbound&&String(outbound.code||'').trim()?String(outbound.code).trim():'—',
+    customer:warrantyPartyText(outbound),
+    supplier:warrantyPartyText(inbound),
     warranty:warrantyCatalogYears(src),
     end:warrantyExpireText(outbound, warrantyTermYears(src))
   }];
@@ -13681,23 +13689,24 @@ function pageWarranty(){
   const q=String(whQ||'').trim();
   const rows=q?warrantySerialRows(q):[];
   const body=!q
-    ?'<tr><td colspan="8" class="empty">Nhập số series để tra cứu.</td></tr>'
+    ?'<tr><td colspan="9" class="empty">Nhập số series để tra cứu.</td></tr>'
     :(rows.length?rows.map(r=>`<tr>
       <td class="mono">${esc(r.date)}</td>
       <td class="wh-name">${esc(r.name)}</td>
       <td class="mono wh-series">${esc(r.serial)}</td>
       <td class="wh-mid">${esc(r.unit)}</td>
       <td class="mono wh-mid">${esc(r.outDate)}</td>
-      <td class="mono wh-mid wh-code">${esc(r.code)}</td>
+      <td class="wh-mid wh-kh">${esc(r.customer)}</td>
+      <td class="wh-mid wh-ncc">${esc(r.supplier)}</td>
       <td class="wh-mid">${esc(r.warranty)}</td>
       <td class="mono wh-mid">${esc(r.end)}</td>
-    </tr>`).join(''):'<tr><td colspan="8" class="empty">Không thấy số series này.</td></tr>');
+    </tr>`).join(''):'<tr><td colspan="9" class="empty">Không thấy số series này.</td></tr>');
   return `<div class="page-head"><div class="page-title">Tra cứu bảo hành</div></div>
   <div class="page-sub" style="margin:-8px 0 16px">Nhập số series trên phiếu nhập hoặc phiếu xuất.</div>
   <div class="search">${I.search}<input class="inp" id="whQ" placeholder="Số series" value="${esc(whQ)}" autocomplete="off"></div>
   <div class="tbl-card"><div class="tbl-wrap"><table class="wh-tbl">
-    <colgroup><col class="wh-c-date"><col class="wh-c-name"><col class="wh-c-series"><col class="wh-c-unit"><col class="wh-c-out"><col class="wh-c-code"><col class="wh-c-bh"><col class="wh-c-end"></colgroup>
-    <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>Số series</th><th class="wh-mid">Đơn vị</th><th class="wh-mid">Ngày xuất</th><th class="wh-mid">Phiếu xuất kho</th><th class="wh-mid">Bảo hành</th><th class="wh-mid">Ngày hết hạn</th></tr></thead>
+    <colgroup><col class="wh-c-date"><col class="wh-c-name"><col class="wh-c-series"><col class="wh-c-unit"><col class="wh-c-out"><col class="wh-c-kh"><col class="wh-c-ncc"><col class="wh-c-bh"><col class="wh-c-end"></colgroup>
+    <thead><tr><th>Ngày nhập</th><th>Sản phẩm</th><th>Số series</th><th class="wh-mid">Đơn vị</th><th class="wh-mid">Ngày xuất</th><th class="wh-mid">Tên KH</th><th class="wh-mid">Nhà CC</th><th class="wh-mid">Bảo hành</th><th class="wh-mid">Ngày hết hạn</th></tr></thead>
     <tbody>${body}</tbody>
   </table></div></div>`;
 }
