@@ -10201,11 +10201,7 @@ function crmDemandShown(raw){
 }
 function crmDemandFromField(el){
   if(!el) return '';
-  const s=String(el.value||'').trim();
-  if(!s) return '';
-  const legacy=el.getAttribute('data-demand-legacy');
-  if(legacy!=null && s===legacy) return legacy;
-  return Math.max(0, Math.round(parseAmountInput(s,{decimal:false})));
+  return String(el.value||'').trim();
 }
 function crmInfoText(r){
   const lines=[];
@@ -11550,7 +11546,7 @@ function openCrmModal(row){
       <div class="field"><label>SĐT</label><input class="inp mono" id="crmPhone" value="${esc((row&&row.phone)||'')}"></div>
       <div class="field"><label>Địa chỉ</label><input class="inp" id="crmAddr" value="${esc((row&&row.address)||'')}"></div>
     </div>
-    <div class="field"><label>Nhu cầu tiền điện</label><input class="inp mono" id="crmDemand" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(crmDemandShown(row&&row.demand))}"${(row&&row.demand!=null&&String(row.demand).trim()&&!/^[\d.\s]+$/.test(String(row.demand).trim()))?` data-demand-legacy="${esc(String(row.demand).trim())}"`:''} placeholder="3.000.000"></div>
+    <div class="field"><label>Nhu cầu tiền điện</label><input class="inp" id="crmDemand" type="text" autocomplete="off" value="${esc(crmDemandShown(row&&row.demand))}" placeholder="Ví dụ: 3.500.000 hoặc 3,5 triệu/tháng, chạy 2hp"></div>
     <div class="field"><label>Ghi chú</label><textarea class="inp" id="crmNote" rows="3" placeholder="Ghi chú khảo sát / trao đổi với khách…">${esc((row&&row.note)||'')}</textarea></div>
     <div class="field" style="margin:0"><label>Hình ảnh khảo sát</label><div id="crmSurveyBox">${crmSurveyEditorHtml(draftFiles)}</div></div>
   `,'Lưu',async ()=>{
