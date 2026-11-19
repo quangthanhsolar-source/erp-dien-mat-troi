@@ -1733,7 +1733,8 @@ function applyTestInboundOnce(){
       if(t[k]!==next[k]){ t[k]=next[k]; changed++; }
     });
   });
-  return changed;
+  const synced=syncMissingInboundStock();
+  return changed+synced;
 }
 function testInboundPendingPush(){
   if(!_syncBase||!_syncBase.trans) return false;
@@ -12581,6 +12582,7 @@ async function importTransFromExcelFile(file){
       applyStock(obj,1);
       ok++;
     }
+    if(ok) syncMissingInboundStock();
     saveDB();
     renderPage();
     if(ok) toast('Đã nhập '+ok+' phiếu từ Excel'+(fail?(' · '+fail+' dòng lỗi'):''),'ok');
@@ -12721,11 +12723,95 @@ function pageTrans(){
     </tr>`).join(''):`<tr><td colspan="7" class="empty">${emptyMsg}</td></tr>`}</tbody>
   </table></div></div>`;
 }
-function applyStock(t,sign){
-  let s=DB.stock.find(x=>x.id===t.pid);
-  if(!s){s={id:t.pid,cat:t.cat,name:t.name,qty:0,min:5,unit:'cái'};DB.stock.push(s);}
-  s.qty+= sign*(t.kind==='in'?t.qty:-t.qty);
-  if(s.qty<0)s.qty=0;
+function stockRowLinked(t){
+  if(!t||!Array.isArray(DB.stock)) return null;
+  const hit=id=>{
+    if(id==null||id==='') return null;
+    const key=String(id);
+    for(let i=0;i<DB.stock.length;i++){
+      const s=DB.stock[i];
+      if(s&&s.id!=null&&s.id!==''&&String(s.id)===key) return s;
+    }
+    return null;
+  };
+  return hit(t.stockId)||hit(t.pid);
+}
+function stockFindByName(name, cat){
+  const key=stockNameKey(name);
+  if(!key||!Array.isArray(DB.stock)) return null;
+  let first=null;
+  for(let i=0;i<DB.stock.length;i++){
+    const s=DB.stock[i];
+    if(!s||stockNameKey(s.name)!==key) continue;
+    if(cat&&s.cat===cat) return s;
+    if(!first) first=s;
+  }
+  return first;
+}
+function nextInboundStockId(){
+  const used=new Set();
+  const take=id=>{
+    const n=Number(id);
+    if(Number.isFinite(n)) used.add(n);
+  };
+  (DB.stock||[]).forEach(s=>{ if(s) take(s.id); });
+  (DB.trans||[]).forEach(t=>{ if(t) take(t.stockId); });
+  let id=9700000;
+  while(id<9800000&&used.has(id)) id++;
+  return id;
+}
+function stockRowForTrans(t, create){
+  if(!t) return null;
+  const linked=stockRowLinked(t);
+  if(linked) return linked;
+  const byName=stockFindByName(t.name, t.cat);
+  if(byName) return byName;
+  if(!create) return null;
+  if(!Array.isArray(DB.stock)) DB.stock=[];
+  const row={id:nextInboundStockId(),cat:t.cat,name:t.name,qty:0,min:0,unit:t.unit||'',lock:null};
+  DB.stock.push(row);
+  return row;
+}
+function applyStock(t, sign){
+  if(!t) return;
+  let s=null;
+  if(sign===-1){
+    s=stockRowLinked(t);
+    if(!s) return;
+  }else{
+    s=stockRowLinked(t);
+    const slipKey=stockNameKey(t.name);
+    if(!s||stockNameKey(s.name)!==slipKey){
+      s=stockRowForTrans(Object.assign({}, t, {stockId:null,pid:null}), true);
+    }
+    if(!s) return;
+    t.stockId=s.id;
+    if(String(s.unit||'').indexOf('#tk|')!==0){
+      const u=String(t.unit||'').trim();
+      if(u) s.unit=u;
+    }
+  }
+  const qty=Number(t.qty)||0;
+  s.qty+=sign*(t.kind==='in'?qty:-qty);
+  if(s.qty<0) s.qty=0;
+}
+function syncMissingInboundStock(){
+  if(!Array.isArray(DB.trans)) return 0;
+  const touched=new Set();
+  let n=0;
+  for(let i=0;i<DB.trans.length;i++){
+    const t=DB.trans[i];
+    if(!t||t.kind!=='in'||!t.active) continue;
+    if(!stockNameKey(t.name)) continue;
+    if(t.stockApplied||stockRowLinked(t)) continue;
+    const existing=stockFindByName(t.name, t.cat);
+    if(existing&&!touched.has(Number(existing.id))) continue;
+    applyStock(t, 1);
+    t.stockApplied=1;
+    if(t.stockId!=null&&t.stockId!=='') touched.add(Number(t.stockId));
+    n++;
+  }
+  return n;
 }
 function bindTrans(){
   const kindEl=$('#trKind'); if(kindEl) kindEl.onchange=e=>{trF.kind=e.target.value;renderPage();};
