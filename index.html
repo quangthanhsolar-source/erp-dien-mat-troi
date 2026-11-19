@@ -5383,6 +5383,8 @@ function go(r, opt){
   if(r==='dev-pump') r='dev-inverter';
   if(r==='trans') r='trans-in';
   if(!routeAllowed(r)) r=defaultRouteForRole();
+  // Chỉ khi vào CRM từ trang khác. renderPage / đổi dropdown / gõ tìm kiếm không gọi lại go('crm').
+  if(r==='crm' && ROUTE!=='crm') crmSnapVnMonthFilter();
   ROUTE=r;
   devSelected.clear();userSelected.clear();
   document.body.classList.remove('mob-open');
@@ -10025,15 +10027,27 @@ function bindContracts(){
 /* ---------------- KHÁCH HÀNG CRM ---------------- */
 const CRM_SOURCE=['Facebook','Tiktok','Zalo','Website','DAT','CTV','Tự Kiếm'];
 const CRM_STATUS=['Đã liên hệ','Đã báo giá','Đã khảo sát'];
-function crmVnMonth(){
+function crmVnCalendar(){
   try{
-    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',month:'2-digit'}).formatToParts(new Date());
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit'}).formatToParts(new Date());
+    const y=(parts.find(p=>p.type==='year')||{}).value;
     const m=(parts.find(p=>p.type==='month')||{}).value;
-    if(m) return m;
+    if(y&&m) return {y:String(y), m:String(m)};
   }catch(e){}
-  return String(new Date().getMonth()+1).padStart(2,'0');
+  const n=new Date();
+  return {y:String(n.getFullYear()), m:String(n.getMonth()+1).padStart(2,'0')};
 }
-let crmFilter={q:'',y:'',m:'',owner:'',source:'',status:''};
+function crmVnMonth(){
+  return crmVnCalendar().m;
+}
+function crmSnapVnMonthFilter(){
+  const cal=crmVnCalendar();
+  crmFilter.y=cal.y;
+  crmFilter.m=cal.m;
+  crmPage=1;
+}
+const _crmVn0=crmVnCalendar();
+let crmFilter={q:'',y:_crmVn0.y,m:_crmVn0.m,owner:'',source:'',status:''};
 let crmRegionTab='hcm';
 let crmStatsOpen=true;
 let crmPage=1;
