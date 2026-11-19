@@ -3711,8 +3711,10 @@ function collectDBPayload(){
   DB_PERSIST_KEYS.forEach(k=>{if(DB[k]!==undefined)data[k]=DB[k];});
   return data;
 }
+let _crmRetainIds=[];
 function applyDBPayload(data){
   if(!data||typeof data!=='object')return;
+  _crmRetainIds=[];
   DB_PERSIST_KEYS.forEach(k=>{
     if(data[k]===undefined)return;
     if(k==='users'){
@@ -3745,8 +3747,16 @@ function applyDBPayload(data){
     }
     if(k==='crm'){
       const gone=new Set((DB.deletedCrmIds||[]).map(Number));
-      const prevById=new Map((DB.crm||[]).filter(r=>r&&r.id!=null).map(r=>[String(r.id),r]));
-      DB.crm=(data.crm||[]).filter(r=>!gone.has(Number(r.id))).map(r=>{
+      const local=(DB.crm||[]).filter(r=>r&&r.id!=null&&!gone.has(Number(r.id)));
+      const incoming=Array.isArray(data.crm)?data.crm:[];
+      // Cloud trả về rỗng trong khi máy đang có khách: không xóa danh sách local.
+      if(!incoming.length && local.length){
+        console.warn('CRM cloud rỗng — giữ', local.length, 'khách trên máy');
+        _crmRetainIds=local.map(r=>String(r.id));
+        return;
+      }
+      const prevById=new Map(local.map(r=>[String(r.id),r]));
+      DB.crm=incoming.filter(r=>r&&!gone.has(Number(r.id))).map(r=>{
         if(!r) return r;
         const prev=prevById.get(String(r.id));
         const remoteFiles=(typeof crmSurveyList==='function')?crmSurveyList(r):[];
@@ -3789,6 +3799,15 @@ function applyDBPayload(data){
         }
         return r;
       });
+      const cloudIds=new Set((DB.crm||[]).filter(r=>r&&r.id!=null).map(r=>String(r.id)));
+      const missing=local.filter(r=>!cloudIds.has(String(r.id)));
+      // Thiếu nhiều hơn vài khách (pull sót trang / bản cloud cụt) thì giữ và đẩy lại.
+      // Xóa 1–5 khách trên máy khác vẫn có hiệu lực, không hồi sinh hàng loạt.
+      if(missing.length && (missing.length>5 || incoming.length<local.length*0.95)){
+        missing.forEach(r=>{ DB.crm.push(r); });
+        _crmRetainIds=missing.map(r=>String(r.id));
+        console.warn('CRM pull thiếu', missing.length, 'khách — giữ trên máy và đẩy lại Supabase');
+      }
       if(typeof crmApplySurveyMetaToDB==='function') crmApplySurveyMetaToDB();
       if(typeof crmApplyQuoteMetaToDB==='function') crmApplyQuoteMetaToDB();
       if(typeof crmApplyOverridesToDB==='function') crmApplyOverridesToDB();
@@ -4135,9 +4154,11 @@ function backupDBLocalSnapshot(){
 }
 async function sbSelectAll(table, columns){
   const pageSize=1000;
+  // Phải order theo khóa chính. range() không order sẽ bỏ sót dòng khi bảng dài — CRM từng mất khách cũ vì vậy.
+  const orderCol=table==='quotes'?'code':'id';
   const all=[];
   for(let from=0;;from+=pageSize){
-    const {data,error}=await sb.from(table).select(columns).range(from, from+pageSize-1);
+    const {data,error}=await sb.from(table).select(columns).order(orderCol,{ascending:true}).range(from, from+pageSize-1);
     if(error) return {data:null, error};
     const rows=data||[];
     all.push(...rows);
@@ -4365,6 +4386,11 @@ async function pullDBFromSupabase(){
       _syncBase.users={};
       _syncBase.settings='';
       persistSyncBase();
+    }
+    if(_crmRetainIds.length){
+      pending.keys.crm.push(..._crmRetainIds);
+      pending.n+=_crmRetainIds.length;
+      _crmRetainIds=[];
     }
     dropSyncBaseKeys(pending.keys);
     if(pending.n>0){
@@ -9781,7 +9807,7 @@ function crmVnMonth(){
   }catch(e){}
   return String(new Date().getMonth()+1).padStart(2,'0');
 }
-let crmFilter={q:'',y:'',m:crmVnMonth(),owner:'',source:'',status:''};
+let crmFilter={q:'',y:'',m:'',owner:'',source:'',status:''};
 let crmStatsOpen=true;
 let crmPage=1;
 const CRM_PAGE_SIZE=50;
