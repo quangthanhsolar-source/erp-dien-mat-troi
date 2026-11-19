@@ -1306,8 +1306,8 @@ const vnd=n=>{const x=Math.round((+n||0)*10)/10;const[i,d]=x.toString().split('.
 const num=n=>Math.round(+n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 const dt=d=>{const x=new Date(d);const p=n=>String(n).padStart(2,'0');
   return `${p(x.getDate())}/${p(x.getMonth()+1)}/${x.getFullYear()} ${p(x.getHours())}:${p(x.getMinutes())}`;};
-function toast(msg,kind){const t=document.createElement('div');t.className='toast '+(kind||'');t.textContent=msg;
-  $('#toast').appendChild(t);setTimeout(()=>{t.style.opacity=0;t.style.transition='.25s';setTimeout(()=>t.remove(),260)},2300);}
+function toast(msg,kind,ms){const t=document.createElement('div');t.className='toast '+(kind||'');t.textContent=msg;
+  $('#toast').appendChild(t);setTimeout(()=>{t.style.opacity=0;t.style.transition='.25s';setTimeout(()=>t.remove(),260)},ms||2300);}
 const PH="data:image/svg+xml;utf8,"+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 90"><rect width="120" height="90" fill="%23f1f5f9"/></svg>');
 const IMG={
  panel:'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 96"><rect width="60" height="96" rx="3" fill="#132a4a"/><g fill="none" stroke="#3d5f8f" stroke-width="1.4"><path d="M30 2v92M2 26h56M2 50h56M2 74h56"/></g><rect x="2" y="2" width="56" height="92" rx="2" fill="none" stroke="#9fb4d0" stroke-width="2.5"/></svg>'),
@@ -4297,12 +4297,14 @@ async function sbDeleteTombstonedProducts(){
   }
 }
 function backupDBLocalSnapshot(){
-  try{
-    // Dùng bản nhẹ (không data URL ảnh) — tránh đơ localStorage khi nhiều user
-    const snap=JSON.stringify(cloneDBForLocalStorage());
-    localStorage.setItem('qts_erp_db_backup_v1',snap);
-    localStorage.setItem('qts_erp_db_backup_at',new Date().toISOString());
-  }catch(e){ console.warn('backupDB',e); }
+  // Không chặn thao tác lưu — bản chính đã ghi ở saveDB, bản dự phòng ghi ngay sau đó.
+  setTimeout(()=>{
+    try{
+      const snap=JSON.stringify(cloneDBForLocalStorage());
+      localStorage.setItem('qts_erp_db_backup_v1',snap);
+      localStorage.setItem('qts_erp_db_backup_at',new Date().toISOString());
+    }catch(e){ console.warn('backupDB',e); }
+  },0);
 }
 async function sbSelectAll(table, columns){
   const pageSize=1000;
@@ -4579,6 +4581,7 @@ async function pushDBToSupabase(){
   if(!sb||!SB_USER)return false;
   if(!_syncBase) return false;
   try{
+    const pushRev=_dbRev;
     backupDBLocalSnapshot();
     const now=new Date().toISOString();
     const productRows=[];
@@ -4645,9 +4648,6 @@ async function pushDBToSupabase(){
     const userRows=appUserUpsertRows(now);
 
     // AN TOÀN: upsert trước → chỉ prune thừa sau khi ghi OK (không clear bảng trước)
-    await sbUpsertThenPrune('products',productRows,'id',{noPrune:true});
-    await sbDeleteTombstonedProducts();
-    await sbUpsertThenPrune('customers',customerRows,'id',{noPrune:true});
     const crmChanged=(DB.crm||[]).filter(r=>r&&r.id!=null&&syncRowChanged('crm', r.id, r));
     const crmRows=await Promise.all(crmChanged.map(async r=>({
       id:Number(r.id),
@@ -4663,71 +4663,92 @@ async function pushDBToSupabase(){
       survey_imgs:await crmSurveyImgsPayload(r),
       updated_at:now
     })));
-    try{
-      await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
-    }catch(crmSyncErr){
-      // Schema cũ chưa có note/survey_imgs — vẫn đồng bộ các cột lõi
-      const msg=String((crmSyncErr&&crmSyncErr.message)||crmSyncErr||'');
-      if(!/note|survey_imgs|column/i.test(msg)) throw crmSyncErr;
-      const crmCore=crmRows.map(r=>{
-        const {note,survey_imgs,...rest}=r;
-        return rest;
-      });
-      await sbUpsertThenPrune('crm_leads',crmCore,'id',{noPrune:true});
-      console.warn('CRM sync: thiếu cột note/survey_imgs trên Supabase — đã đẩy phần còn lại. Chạy migration 20261024143000_crm_leads_note_survey_imgs.sql');
-    }
     const crmGone=[...new Set((DB.deletedCrmIds||[]).map(Number).filter(Boolean))];
-    if(crmGone.length){
-      const {error:crmDelErr}=await sb.from('crm_leads').delete().in('id',crmGone);
-      if(crmDelErr) throw crmDelErr;
-      DB.deletedCrmIds=[];
-      try{ _saveDB(); }catch(e){}
-    }
-    await sbUpsertThenPrune('suppliers',supplierRows,'id',{noPrune:true});
     const supTombs=[...new Set((DB.deletedSupplierIds||[]).map(Number).filter(n=>n))];
-    for(let si=0;si<supTombs.length;si+=80){
-      const part=supTombs.slice(si,si+80);
-      const {error:sDelErr}=await sb.from('suppliers').delete().in('id',part);
-      if(sDelErr) throw sDelErr;
-    }
-    if(supTombs.length){
-      DB.deletedSupplierIds=[];
-      try{ _saveDB(); }catch(e){}
-    }
-    await sbUpsertThenPrune('quotes',quoteRows,'code',{noPrune:true});
     const quoteTombs=[...new Set((DB.deletedQuoteCodes||[]).map(c=>String(c||'').trim()).filter(Boolean))];
-    for(let qi=0;qi<quoteTombs.length;qi+=80){
-      const part=quoteTombs.slice(qi,qi+80);
-      const {error:qDelErr}=await sb.from('quotes').delete().in('code',part);
-      if(qDelErr) throw qDelErr;
-    }
-    if(quoteTombs.length){
-      DB.deletedQuoteCodes=[];
-      try{ _saveDB(); }catch(e){}
-    }
-    await sbUpsertThenPrune('stock_items',stockRows,'id',{noPrune:true});
-    await sbUpsertThenPrune('stock_transactions',transRows,'id',{noPrune:true});
-    await sbDeleteCollapsedSeedUsers();
-    await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
+    // Các bảng độc lập ghi song song để một lần lưu không phải chờ lần lượt từng bảng.
+    await Promise.all([
+      (async()=>{
+        await sbUpsertThenPrune('products',productRows,'id',{noPrune:true});
+        await sbDeleteTombstonedProducts();
+      })(),
+      sbUpsertThenPrune('customers',customerRows,'id',{noPrune:true}),
+      (async()=>{
+        try{
+          await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
+        }catch(crmSyncErr){
+          const msg=String((crmSyncErr&&crmSyncErr.message)||crmSyncErr||'');
+          if(!/note|survey_imgs|column/i.test(msg)) throw crmSyncErr;
+          const crmCore=crmRows.map(r=>{
+            const {note,survey_imgs,...rest}=r;
+            return rest;
+          });
+          await sbUpsertThenPrune('crm_leads',crmCore,'id',{noPrune:true});
+          console.warn('CRM sync: thiếu cột note/survey_imgs trên Supabase — đã đẩy phần còn lại. Chạy migration 20261024143000_crm_leads_note_survey_imgs.sql');
+        }
+        if(crmGone.length){
+          const {error:crmDelErr}=await sb.from('crm_leads').delete().in('id',crmGone);
+          if(crmDelErr) throw crmDelErr;
+          DB.deletedCrmIds=[];
+          try{ _saveDB(); }catch(e){}
+        }
+      })(),
+      (async()=>{
+        await sbUpsertThenPrune('suppliers',supplierRows,'id',{noPrune:true});
+        for(let si=0;si<supTombs.length;si+=80){
+          const part=supTombs.slice(si,si+80);
+          const {error:sDelErr}=await sb.from('suppliers').delete().in('id',part);
+          if(sDelErr) throw sDelErr;
+        }
+        if(supTombs.length){
+          DB.deletedSupplierIds=[];
+          try{ _saveDB(); }catch(e){}
+        }
+      })(),
+      (async()=>{
+        await sbUpsertThenPrune('quotes',quoteRows,'code',{noPrune:true});
+        for(let qi=0;qi<quoteTombs.length;qi+=80){
+          const part=quoteTombs.slice(qi,qi+80);
+          const {error:qDelErr}=await sb.from('quotes').delete().in('code',part);
+          if(qDelErr) throw qDelErr;
+        }
+        if(quoteTombs.length){
+          DB.deletedQuoteCodes=[];
+          try{ _saveDB(); }catch(e){}
+        }
+      })(),
+      sbUpsertThenPrune('stock_items',stockRows,'id',{noPrune:true}),
+      sbUpsertThenPrune('stock_transactions',transRows,'id',{noPrune:true}),
+      (async()=>{
+        await sbDeleteCollapsedSeedUsers();
+        await sbUpsertThenPrune('app_users',userRows,'id',{noPrune:true});
+      })()
+    ]);
 
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
     const wpPlansChanged=!!(_syncBase&&_syncBase.workPlans!==syncHash(wpPlansPayload()));
     const assetsChanged=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
-    try{ await attHydratePhotosFromIdb({silent:true}); }catch(e){}
     const attChanged=!!(_syncBase&&_syncBase.attendance!==syncHash(attFingerprint(DB.attendance)));
-    const hasCrmOverrides=!!(DB.settings&&DB.settings.crmOverrides&&Object.keys(DB.settings.crmOverrides).length);
-    // Luôn đẩy settings khi có CRM override (ghi chú/ảnh/trạng thái…) để không mất sau reload
-    if(settingsChanged||wpPlansChanged||assetsChanged||attChanged||quoteTombs.length||hasCrmOverrides||crmRows.length){
+    // Chỉ ghi settings khi phần đó đổi. Không nén lại toàn bộ ảnh chấm công mỗi lần lưu đơn.
+    if(settingsChanged||wpPlansChanged||assetsChanged||attChanged||quoteTombs.length||crmRows.length){
     let attPayload=[];
+    let remoteMain=null;
     try{
       const {data:curWp}=await sb.from('erp_settings').select('data').eq('id','main').maybeSingle();
-      const remoteWp=curWp&&curWp.data&&curWp.data._workPlans;
+      remoteMain=curWp&&curWp.data;
+      const remoteWp=remoteMain&&remoteMain._workPlans;
       DB.workPlans=wpMergePlans(remoteWp, DB.workPlans);
-      DB.attendance=attMergeRecords(DB.attendance, curWp&&curWp.data&&curWp.data._attendance);
+      DB.attendance=attMergeRecords(DB.attendance, remoteMain&&remoteMain._attendance);
       if(!DB.settings||typeof DB.settings!=='object') DB.settings={};
-      DB.settings.kdAvail=mergeKdAvailMaps(curWp&&curWp.data&&curWp.data.kdAvail, DB.settings.kdAvail);
+      DB.settings.kdAvail=mergeKdAvailMaps(remoteMain&&remoteMain.kdAvail, DB.settings.kdAvail);
     }catch(e){ console.warn('workPlans merge', e); }
-    try{ attPayload=await attAttendancePayload(); }catch(e){ console.warn('attendance payload', e); attPayload=attScalarsOnly(DB.attendance); }
+    if(attChanged){
+      try{ attPayload=await attAttendancePayload(); }catch(e){ console.warn('attendance payload', e); attPayload=attScalarsOnly(DB.attendance); }
+    }else if(remoteMain&&remoteMain._attendance){
+      attPayload=remoteMain._attendance;
+    }else{
+      attPayload=attScalarsOnly(DB.attendance);
+    }
     const {error:setErr}=await sb.from('erp_settings').upsert({
       id:'main',
       data:{
@@ -4782,11 +4803,13 @@ async function pushDBToSupabase(){
       id:'main',q:Number(seq.q)||0,t:Number(seq.t)||0,u:Number(seq.u)||0,p:Number(seq.p)||0,updated_at:now
     });
     if(seqErr)throw seqErr;
+    // Có sửa mới trong lúc đang đẩy — đừng đánh dấu bản mới là đã lên cloud.
+    if(_dbRev!==pushRev) return 'again';
     captureSyncBase();
     return true;
   }catch(e){
     console.warn('pushDB',e);
-    toast('Không đồng bộ lên Supabase: '+(e.message||e),'bad');
+    _lastPushErr=e;
     return false;
   }
 }
@@ -4812,10 +4835,27 @@ function isDBDirty(){
 /** Hàng đợi push tuần tự + retry — tránh race khi thêm/sửa/xóa liên tục */
 let _sbPushTimer=null;
 let _sbPushChain=Promise.resolve();
+let _sbPushRunning=false;
+let _sbPushAgain=false;
+let _pullAfterPush=false;
+let _dbRev=0;
+let _saveNotify=false;
+let _lastPushErr=null;
+let _saveFailToastedAt=0;
 let _localSyncStamp='';
 let _softSyncBusy=false;
 let _liveSyncTimer=null;
 let _liveSyncStarted=false;
+function toastSaveFailed(err){
+  const now=Date.now();
+  if(now-_saveFailToastedAt<15000) return;
+  _saveFailToastedAt=now;
+  const raw=String((err&&(err.message||err))||'');
+  let lead='Chưa lưu được lên máy chủ. ';
+  if(/jwt|auth|session|401|403/i.test(raw)) lead='Phiên đăng nhập hết hạn, chưa lưu được lên máy chủ. ';
+  else if(/fetch|network|failed|offline|load/i.test(raw)) lead='Mất mạng, chưa lưu được lên máy chủ. ';
+  toast(lead+'Dữ liệu vẫn còn trên máy này. Kiểm tra mạng hoặc đăng nhập lại, rồi lưu tiếp. Đừng tắt trang cho đến khi thấy «Đã lưu lên máy chủ».','bad',9000);
+}
 
 async function fetchErpSyncStamp(){
   if(!sb||!SB_USER) return '';
@@ -4829,27 +4869,59 @@ async function fetchErpSyncStamp(){
 function schedulePushDB(immediate){
   if(!SB_READY||!SB_USER) return;
   if(!_syncBase) return;
-  if(immediate){
-    if(_sbPushTimer){ clearTimeout(_sbPushTimer); _sbPushTimer=null; }
-    enqueuePushDB();
+  if(_sbPushTimer){ clearTimeout(_sbPushTimer); _sbPushTimer=null; }
+  // Lưu là đẩy ngay. Lần đang chạy dở thì xếp đúng một lần kế tiếp, không chờ thêm.
+  if(immediate===false){
+    _sbPushTimer=setTimeout(()=>{ _sbPushTimer=null; enqueuePushDB(); }, 0);
     return;
   }
-  if(_sbPushTimer) clearTimeout(_sbPushTimer);
-  _sbPushTimer=setTimeout(()=>{ _sbPushTimer=null; enqueuePushDB(); }, 80);
+  enqueuePushDB();
 }
 function enqueuePushDB(){
+  if(_sbPushRunning){
+    _sbPushAgain=true;
+    return _sbPushChain;
+  }
   const run=async()=>{
+    _sbPushRunning=true;
     let ok=false;
-    for(let attempt=0; attempt<3; attempt++){
-      ok=await pushDBToSupabase();
+    try{
+      do{
+        _sbPushAgain=false;
+        let attemptOk=false;
+        for(let attempt=0; attempt<3; attempt++){
+          const res=await pushDBToSupabase();
+          if(res===true || res==='again'){
+            attemptOk=true;
+            if(res==='again') _sbPushAgain=true;
+            break;
+          }
+          await new Promise(r=>setTimeout(r, 200*(attempt+1)));
+        }
+        ok=attemptOk;
+        if(!ok) break;
+        if(!_sbPushAgain){
+          clearDBDirty();
+          _localSyncStamp=await fetchErpSyncStamp();
+        }
+      }while(_sbPushAgain);
       if(ok){
-        clearDBDirty();
-        _localSyncStamp=await fetchErpSyncStamp();
-        break;
+        _saveFailToastedAt=0;
+        if(_saveNotify){
+          _saveNotify=false;
+          toast('Đã lưu lên máy chủ','ok');
+        }
+      }else if(_saveNotify||isDBDirty()){
+        toastSaveFailed(_lastPushErr);
       }
-      await new Promise(r=>setTimeout(r, 400*(attempt+1)));
+      return ok;
+    }finally{
+      _sbPushRunning=false;
+      if(_pullAfterPush){
+        _pullAfterPush=false;
+        setTimeout(()=>{ softCloudSync('after-push'); }, 0);
+      }
     }
-    return ok;
   };
   _sbPushChain=_sbPushChain.then(run,run);
   return _sbPushChain;
@@ -4862,6 +4934,10 @@ async function flushPushDB(){
 
 /** Kéo cloud khi máy khác vừa lưu — không đè nếu máy này còn thay đổi chưa đẩy */
 async function softCloudSync(reason){
+  if(_sbPushRunning){
+    _pullAfterPush=true;
+    return false;
+  }
   if(_softSyncBusy||!SB_READY||!SB_USER||!ME) return false;
   _softSyncBusy=true;
   try{
@@ -4920,6 +4996,8 @@ const _saveDB=saveDB;
 saveDB=function(){
   _saveDB();
   markDBDirty();
+  _dbRev++;
+  _saveNotify=true;
   if(SB_READY&&SB_USER) schedulePushDB(true);
   else if(SB_READY&&!SB_USER){
     // Đang "Chỉ local" — cảnh báo một lần mỗi phiên thao tác
