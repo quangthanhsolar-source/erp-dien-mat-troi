@@ -5063,7 +5063,6 @@ async function enterApp(u, opt){
     // Có thay đổi chưa đẩy lên cloud → PUSH TRƯỚC; nếu push lỗi thì KHÔNG pull (tránh đè mất bản mới)
     let skipPull=false;
     if(isDBDirty()&&_syncBase){
-      toast('Đang lưu thay đổi lên Supabase…','');
       const pushed=await flushPushDB();
       if(!pushed){
         toast('Chưa đẩy hết lên Supabase — giữ bản trên máy này, không tải bản cũ từ cloud','bad');
@@ -5076,7 +5075,6 @@ async function enterApp(u, opt){
       renderPage();
       try{ renderSidebar(); }catch(e){}
     }else{
-    toast('Đang đồng bộ dữ liệu từ Supabase…','');
     const ok=await pullDBFromSupabase();
     const restored=mergeSeedCatalog();
     const exVatN=applyEquipPricesExVatOnce();
@@ -5101,24 +5099,18 @@ async function enterApp(u, opt){
     let usersOnlyPush=false;
     if(restored>0||brandFixed>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0||testInboundPendingPush()||assetSync||stockSync||attSync){
       _saveDB(); needPush=true;
-      if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc lên hệ thống','ok');
-      if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok');
     }else if(!ok){
       needPush=true;
-      toast('Đã đẩy dữ liệu local lên Supabase','ok');
     }else if(ok==='local-pending'){
       needPush=true;
     }else if(ok==='users-sync'){
       usersOnlyPush=true;
-      toast('Đã đồng bộ người dùng lên Supabase','ok');
     }else if(ok==='brand-fixed'){
       needPush=true;
     }else if(ok==='restored'){
       needPush=true;
-      toast('Đã tải dữ liệu từ Supabase và bổ sung danh mục gốc','ok');
     }else{
       clearDBDirty();
-      toast('Đã tải dữ liệu từ Supabase','ok');
     }
     if(ordAdded>0||ordPruned>0){
       _saveDB();
@@ -5150,7 +5142,7 @@ async function enterApp(u, opt){
     const inboundN=applyTestInboundOnce();
     refreshSessionRole();
     const brandFixedOffline=normalizeCatalogBrands();
-    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0){ applyPimgToDB(); _saveDB(); if(restored>0) toast('Đã khôi phục '+restored+' sản phẩm danh mục gốc','ok'); if(exVatN>0||seedPriceN>0) toast('Đã cập nhật giá thiết bị theo bảng giá mới (÷1.08)','ok'); }
+    if(restored>0||brandFixedOffline>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0){ applyPimgToDB(); _saveDB(); }
     const ordAdded=await ensureExcelOrders();
     const ordPruned=pruneQuotesMissingNv();
     if(ordAdded>0||ordPruned>0) _saveDB();
