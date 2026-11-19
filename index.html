@@ -3789,6 +3789,28 @@ function collectDBPayload(){
   return data;
 }
 let _crmRetainIds=[];
+let _quoteRetainCodes=[];
+function keepRowsMissingFromCloud(cloudRows, localRows, keyFn){
+  const remote=Array.isArray(cloudRows)?cloudRows:[];
+  const mine=Array.isArray(localRows)?localRows:[];
+  const seen=new Set();
+  const out=[];
+  remote.forEach(row=>{
+    const k=keyFn(row);
+    if(!k||seen.has(k)) return;
+    seen.add(k);
+    out.push(row);
+  });
+  const kept=[];
+  mine.forEach(row=>{
+    const k=keyFn(row);
+    if(!k||seen.has(k)) return;
+    seen.add(k);
+    out.push(row);
+    kept.push(k);
+  });
+  return {rows:out, kept};
+}
 function applyDBPayload(data){
   if(!data||typeof data!=='object')return;
   _crmRetainIds=[];
@@ -3881,9 +3903,9 @@ function applyDBPayload(data){
       });
       const cloudIds=new Set((DB.crm||[]).filter(r=>r&&r.id!=null).map(r=>String(r.id)));
       const missing=local.filter(r=>!cloudIds.has(String(r.id)));
-      // Thiếu nhiều hơn vài khách (pull sót trang / bản cloud cụt) thì giữ và đẩy lại.
-      // Xóa 1–5 khách trên máy khác vẫn có hiệu lực, không hồi sinh hàng loạt.
-      if(missing.length && (missing.length>5 || incoming.length<local.length*0.95)){
+      // Khách có trên máy mà cloud chưa có: luôn giữ và đẩy lại.
+      // Xóa thật chỉ qua deletedCrmIds. Không bỏ 1–5 khách mới chỉ vì pull thiếu.
+      if(missing.length){
         missing.forEach(r=>{ DB.crm.push(r); });
         _crmRetainIds=missing.map(r=>String(r.id));
         console.warn('CRM pull thiếu', missing.length, 'khách — giữ trên máy và đẩy lại Supabase');
@@ -3895,12 +3917,34 @@ function applyDBPayload(data){
     }
     if(k==='quotes'){
       const gone=new Set([...(DB.deletedQuoteCodes||[]), ...(data.deletedQuoteCodes||[])].map(c=>String(c||'').trim()).filter(Boolean));
-      DB.quotes=(data.quotes||[]).filter(q=>q&&!gone.has(String(q.code||'').trim()));
+      const local=(DB.quotes||[]).filter(q=>q&&String(q.code||'').trim()&&!gone.has(String(q.code||'').trim()));
+      const incoming=(data.quotes||[]).filter(q=>q&&String(q.code||'').trim()&&!gone.has(String(q.code||'').trim()));
+      const byCode=new Map(local.map(q=>[String(q.code).trim(), q]));
+      const merged=incoming.map(q=>{
+        const code=String(q.code||'').trim();
+        const prev=byCode.get(code);
+        if(!prev) return q;
+        const base=_syncBase&&_syncBase.quotes?_syncBase.quotes[code]:null;
+        if(base!=null && base!==syncHash(prev)) return prev;
+        ['nv','cus','phone','addr','note','coHoi','total','paid','deposit','debt','date','status','monthLabel','source'].forEach(f=>{
+          const pv=prev[f], rv=q[f];
+          const pEmpty=pv==null||String(pv).trim()==='';
+          const rEmpty=rv==null||String(rv).trim()==='';
+          if(!pEmpty && rEmpty) q[f]=pv;
+        });
+        return q;
+      });
+      const kept=keepRowsMissingFromCloud(merged, local, q=>String(q&&q.code||'').trim());
+      DB.quotes=kept.rows;
+      _quoteRetainCodes=kept.kept.slice();
+      if(kept.kept.length) console.warn('Đơn hàng pull thiếu', kept.kept.length, 'đơn — giữ trên máy và đẩy lại Supabase');
       return;
     }
     if(k==='suppliers'){
       const gone=new Set([...(DB.deletedSupplierIds||[]), ...(data.deletedSupplierIds||[])].map(Number).filter(n=>n));
-      DB.suppliers=(data.suppliers||[]).filter(s=>s&&!gone.has(Number(s.id)));
+      const local=(DB.suppliers||[]).filter(s=>s&&!gone.has(Number(s.id)));
+      const incoming=(data.suppliers||[]).filter(s=>s&&!gone.has(Number(s.id)));
+      DB.suppliers=keepRowsMissingFromCloud(incoming, local, s=>s&&s.id!=null?String(s.id):'').rows;
       return;
     }
     if(k==='attendance'){
@@ -3911,6 +3955,33 @@ function applyDBPayload(data){
     }
     if(k==='workPlans'){
       DB.workPlans=wpMergePlans(DB.workPlans, data.workPlans);
+      return;
+    }
+    if(k==='stock'||k==='trans'||k==='customers'){
+      const keyFn=row=>row&&row.id!=null?String(row.id):'';
+      const local=Array.isArray(DB[k])?DB[k]:[];
+      const incoming=Array.isArray(data[k])?data[k]:[];
+      DB[k]=keepRowsMissingFromCloud(incoming, local, keyFn).rows;
+      return;
+    }
+    if(k==='contracts'){
+      const local=Array.isArray(DB.contracts)?DB.contracts:[];
+      const incoming=Array.isArray(data.contracts)?data.contracts:[];
+      DB.contracts=keepRowsMissingFromCloud(incoming, local, c=>c&&c.code?String(c.code).trim():'').rows;
+      return;
+    }
+    if(SB_PRODUCT_KEYS.indexOf(k)>=0){
+      const tombs=new Set((DB.deletedProductCodes||[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean));
+      const dead=row=>{
+        if(!row) return true;
+        const code=String(row.code||'').trim().toLowerCase();
+        if(code&&tombs.has(code)) return true;
+        if(row.id!=null&&tombs.has('id:'+String(row.id))) return true;
+        return false;
+      };
+      const local=(DB[k]||[]).filter(row=>!dead(row));
+      const incoming=(Array.isArray(data[k])?data[k]:[]).filter(row=>!dead(row));
+      DB[k]=keepRowsMissingFromCloud(incoming, local, p=>p&&p.id!=null?String(p.id):'').rows;
       return;
     }
     DB[k]=data[k];
@@ -4328,7 +4399,10 @@ function mergeUnsyncedLocal(snap, prevBase){
       if(!k) return;
       const at=idx.get(k);
       if(at==null){
-        if(known&&Object.prototype.hasOwnProperty.call(known,k)) return;
+        // Đã từng có trên cloud rồi biến mất: với CRM và đơn hàng vẫn giữ, trừ khi đã có tombstone.
+        // Các bảng khác: dòng đã sync mà cloud không còn thì coi là xóa từ máy khác.
+        const pin=bucketName==='crm'||bucketName==='quotes'||bucketName==='customers';
+        if(!pin && known&&Object.prototype.hasOwnProperty.call(known,k)) return;
         bucket.push(row);
         idx.set(k,bucket.length-1);
         keys[bucketName].push(k);
@@ -4395,9 +4469,8 @@ async function pullDBFromSupabase(){
       crm:crm.data||[]
     };
     if(!sbHasRemoteErpData(bundle))return false;
-    const dirtyBefore=isDBDirty();
     const prevBase=_syncBase;
-    const snap=dirtyBefore?takeSyncSnapshot():null;
+    const snap=takeSyncSnapshot();
     const localUsersBefore=(DB.users||[]).slice();
     const remoteAttRaw=bundle.settings&&bundle.settings.data?bundle.settings.data._attendance:null;
     const brandN=applyDBPayload(sbBundleToPayload(bundle))||0;
@@ -4432,7 +4505,7 @@ async function pullDBFromSupabase(){
       });
       bumpUserSeq();
     }
-    const pending=snap?mergeUnsyncedLocal(snap, prevBase):{n:0,keys:{quotes:[],products:[],stock:[],trans:[],users:[],crm:[],customers:[],suppliers:[]}};
+    const pending=mergeUnsyncedLocal(snap, prevBase);
     const stockSheetN=applyStockSheetOnce();
     applyAssetSheetOnce();
     const userSeedN=applyUserAccountSeedOnce();
@@ -4475,6 +4548,11 @@ async function pullDBFromSupabase(){
       pending.keys.crm.push(..._crmRetainIds);
       pending.n+=_crmRetainIds.length;
       _crmRetainIds=[];
+    }
+    if(_quoteRetainCodes.length){
+      pending.keys.quotes.push(..._quoteRetainCodes);
+      pending.n+=_quoteRetainCodes.length;
+      _quoteRetainCodes=[];
     }
     dropSyncBaseKeys(pending.keys);
     if(pending.n>0){
@@ -8517,12 +8595,8 @@ function rememberDeletedQuotes(codes){
   DB.deletedQuoteCodes=[...set];
 }
 function pruneQuotesMissingNv(){
-  if(!Array.isArray(DB.quotes)) return 0;
-  const gone=DB.quotes.filter(q=>!hasOrderStaff(q)).map(q=>q.code);
-  if(gone.length) rememberDeletedQuotes(gone);
-  const before=DB.quotes.length;
-  DB.quotes=DB.quotes.filter(hasOrderStaff);
-  return before-DB.quotes.length;
+  // Không xóa đơn thiếu tên sale khi mở trang. Xóa thật chỉ khi người dùng bấm xóa (tombstone).
+  return 0;
 }
 function seedRowToQuote(r, idx){
   const code='DH-'+String(idx+1).padStart(5,'0');
