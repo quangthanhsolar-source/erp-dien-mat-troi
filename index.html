@@ -4011,7 +4011,7 @@ function sbBundleToPayload(bundle){
       name:r.name||'',
       phone:r.phone||'',
       address:r.address||'',
-      demand:r.demand||'',
+      demand:crmDemandCoerce(r.demand),
       owner:r.owner||'',
       date:r.lead_date||'',
       source:r.source||'',
@@ -6615,14 +6615,17 @@ function qtKeepQty(prevItems, key, id, fallback, allowZero){
   if(q<0) q=0;
   return allowZero?q:Math.max(1, q||1);
 }
+function readQtyInput(raw){
+  const n=Math.round(parseAmountInput(raw,{decimal:false}));
+  return Number.isFinite(n)?n:0;
+}
 function quoteQtyFromInput(inp){
-  const raw=String(inp&&inp.value!=null?inp.value:'').trim();
-  if(raw==='') return 0;
-  const n=Math.round(+raw);
-  return Number.isFinite(n)&&n>0?n:0;
+  const n=readQtyInput(inp&&inp.value);
+  return n>0?n:0;
 }
 function mirrorQtyInputs(selector, value, except){
-  document.querySelectorAll(selector).forEach(el=>{ if(el!==except) el.value=value; });
+  const shown=groupAmountInput(value,{decimal:false});
+  document.querySelectorAll(selector).forEach(el=>{ if(el!==except) el.value=shown; });
 }
 function paintQtMoney(){
   (QT.items||[]).forEach((it,i)=>{
@@ -7294,7 +7297,7 @@ function pageQuoteNew(){
           ${r.specs&&r.specs.length?`<div class="specs" style="margin-top:3px">${r.specs.map(s=>'- '+esc(s)).join('<br>')}</div>`:''}</span></span>
         </td>
         ${visI===0?`<td style="padding:3px 4px;text-align:center;vertical-align:middle" rowspan="${vis.length}">${sectionThumbHtml(it,'_NC')}</td>`:''}
-        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="number" min="0" value="${r.qty}" data-nc-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
+        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-nc-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
         <td style="padding:3px 4px;text-align:right"><input ${qtMoneyPriceAttrs(r.price, `data-nc-p="${ri}"`, qtPriceFloor(r))} style="width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px"></td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px" data-nc-line="${ri}">${vnd(r.qty*r.price)}</td>
       </tr>`).join('')}`:it._disc?`
@@ -7310,7 +7313,7 @@ function pageQuoteNew(){
         <td style="font-size:12.5px;padding:4px 8px">${esc((QT.uuDai&&QT.uuDai.name)||'Ưu đãi giảm giá cho khách hàng')}<span style="color:var(--muted);font-size:11px"> / Hệ</span>
         </td>
         <td style="padding:3px 4px;text-align:center;vertical-align:middle"><div style="width:70px;height:54px;background:#f1f5f9;border-radius:8px;margin:0 auto"></div></td>
-        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="number" min="1" value="${(QT.uuDai&&QT.uuDai.qty)||1}" data-dc-q="1" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
+        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput((QT.uuDai&&QT.uuDai.qty)||1,{decimal:false}))}" data-dc-q="1" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
         <td style="padding:3px 4px;text-align:right"><input ${qtMoneyPriceAttrs((QT.uuDai&&QT.uuDai.price)||0, 'data-dc-p="1"', 0)} style="width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px"></td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px;color:#dc2626" data-dc-line="1">-${vnd(Math.abs((QT.uuDai&&QT.uuDai.qty||1)*(QT.uuDai&&QT.uuDai.price||0)))}</td>
       </tr>`:it._pk?`
@@ -7328,7 +7331,7 @@ function pageQuoteNew(){
         <td class="mono" style="color:var(--muted);font-size:12px;padding:4px 8px">${visI+1}</td>
         <td style="font-size:12.5px;padding:4px 8px">${pkProductCell(r,ri,'desk')}</td>
         ${visI===0?`<td style="padding:3px 4px;text-align:center;vertical-align:middle" rowspan="${vis.length}">${sectionThumbHtml(it,'_PK')}</td>`:''}
-        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="number" min="0" value="${r.qty}" data-pk-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
+        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-pk-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
         <td style="padding:3px 4px;text-align:right">${qtPkPriceInput(r, ri, 'width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px')}</td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px" data-pk-line="${ri}">${vnd(r.qty*r.price)}</td>
       </tr>`).join('')}${qtManualPkFallback('desk')}`:it._nv?`
@@ -7344,7 +7347,7 @@ function pageQuoteNew(){
         <td class="mono" style="color:var(--muted);font-size:12px;padding:4px 8px">${visI+1}</td>
         <td style="font-size:12.5px;padding:4px 8px"><span class="qt-omit-name">${qtOmitBtnRow('nv',ri)}<span class="qt-omit-txt">${esc(r.name)} <span style="color:var(--muted);font-size:11px">/ ${esc(r.unit)}</span></span></span></td>
         ${visI===0?`<td style="padding:3px 4px;text-align:center;vertical-align:middle" rowspan="${vis.length}">${sectionThumbHtml(it,'_NV')}</td>`:''}
-        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="number" min="0" value="${r.qty}" data-nv-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
+        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-nv-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
         <td style="padding:3px 4px;text-align:right"><input ${qtMoneyPriceAttrs(r.price, `data-nv-p="${ri}"`, qtPriceFloor(r))} style="width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px"></td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px" data-nv-line="${ri}">${vnd(r.qty*r.price)}</td>
       </tr>`).join('')}`:`<tr>
@@ -7354,7 +7357,7 @@ function pageQuoteNew(){
           ${(isRealProdImg(it.img)||pimgOf(it.code))?`<img src="${isRealProdImg(it.img)?it.img:pimgOf(it.code)}" alt="" style="width:70px;height:54px;object-fit:contain;display:block;margin:0 auto;border-radius:8px;background:#f1f5f9">`:
           `<div style="width:70px;height:54px;background:#f1f5f9;border-radius:8px;margin:0 auto"></div>`}
         </td>
-        <td style="text-align:center;padding:6px 4px"><input class="qt-qty mono" type="number" min="0" value="${it.qty}" data-q="${i}" style="width:54px;height:36px;text-align:center;border:1px solid var(--line);border-radius:8px"></td>
+        <td style="text-align:center;padding:6px 4px"><input class="qt-qty mono" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(it.qty,{decimal:false}))}" data-q="${i}" style="width:54px;height:36px;text-align:center;border:1px solid var(--line);border-radius:8px"></td>
         <td style="text-align:right;padding:6px 4px"><input ${qtPriceInputAttrs(it,i)} style="width:112px;height:36px;text-align:right;border:1px solid var(--line);border-radius:8px;padding:0 8px"></td>
         <td class="num mono" data-line="${i}" style="font-weight:600">${vnd(it.qty*it.price)}</td></tr>`).join('')}
       </tbody>
@@ -7391,7 +7394,7 @@ function buildQtList(){
           <div style="font-size:12px;font-weight:600;color:var(--ink-2)"><span class="qt-omit-name">${qtOmitBtnRow('nc',ri)}<span class="qt-omit-txt">${esc(r.name)}<span style="color:var(--muted);font-weight:400"> / ${esc(r.unit)}</span>
             ${r.specs&&r.specs.length?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${r.specs.map(s=>'- '+esc(s)).join('<br>')}</div>`:''}</span></span>
           </div>
-          <input class="qt-qty" type="number" min="0" value="${r.qty}" data-nc-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
+          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-nc-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
           <input ${qtMoneyPriceAttrs(r.price, `data-nc-p="${ri}"`, qtPriceFloor(r))} style="width:88px;height:32px;font-size:12px;text-align:right;padding:0 6px">
           <div style="text-align:right;font-size:12px;font-weight:600;color:var(--ink)" data-nc-line="${ri}">${vnd(r.qty*r.price)}</div>
         </div>`).join('')}
@@ -7409,7 +7412,7 @@ function buildQtList(){
         <div style="display:grid;grid-template-columns:1fr 52px 90px 80px;gap:5px;align-items:start;padding:5px 0;border-bottom:1px solid var(--line-2)">
           <div style="font-size:12px;font-weight:600;color:var(--ink-2)">${esc((QT.uuDai&&QT.uuDai.name)||'Ưu đãi giảm giá cho khách hàng')}<span style="color:var(--muted);font-weight:400"> / Hệ</span>
           </div>
-          <input class="qt-qty" type="number" min="1" value="${(QT.uuDai&&QT.uuDai.qty)||1}" data-dc-q="1" style="width:50px;height:32px;font-size:12px;text-align:center">
+          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput((QT.uuDai&&QT.uuDai.qty)||1,{decimal:false}))}" data-dc-q="1" style="width:50px;height:32px;font-size:12px;text-align:center">
           <input ${qtMoneyPriceAttrs((QT.uuDai&&QT.uuDai.price)||0, 'data-dc-p="1"', 0)} style="width:88px;height:32px;font-size:12px;text-align:right;padding:0 6px">
           <div style="text-align:right;font-size:12px;font-weight:600;color:#dc2626" data-dc-line="1">-${vnd(Math.abs((QT.uuDai&&QT.uuDai.qty||1)*(QT.uuDai&&QT.uuDai.price||0)))}</div>
         </div>
@@ -7429,7 +7432,7 @@ function buildQtList(){
         ${qtVisibleRows(QT.phuKien,'pk').map(({r,i:ri})=>`
         <div style="display:grid;grid-template-columns:1fr 52px 90px 72px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)">
           <div style="font-size:12px;font-weight:600;color:var(--ink-2)">${pkProductCell(r,ri,'mobi')}</div>
-          <input class="qt-qty" type="number" min="0" value="${r.qty}" data-pk-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
+          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-pk-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
           ${qtPkPriceInput(r, ri, 'width:88px;height:32px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 6px')}
           <div style="text-align:right;font-size:12px;font-weight:600;color:var(--ink)" data-pk-line="${ri}">${vnd(r.qty*r.price)}</div>
         </div>`).join('')}${qtManualPkFallback('mobi')}
@@ -7447,7 +7450,7 @@ function buildQtList(){
         ${qtVisibleRows(QT.ngoaivi,'nv').map(({r,i:ri})=>`
         <div style="display:grid;grid-template-columns:1fr 52px 90px 72px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)">
           <div style="font-size:12px;font-weight:600;color:var(--ink-2)"><span class="qt-omit-name">${qtOmitBtnRow('nv',ri)}<span class="qt-omit-txt">${esc(r.name)}<span style="color:var(--muted);font-weight:400"> / ${esc(r.unit)}</span></span></span></div>
-          <input class="qt-qty" type="number" min="0" value="${r.qty}" data-nv-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
+          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-nv-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
           <input ${qtMoneyPriceAttrs(r.price, `data-nv-p="${ri}"`, qtPriceFloor(r))} style="width:88px;height:32px;font-size:12px;text-align:right;padding:0 6px">
           <div style="text-align:right;font-size:12px;font-weight:600;color:var(--ink)" data-nv-line="${ri}">${vnd(r.qty*r.price)}</div>
         </div>`).join('')}
@@ -7467,7 +7470,7 @@ function buildQtList(){
           ${it.specs&&it.specs.length?`<div class="qt-item-specs">${it.specs.slice(0,4).map(s=>formatSpecLine(s,esc)).filter(Boolean).join('<br>')}</div>`:''}
         </div>
         <div class="qt-item-controls">
-          <input class="qt-qty" type="number" min="0" value="${it.qty}" data-q="${i}">
+          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(it.qty,{decimal:false}))}" data-q="${i}">
           <input ${qtPriceInputAttrs(it,i)}>
           <div class="qt-total mono" data-line="${i}">${vnd(it.qty*it.price)}</div>
         </div>
@@ -7554,15 +7557,133 @@ function ensureQtPay(){
   QT.pay.p3=Math.max(0,Math.round(+QT.pay.p3||0));
   return QT.pay;
 }
+/** Tách phần nguyên / dấu thập phân. "." là nhóm nghìn VN; "," hoặc "." lẻ (không phải nhóm 3 số) là dấu thập phân. */
+function splitAmountDecimal(s){
+  if(!s) return {dec:'', intDigits:'', frac:''};
+  if(/[.,]$/.test(s)){
+    const mark=s.charAt(s.length-1);
+    return {dec:mark, intDigits:s.slice(0,-1).replace(/\D/g,''), frac:''};
+  }
+  const comma=s.lastIndexOf(',');
+  if(comma>=0){
+    return {dec:',', intDigits:s.slice(0,comma).replace(/\D/g,''), frac:s.slice(comma+1).replace(/\D/g,'')};
+  }
+  if(/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)){
+    return {dec:'', intDigits:s.replace(/\D/g,''), frac:''};
+  }
+  const dot=s.lastIndexOf('.');
+  if(dot>=0){
+    const tail=s.slice(dot+1).replace(/\D/g,'');
+    const head=s.slice(0,dot).replace(/\D/g,'');
+    if(head==='' || head==='0' || tail.length!==3){
+      return {dec:'.', intDigits:head||'0', frac:tail};
+    }
+  }
+  return {dec:'', intDigits:s.replace(/\D/g,''), frac:''};
+}
+/** Gõ số tiền / số lượng: nhóm "." mỗi 3 chữ số từ phải sang trái.
+ *  opts.signed giữ dấu trừ. opts.decimal giữ dấu thập phân "," hoặc "." đang có, chỉ nhóm phần nguyên. */
+function groupAmountInput(raw, opts){
+  opts=opts||{};
+  const signed=!!opts.signed;
+  const decimal=!!opts.decimal;
+  let s=String(raw==null?'':raw).replace(/\s/g,'').replace(/[^\d.,-]/g,'');
+  let sign='';
+  if(signed && s.charAt(0)==='-') sign='-';
+  s=s.replace(/-/g,'');
+  if(!s) return sign;
+  let dec='', intDigits='', frac='';
+  if(decimal){
+    const cut=splitAmountDecimal(s);
+    dec=cut.dec; intDigits=cut.intDigits; frac=cut.frac;
+  }else intDigits=s.replace(/\D/g,'');
+  intDigits=intDigits.replace(/^0+(?=\d)/,'');
+  const grouped=intDigits.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  if(dec) return sign+(grouped||'0')+dec+frac;
+  return sign+grouped;
+}
+/** Bỏ dấu "." ngăn nghìn, trả về số thật (3000000, không phải "3.000.000"). */
+function parseAmountInput(raw, opts){
+  opts=opts||{};
+  const signed=!!opts.signed;
+  const decimal=!!opts.decimal;
+  let s=String(raw==null?'':raw).trim().replace(/\s/g,'');
+  if(!s) return 0;
+  let sign=1;
+  if(signed && s.charAt(0)==='-'){ sign=-1; s=s.slice(1); }
+  s=s.replace(/-/g,'').replace(/[^\d.,]/g,'');
+  if(!s || s===',' || s==='.') return 0;
+  let numStr='';
+  if(!decimal) numStr=s.replace(/\D/g,'');
+  else{
+    const cut=splitAmountDecimal(s);
+    const intPart=(cut.intDigits||'').replace(/^0+(?=\d)/,'')||'0';
+    if(cut.dec) numStr=intPart+'.'+(cut.frac||'0');
+    else if(cut.intDigits) numStr=(cut.intDigits.replace(/^0+(?=\d)/,'')||'0');
+  }
+  if(!numStr) return 0;
+  const n=Number(numStr);
+  if(!Number.isFinite(n)) return 0;
+  return sign<0?-n:n;
+}
+function applyAmountFormat(el, opts){
+  if(!el) return;
+  opts=opts||{};
+  const before=String(el.value==null?'':el.value);
+  let next=groupAmountInput(before, opts);
+  if(opts.keepZero && next==='') next='0';
+  if(next===before) return;
+  const start=el.selectionStart;
+  const end=start==null?before.length:start;
+  const left=before.slice(0, end);
+  const digitsBefore=(left.match(/\d/g)||[]).length;
+  const decAtEnd=!!opts.decimal && /[,.]$/.test(left);
+  el.value=next;
+  try{
+    let pos=0;
+    if(digitsBefore<=0){
+      if(opts.keepZero && !/\d/.test(before)) pos=next.length;
+      else pos=next.charAt(0)==='-'?1:0;
+    }else{
+      let seen=0;
+      pos=next.length;
+      for(let i=0;i<next.length;i++){
+        const c=next.charAt(i);
+        if(c>='0' && c<='9'){
+          seen++;
+          if(seen===digitsBefore){ pos=i+1; break; }
+        }
+      }
+      if(decAtEnd && pos<next.length && (next.charAt(pos)===',' || next.charAt(pos)==='.')) pos++;
+    }
+    el.setSelectionRange(pos, pos);
+  }catch(e){}
+}
+function amountOptsFromEl(el){
+  return {
+    decimal: el.getAttribute('data-amt')==='dec',
+    signed: el.hasAttribute('data-amt-sign'),
+    keepZero: el.hasAttribute('data-amt-zero')
+  };
+}
+function bindAmountInputs(){
+  if(window._amtInputsBound) return;
+  window._amtInputsBound=true;
+  document.addEventListener('input', function(e){
+    const el=e.target;
+    if(!el || el.nodeType!==1 || !el.hasAttribute || !el.hasAttribute('data-amt')) return;
+    if(el.readOnly || el.disabled) return;
+    applyAmountFormat(el, amountOptsFromEl(el));
+  });
+}
+bindAmountInputs();
 function parseMoneyDots(s){
-  const digits=String(s==null?'':s).replace(/[^\d]/g,'');
-  if(!digits) return 0;
-  return Math.max(0,Math.round(Number(digits)||0));
+  return Math.max(0, Math.round(parseAmountInput(s,{decimal:false})||0));
 }
 function formatMoneyDots(n){
   n=Math.max(0,Math.round(+n||0));
   if(!n) return '';
-  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+  return groupAmountInput(String(n),{decimal:false});
 }
 function recalcQtPay3(){
   const pay=ensureQtPay();
@@ -7807,7 +7928,7 @@ function bindQuote(){
     $('#main').querySelectorAll('[data-nv-q]').forEach(inp=>inp.oninput=()=>{
       if(!QT.ngoaivi) return;
       const i=+inp.dataset.nvQ;
-      QT.ngoaivi[i].qty=Math.max(0,+inp.value||0);
+      QT.ngoaivi[i].qty=Math.max(0, readQtyInput(inp.value));
       markQuoteQtyManual(QT.ngoaivi[i]);
       mirrorQtyInputs(`[data-nv-q="${i}"]`, QT.ngoaivi[i].qty, inp);
       const row=QT.ngoaivi[i];
@@ -7876,7 +7997,7 @@ function bindQuote(){
     $('#main').querySelectorAll('[data-pk-q]').forEach(inp=>inp.oninput=()=>{
       if(!QT.phuKien) return;
       const i=+inp.dataset.pkQ;
-      QT.phuKien[i].qty=Math.max(0,+inp.value||0);
+      QT.phuKien[i].qty=Math.max(0, readQtyInput(inp.value));
       markQuoteQtyManual(QT.phuKien[i]);
       mirrorQtyInputs(`[data-pk-q="${i}"]`, QT.phuKien[i].qty, inp);
       const row=QT.phuKien[i];
@@ -7944,7 +8065,7 @@ function bindQuote(){
     $('#main').querySelectorAll('[data-nc-q]').forEach(inp=>inp.oninput=()=>{
       if(!QT.nhanCong) return;
       const i=+inp.dataset.ncQ;
-      QT.nhanCong[i].qty=Math.max(0,+inp.value||0);
+      QT.nhanCong[i].qty=Math.max(0, readQtyInput(inp.value));
       markQuoteQtyManual(QT.nhanCong[i]);
       mirrorQtyInputs(`[data-nc-q="${i}"]`, QT.nhanCong[i].qty, inp);
       refreshNc();
@@ -7982,7 +8103,7 @@ function bindQuote(){
   };
   $('#main').querySelectorAll('[data-dc-q]').forEach(inp=>inp.oninput=()=>{
     if(!QT.uuDai) return;
-    QT.uuDai.qty=Math.max(1,+inp.value||1);
+    QT.uuDai.qty=Math.max(1, readQtyInput(inp.value)||1);
     mirrorQtyInputs('[data-dc-q]', QT.uuDai.qty, inp);
     refreshDc();
   });
@@ -8760,7 +8881,7 @@ function orderKpiEditor(){
     const note=p.target>0?orderKpiMoneyShort(p.target):'KPI 0 · chỉ hiện tiền';
     const title=`<div class="ord-kpi-field-top"><b title="${esc(p.name)}">${esc(p.name)}</b>${canEdit?`<button type="button" class="ord-kpi-del" data-kpidel="${esc(p.name)}" data-kpikey="${esc(p.key)}" title="Ẩn khỏi KPI tháng này">×</button>`:''}</div>`;
     if(!canEdit) return `<div class="ord-kpi-field">${title}<em>${esc(note)}</em></div>`;
-    return `<div class="ord-kpi-field">${title}<input class="inp" type="number" min="0" step="50" inputmode="decimal" data-kpiname="${esc(p.name)}" data-kpikey="${esc(p.key)}" value="${trTxt}" placeholder="0" title="Mốc KPI tháng ${+ym.m}/${ym.y}, đơn vị triệu đồng. 0 hoặc để trống = chỉ hiện số tiền"><em>triệu · ${esc(note)}</em></div>`;
+    return `<div class="ord-kpi-field">${title}<input class="inp" type="text" inputmode="decimal" autocomplete="off" data-amt="dec" data-kpiname="${esc(p.name)}" data-kpikey="${esc(p.key)}" value="${esc(groupAmountInput(trTxt,{decimal:true}))}" placeholder="0" title="Mốc KPI tháng ${+ym.m}/${ym.y}, đơn vị triệu đồng. 0 hoặc để trống = chỉ hiện số tiền"><em>triệu · ${esc(note)}</em></div>`;
   }).join(''):'<div class="empty">Chưa có nhân viên KD. Bấm Thêm NV để bổ sung.</div>';
   const hint=canEdit
     ? 'Đơn vị triệu đồng. 1.200 = 1,2 tỷ · 600 = 600 triệu. Thêm/xóa NV chỉ áp dụng đúng tháng đang chọn. Bấm Lưu KPI tháng này.'
@@ -9107,11 +9228,13 @@ function startOrderCellEdit(code, field, td){
     editor.value=field==='coHoi'?(q.coHoi||q.cus||''):(q.note||'');
   }else if(field==='total'||field==='deposit'||field==='paid'||field==='debt'){
     editor=document.createElement('input');
-    editor.type='number';
+    editor.type='text';
     editor.className='inp mono';
-    editor.min='0';
-    editor.step='1000';
-    editor.value=q[field]!=null?q[field]:0;
+    editor.setAttribute('inputmode','numeric');
+    editor.setAttribute('autocomplete','off');
+    editor.setAttribute('data-amt','int');
+    editor.setAttribute('data-amt-zero','');
+    editor.value=groupAmountInput(q[field]!=null?q[field]:0,{decimal:false});
   }else return finishOrderCellEdit(td, code, field, false);
   td.innerHTML='';
   td.appendChild(editor);
@@ -9200,7 +9323,7 @@ function openOrderModal(q){
   };
   const fmtMoney=n=>{
     n=Math.max(0,Math.round(+n||0));
-    return n?String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.'):'0';
+    return groupAmountInput(String(n),{decimal:false})||'0';
   };
   const initTotal=q&&q.total!=null?+q.total:0;
   const initDeposit=q&&q.deposit!=null?+q.deposit:0;
@@ -9245,9 +9368,9 @@ function openOrderModal(q){
     </div>
     <div class="field"><label>Thông Tin Khách Hàng *</label><textarea class="inp" id="oCoHoi" style="height:110px">${esc((q&&(q.coHoi||q.cus))||'')}</textarea></div>
     <div class="row2" style="grid-template-columns:1fr 1fr 1fr">
-      <div class="field"><label>Tổng Tiền</label><input class="inp mono" id="oTotal" inputmode="numeric" autocomplete="off" value="${esc(fmtMoney(initTotal))}" placeholder="0"></div>
-      <div class="field"><label>Đặt cọc</label><input class="inp mono" id="oDeposit" inputmode="numeric" autocomplete="off" value="${esc(fmtMoney(initDeposit))}" placeholder="0"></div>
-      <div class="field"><label>Đã Thanh Toán</label><input class="inp mono" id="oPaid" inputmode="numeric" autocomplete="off" value="${esc(fmtMoney(initPaid))}" placeholder="0"></div>
+      <div class="field"><label>Tổng Tiền</label><input class="inp mono" id="oTotal" type="text" inputmode="numeric" autocomplete="off" data-amt="int" data-amt-zero value="${esc(fmtMoney(initTotal))}" placeholder="0"></div>
+      <div class="field"><label>Đặt cọc</label><input class="inp mono" id="oDeposit" type="text" inputmode="numeric" autocomplete="off" data-amt="int" data-amt-zero value="${esc(fmtMoney(initDeposit))}" placeholder="0"></div>
+      <div class="field"><label>Đã Thanh Toán</label><input class="inp mono" id="oPaid" type="text" inputmode="numeric" autocomplete="off" data-amt="int" data-amt-zero value="${esc(fmtMoney(initPaid))}" placeholder="0"></div>
     </div>
     <div class="row2">
       <div class="field"><label>Công nợ</label><input class="inp mono" id="oDebt" inputmode="numeric" autocomplete="off" value="${esc(fmtMoney(initDebt))}" readonly style="background:var(--surface-2);cursor:default"></div>
@@ -9340,19 +9463,7 @@ function openOrderModal(q){
   };
   const bindMoneyFmt=(id)=>{
     const el=$('#'+id); if(!el) return;
-    el.addEventListener('input',()=>{
-      const caret=el.selectionStart;
-      const rawBefore=el.value;
-      const digits=rawBefore.replace(/[^\d]/g,'');
-      const fmt=fmtMoney(digits?Number(digits):0);
-      el.value=fmt;
-      try{
-        const diff=fmt.length-rawBefore.length;
-        const pos=Math.max(0,(caret||0)+diff);
-        el.setSelectionRange(pos,pos);
-      }catch(e){}
-      recalcOrderMoney();
-    });
+    el.addEventListener('input',()=>{ recalcOrderMoney(); });
   };
   bindMoneyFmt('oTotal');
   bindMoneyFmt('oDeposit');
@@ -9898,8 +10009,8 @@ function bindQuoteList(){
     const inputs=[...$('#main').querySelectorAll('[data-kpiname]')];
     if(!inputs.length){ toast('Chưa có nhân viên để lưu KPI','bad'); return; }
     for(const inp of inputs){
-      const raw=String(inp.value).trim().replace(',','.');
-      const tr=raw===''?0:+raw;
+      const raw=String(inp.value).trim();
+      const tr=raw===''?0:parseAmountInput(raw,{decimal:true});
       if(!Number.isFinite(tr) || tr<0){ toast('Mốc KPI của '+inp.dataset.kpiname+' không hợp lệ','bad'); return; }
       inp.dataset.kpitrieu=String(tr);
     }
@@ -10008,13 +10119,13 @@ function bindContracts(){
       <div class="field"><label>Khách hàng *</label><input class="inp" id="cCus"></div>
       <div class="row2"><div class="field"><label>SĐT</label><input class="inp mono" id="cPhone"></div>
       <div class="field"><label>Ngày ký</label><input class="inp" id="cDate" type="date"></div></div>
-      <div class="field"><label>Giá trị (đ)</label><input class="inp mono" id="cTotal" type="number" value="0"></div>
+      <div class="field"><label>Giá trị (đ)</label><input class="inp mono" id="cTotal" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="0"></div>
       <div class="field" style="margin:0"><label>Trạng thái</label><select class="sel" style="width:100%" id="cSt">
         <option value="draft">Nháp</option><option value="signed">Đã ký</option></select></div>`,'Lưu',()=>{
       const code=$('#cCode').value.trim(), cus=$('#cCus').value.trim();
       if(!code||!cus){toast('Nhập mã hợp đồng và khách hàng','bad');return false;}
       if(DB.contracts.find(x=>x.code===code)){toast('Mã hợp đồng đã tồn tại','bad');return false;}
-      DB.contracts.unshift({code,cus,phone:$('#cPhone').value.trim(),date:$('#cDate').value,total:+$('#cTotal').value||0,status:$('#cSt').value});
+      DB.contracts.unshift({code,cus,phone:$('#cPhone').value.trim(),date:$('#cDate').value,total:Math.max(0, Math.round(parseAmountInput($('#cTotal').value,{decimal:false}))),status:$('#cSt').value});
       toast('Đã thêm hợp đồng','ok');saveDB();renderPage();return true;});
   };
   $('#main').querySelectorAll('[data-dct]').forEach(b=>b.onclick=()=>{
@@ -10060,12 +10171,35 @@ function crmMonthLabel(d){
   const m=String(d||'').slice(0,7).match(/^(\d{4})-(\d{2})$/);
   return m?('Tháng '+Number(m[2])+'/'+m[1]):'—';
 }
+function crmDemandCoerce(raw){
+  if(typeof raw==='number' && Number.isFinite(raw)) return Math.round(raw);
+  if(raw==null) return '';
+  const s=String(raw).trim();
+  if(!s) return '';
+  if(/^[\d.\s]+$/.test(s)) return Math.max(0, Math.round(parseAmountInput(s,{decimal:false})));
+  return s;
+}
+function crmDemandShown(raw){
+  if(typeof raw==='number' && Number.isFinite(raw)) return groupAmountInput(String(Math.round(raw)),{decimal:false});
+  const s=String(raw==null?'':raw).trim();
+  if(!s) return '';
+  if(/^[\d.\s]+$/.test(s)) return groupAmountInput(s,{decimal:false});
+  return s;
+}
+function crmDemandFromField(el){
+  if(!el) return '';
+  const s=String(el.value||'').trim();
+  if(!s) return '';
+  const legacy=el.getAttribute('data-demand-legacy');
+  if(legacy!=null && s===legacy) return legacy;
+  return Math.max(0, Math.round(parseAmountInput(s,{decimal:false})));
+}
 function crmInfoText(r){
   const lines=[];
   if(r.name) lines.push(r.name);
   if(r.phone) lines.push('SĐT: '+r.phone);
   if(r.address) lines.push(r.address);
-  if(r.demand) lines.push('Nhu cầu tiền điện: '+r.demand);
+  if(r.demand!=='' && r.demand!=null) lines.push('Nhu cầu tiền điện: '+crmDemandShown(r.demand));
   return lines.join('\n');
 }
 const CRM_SURVEY_MAX_BYTES=8*1024*1024;
@@ -11403,7 +11537,7 @@ function openCrmModal(row){
       <div class="field"><label>SĐT</label><input class="inp mono" id="crmPhone" value="${esc((row&&row.phone)||'')}"></div>
       <div class="field"><label>Địa chỉ</label><input class="inp" id="crmAddr" value="${esc((row&&row.address)||'')}"></div>
     </div>
-    <div class="field"><label>Nhu cầu tiền điện</label><input class="inp" id="crmDemand" value="${esc((row&&row.demand)||'')}" placeholder="Ví dụ: 1.500.000 đ/tháng"></div>
+    <div class="field"><label>Nhu cầu tiền điện</label><input class="inp mono" id="crmDemand" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(crmDemandShown(row&&row.demand))}"${(row&&row.demand!=null&&String(row.demand).trim()&&!/^[\d.\s]+$/.test(String(row.demand).trim()))?` data-demand-legacy="${esc(String(row.demand).trim())}"`:''} placeholder="3.000.000"></div>
     <div class="field"><label>Ghi chú</label><textarea class="inp" id="crmNote" rows="3" placeholder="Ghi chú khảo sát / trao đổi với khách…">${esc((row&&row.note)||'')}</textarea></div>
     <div class="field" style="margin:0"><label>Hình ảnh khảo sát</label><div id="crmSurveyBox">${crmSurveyEditorHtml(draftFiles)}</div></div>
   `,'Lưu',async ()=>{
@@ -11457,7 +11591,7 @@ function openCrmModal(row){
       name,
       phone,
       address:$('#crmAddr').value.trim(),
-      demand:$('#crmDemand').value.trim(),
+      demand:crmDemandFromField($('#crmDemand')),
       note:($('#crmNote')||{}).value!=null?String($('#crmNote').value).trim():'',
       surveyFiles:draftFiles.map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size,kind:f.kind,thumb:f.thumb||''})),
       owner:crmIsUnassigned(owner)?'':owner,
@@ -11989,7 +12123,7 @@ function mapDevExcelRow(cat,obj){
     if(c.ta){
       if(Array.isArray(raw)) out[c.k]=raw.map(x=>String(x||'').trim()).filter(Boolean);
       else out[c.k]=String(raw||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-    }else if(c.n) out[c.k]=+String(raw||'').replace(/[^\d.-]/g,'')||0;
+    }else if(c.n) out[c.k]=c.money?Math.max(0, Math.round(parseAmountInput(raw,{decimal:false}))):(+String(raw||'').replace(/[^\d.-]/g,'')||0);
     else out[c.k]=String(raw??'').trim();
   });
   return out;
@@ -12389,7 +12523,10 @@ function devModal(cat,o){
     if(c.ta)return `<div class="field"><label>${c.l}</label><textarea class="inp" style="height:150px" id="f_${c.k}">${esc(((o&&o.sp)||[]).join('\n'))}</textarea></div>`;
     if(c.opts)return `<div class="field"><label>${c.l}</label><select class="sel" style="width:100%" id="f_${c.k}">
       ${c.opts.map(x=>{const lab=((cat==='inverter'||cat==='battery')&&c.k==='volt')?devInvVoltLabel(x):x;return `<option value="${x}" ${o&&o[c.k]==x?'selected':''}>${lab}</option>`;}).join('')}</select></div>`;
-    return `<div class="field"><label>${c.l}</label><input class="inp ${c.n?'mono':''}" id="f_${c.k}" ${c.n?'type="number"':''} value="${esc(v)}"></div>`;
+    const money=!!(c.n&&c.money);
+    const shown=money?groupAmountInput(v,{decimal:false}):v;
+    const attrs=money?'type="text" inputmode="numeric" autocomplete="off" data-amt="int"':(c.n?'type="number"':'');
+    return `<div class="field"><label>${c.l}</label><input class="inp ${c.n?'mono':''}" id="f_${c.k}" ${attrs} value="${esc(shown)}"></div>`;
   }).join('');
   const imgBox=d.img?`<div class="field"><label>Hình ảnh sản phẩm</label><div class="upload-box">
       <div class="thumb" id="thumb">${o&&o.img?`<img src="${o.img}">`:I.img}</div>
@@ -12398,7 +12535,7 @@ function devModal(cat,o){
   openModal(o?'Sửa thông tin':'Thêm mới',imgBox+fields,`${I.save} Lưu`,async ()=>{
     const obj=o||{id:++DB.seq.p};
     d.cols.forEach(c=>{const el=$('#f_'+c.k);if(!el)return;
-      obj[c.k]=c.ta?el.value.split('\n').map(x=>x.trim()).filter(Boolean):(c.n?+el.value||0:el.value.trim());});
+      obj[c.k]=c.ta?el.value.split('\n').map(x=>x.trim()).filter(Boolean):(c.money?Math.max(0, Math.round(parseAmountInput(el.value,{decimal:false}))):(c.n?+el.value||0:el.value.trim()));});
     if(d.img){
       let u=$('#f_img').value.trim();
       if(!u){const th=$('#thumb img'); if(th&&th.getAttribute('src')) u=th.getAttribute('src');}
@@ -12455,10 +12592,10 @@ function stockNameKey(name){
 }
 function stockParseQty(raw){
   let t=String(raw==null?'':raw).trim().replace(/\s/g,'');
-  if(!t) return null;
-  t=t.replace(/,/g,'.');
-  if(!/^-?\d+(\.\d+)?$/.test(t)) return null;
-  const n=Number(t);
+  if(!t || t==='-' || t==='+' || t==='.' || t===',') return null;
+  if(/[^\d.,+-]/.test(t)) return null;
+  if(!/\d/.test(t)) return null;
+  const n=parseAmountInput(t,{decimal:true, signed:true});
   if(!Number.isFinite(n)) return null;
   return Math.round(n*1000)/1000;
 }
@@ -12630,9 +12767,13 @@ function stockOpenEditor(td){
   const origRemain=rem?rem.textContent:'';
   const input=document.createElement('input');
   input.className='stock-qty-in mono';
+  input.type='text';
   input.setAttribute('inputmode','decimal');
+  input.setAttribute('autocomplete','off');
+  input.setAttribute('data-amt','dec');
+  input.setAttribute('data-amt-sign','');
   input.setAttribute('aria-label',field);
-  input.value=orig;
+  input.value=groupAmountInput(orig,{decimal:true, signed:true});
   td.textContent='';
   td.appendChild(input);
   input.focus();
@@ -12721,12 +12862,12 @@ function bindStock(){
       <div class="field"><label>Loại</label><select class="sel" style="width:100%" id="sCat">
         ${Object.keys(CAT).map(k=>`<option value="${k}">${CAT[k]}</option>`).join('')}</select></div>
       <div class="field"><label>Tên hàng hóa</label><select class="sel" style="width:100%" id="sProd"></select></div>
-      <div class="field" style="margin:0"><label>Trong Kho</label><input class="inp mono" id="sQty" type="number" value="0"></div>`,'Lưu',()=>{
+      <div class="field" style="margin:0"><label>Trong Kho</label><input class="inp mono" id="sQty" type="text" inputmode="decimal" autocomplete="off" data-amt="dec" data-amt-sign value="0"></div>`,'Lưu',()=>{
       const cat=$('#sCat').value,pid=+$('#sProd').value,p=catList(cat).find(x=>x.id==pid);
       if(!p){toast('Chọn sản phẩm','bad');return false;}
       const list=stkWh==='bd'?stockBdEnsure():DB.stock;
       if(list.find(s=>s.id===pid)){toast('Sản phẩm đã có trong kho','bad');return false;}
-      const qty=+$('#sQty').value||0;
+      const qty=parseAmountInput($('#sQty').value,{decimal:true, signed:true});
       const stt=list.reduce((m,s)=>Math.max(m, Number(s&&s.stt)||0),0)+1;
       const lock=0;
       list.push({id:pid,cat,name:p.name,qty,min:0,unit:stockSheetPack(stt, lock, 0, 0, 0),stt,lock,hive:0,binh:0,viet:0});
@@ -13269,15 +13410,15 @@ function transModalOut(t){
         <div id="tProdHint" style="display:none;color:var(--muted);font-size:12.5px;margin-top:6px"></div></div>
       <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series, cách nhau bằng dấu phẩy" value="${esc(t&&t.series||'')}"></div>
       <div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
-      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
-        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
+      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
+        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.price:0,{decimal:false}))}"></div></div>
       <div class="field"><label>Khách hàng</label><input class="inp" id="tParty" placeholder="Tên khách hàng" value="${esc(t?t.party:'')}"></div>
       <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
       <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
       'Xác nhận xuất kho',()=>{
         const pid=+$('#tProd').value;
         const s=DB.stock.find(x=>x.id===pid);
-        const qty=+$('#tQty').value||0, pr=+$('#tPrice').value||0;
+        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false}))), pr=Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false})));
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=outboundSeriesText($('#tSeries')&&$('#tSeries').value);
         const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
@@ -13323,7 +13464,7 @@ function transModalOut(t){
       const s=DB.stock.find(x=>x.id==+$('#tProd').value);
       if(s&&!t){
         const pr=priceOf(s);
-        if(pr!=null) $('#tPrice').value=pr;
+        if(pr!=null) $('#tPrice').value=groupAmountInput(pr,{decimal:false});
       }
       if(s){
         const u=stockDisplayUnit(s);
@@ -13332,13 +13473,13 @@ function transModalOut(t){
       }
       sum();
     };
-    const sum=()=>{$('#tTotal').textContent=vnd((+$('#tQty').value||0)*(+$('#tPrice').value||0));};
+    const sum=()=>{$('#tTotal').textContent=vnd(Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})))*Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false}))));};
     $('#tCat').onchange=fill;
     $('#tProd').onchange=()=>{
       const s=DB.stock.find(x=>x.id==+$('#tProd').value);
       if(s){
         const pr=priceOf(s);
-        if(pr!=null) $('#tPrice').value=pr;
+        if(pr!=null) $('#tPrice').value=groupAmountInput(pr,{decimal:false});
         const u=stockDisplayUnit(s);
         const unitEl=$('#tUnit');
         if(u&&unitEl) unitEl.value=u;
@@ -13371,8 +13512,8 @@ function transModal(t){
             <button type="button" class="cocq-btn" id="tCocqClear" ${(t&&t.cocqFile)?'':'hidden'}>Xóa</button>
           </div>
         </div></div>
-      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="number" min="1" value="${t?t.qty:1}"></div>
-        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="number" value="${t?t.price:0}"></div></div>
+      <div class="row2"><div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
+        <div class="field"><label>Đơn giá</label><input class="inp mono" id="tPrice" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.price:0,{decimal:false}))}"></div></div>
       <div class="field"><label>${kind==='in'?'Nhà cung cấp':'Khách hàng'}</label>
         ${kind==='in'?`<select class="sel" style="width:100%" id="tParty"><option value="">-- Không chọn --</option>
           ${DB.suppliers.map(s=>`<option ${t&&t.party===s.name?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`
@@ -13383,7 +13524,7 @@ function transModal(t){
       kind==='in'?'Xác nhận nhập kho':'Xác nhận xuất kho',async()=>{
         await cocqRead;
         const pid=+$('#tProd').value,c=$('#tCat').value,p=catList(c).find(x=>x.id==pid);
-        const qty=+$('#tQty').value||0,pr=+$('#tPrice').value||0;
+        const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false}))), pr=Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false})));
         const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=(($('#tSeries')&&$('#tSeries').value)||'').trim();
         const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
@@ -13411,15 +13552,15 @@ function transModal(t){
     const fill=()=>{const c=$('#tCat').value;
       $('#tProd').innerHTML=catList(c).map(p=>`<option value="${p.id}" ${t&&t.pid==p.id?'selected':''}>${esc(strip(p.name))}</option>`).join('');
       const p=catList(c).find(x=>x.id==+$('#tProd').value);
-      if(p&&!t)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
+      if(p&&!t)$('#tPrice').value=groupAmountInput(kind==='in'?p.cost:(p.retail||p.price||0),{decimal:false});
       if(p&&p.unit){
         const unitEl=$('#tUnit');
         if(unitEl&&!String(unitEl.value||'').trim()) unitEl.value=p.unit;
       }
       sum();};
-    const sum=()=>{$('#tTotal').textContent=vnd((+$('#tQty').value||0)*(+$('#tPrice').value||0));};
+    const sum=()=>{$('#tTotal').textContent=vnd(Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})))*Math.max(0, Math.round(parseAmountInput($('#tPrice').value,{decimal:false}))));};
     $('#tCat').onchange=fill;$('#tProd').onchange=()=>{const p=catList($('#tCat').value).find(x=>x.id==+$('#tProd').value);
-      if(p)$('#tPrice').value=kind==='in'?p.cost:(p.retail||p.price||0);
+      if(p)$('#tPrice').value=groupAmountInput(kind==='in'?p.cost:(p.retail||p.price||0),{decimal:false});
       if(p&&p.unit){ const unitEl=$('#tUnit'); if(unitEl) unitEl.value=p.unit; }
       sum();};
     $('#tQty').oninput=sum;$('#tPrice').oninput=sum;
@@ -14085,7 +14226,7 @@ function pageSettings(){
   <div class="card card-pad">
     <div class="card-title">Tham số tính toán</div>
     <div class="row2">
-      <div class="field"><label>Giá điện (đ/kWh)</label><input class="inp mono" id="s_price" type="number" value="${s.price}"></div>
+      <div class="field"><label>Giá điện (đ/kWh)</label><input class="inp mono" id="s_price" type="text" inputmode="decimal" autocomplete="off" data-amt="dec" value="${esc(groupAmountInput(s.price,{decimal:true}))}"></div>
       <div class="field"><label>Hiệu suất hệ thống</label><input class="inp mono" id="s_eff" type="number" step="0.01" value="${s.eff}"></div>
       <div class="field"><label>Thuế VAT (%)</label><input class="inp mono" id="s_vat" type="number" value="${s.vat}"></div>
       <div class="field"><label>Số giờ nắng TB</label><input class="inp mono" id="s_sun" type="number" step="0.1" value="${s.sun}"></div>
@@ -14126,7 +14267,8 @@ function bindSettings(){
     ['price','eff','vat','sun','area','ratio',
       'regionOffBdPanel','regionOffBdInv','regionOffBdBat','regionOffBdLabor',
       'regionOffCtPanel','regionOffCtInv','regionOffCtBat','regionOffCtLabor'].forEach(k=>{
-      const el=$('#s_'+k); if(el) DB.settings[k]=+el.value||0;
+      const el=$('#s_'+k); if(!el) return;
+      DB.settings[k]=k==='price'?parseAmountInput(el.value,{decimal:true}):(+el.value||0);
     });
     // giữ key cũ để tương thích dữ liệu đã lưu (lấy theo tấm pin)
     DB.settings.regionOffBd=+DB.settings.regionOffBdPanel||0;
@@ -16195,9 +16337,9 @@ function assetRowSum(row, names){
   return n;
 }
 function assetReadQty(raw){
-  const s=String(raw==null?'':raw).trim().replace(',','.');
-  if(s===''||s==='-'||s==='+'||s==='.') return 0;
-  const n=Number(s);
+  const s=String(raw==null?'':raw).trim();
+  if(s===''||s==='-'||s==='+'||s==='.'||s===',') return 0;
+  const n=parseAmountInput(s,{decimal:true});
   if(!Number.isFinite(n)||n<0) return 0;
   return Math.round(n);
 }
@@ -16330,7 +16472,10 @@ function assetWriteQty(input, persist){
   const row=assetFindRow(idx, input.getAttribute('data-asset-name'), input.getAttribute('data-asset-stt'));
   if(!row) return;
   const n=assetReadQty(input.value);
-  if(persist&&String(input.value)!==String(n)) input.value=String(n);
+  if(persist){
+    const shown=groupAmountInput(String(n),{decimal:false});
+    if(input.value!==shown) input.value=shown;
+  }
   if(!row.qty||typeof row.qty!=='object'||Array.isArray(row.qty)) row.qty=assetQtyMap(row);
   const prev=Number(row.qty[holder])||0;
   row.qty[holder]=n;
@@ -16366,7 +16511,7 @@ function pageAssets(){
       const n=Number(qty[name])||0;
       const pos=n>0;
       if(canEdit){
-        return `<td class="num mono asset-edit"><input class="asset-qty-in${pos?' asset-qty-pos':''}" type="number" min="0" step="1" inputmode="numeric" value="${n}" data-asset-idx="${idx}" data-asset-stt="${esc(r.stt)}" data-asset-name="${esc(r.name)}" data-asset-holder="${esc(name)}" aria-label="${esc(name)} — ${esc(r.name)}"></td>`;
+        return `<td class="num mono asset-edit"><input class="asset-qty-in${pos?' asset-qty-pos':''}" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(n,{decimal:false}))}" data-asset-idx="${idx}" data-asset-stt="${esc(r.stt)}" data-asset-name="${esc(r.name)}" data-asset-holder="${esc(name)}" aria-label="${esc(name)} — ${esc(r.name)}"></td>`;
       }
       return `<td class="num mono ${pos?'asset-qty-pos':'asset-zero'}" data-asset-holder="${esc(name)}">${n}</td>`;
     }).join('');
