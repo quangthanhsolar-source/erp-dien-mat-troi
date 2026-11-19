@@ -11627,7 +11627,7 @@ function openCrmModal(row){
       toast('Đã thêm khách hàng','ok');
     }
     saveDB();renderPage();return true;
-  },{w:680});
+  },{w:680, keepTop:true});
   bindDraftSurveyUi();
   const syncDay=()=>{
     const y=Number(($('#crmYear')||{}).value)||y0;
@@ -12005,7 +12005,19 @@ function openModal(title,body,okText,onOk,opt){
       toast('Không lưu được: '+(err&&err.message?err.message:err),'bad');
     }
   };
-  const f=$('.modal-body input');if(f)setTimeout(()=>f.focus(),40);
+  // keepTop: form CRM dài — không autofocus ô Tên kẻo cuộn mất dòng đầu.
+  if(opt.keepTop){
+    const pinTop=()=>{
+      const mb=document.querySelector('#modal .modal-body');
+      if(mb) mb.scrollTop=0;
+    };
+    pinTop();
+    requestAnimationFrame(pinTop);
+    setTimeout(pinTop, 60);
+    setTimeout(pinTop, 180);
+  }else{
+    const f=$('.modal-body input');if(f)setTimeout(()=>f.focus(),40);
+  }
   pushUiLayer('modal');
 }
 function closeModal(){
