@@ -12548,6 +12548,8 @@ function bindStock(){
 
 /* ---------------- NHẬP / XUẤT KHO ---------------- */
 let trF={kind:'',pid:'',st:''};
+/* Tab kho của trang Nhập kho. Không dùng stkWh — Tồn kho và Nhập kho không đổi tab của nhau. */
+let inWh='hcm';
 function findStockProduct(code, name){
   const cats=Object.keys(CAT).filter(k=>k!=='service');
   const c=String(code||'').trim().toLowerCase();
@@ -12692,6 +12694,7 @@ async function importTransFromExcelFile(file){
         ref:r.ref||'',
         note:r.note||('Import Excel: '+file.name)
       };
+      if(r.kind==='in' && ROUTE==='trans-in') obj.warehouse=inWh==='bd'?'bd':'hcm';
       DB.trans.unshift(obj);
       applyStock(obj,1);
       ok++;
@@ -12708,6 +12711,9 @@ async function importTransFromExcelFile(file){
   }
 }
 function transPageKind(){ return ROUTE==='trans-out'?'out':'in'; }
+function inboundSlipWh(t){
+  return t&&t.warehouse==='bd'?'bd':'hcm';
+}
 function inboundDateText(v){
   const m=String(v||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m?m[3]+'/'+m[2]+'/'+m[1]:'—';
@@ -12804,12 +12810,18 @@ function saveTransCocqFile(t, meta){
 }
 function pageTrans(){
   const kind=transPageKind();
+  const wh=inWh==='bd'?'bd':'hcm';
   const rows=(DB.trans||[]).filter(t=>t&&t.kind===kind&&(!trF.pid||t.pid==trF.pid)&&
-    (!trF.st||(trF.st==='on'?t.active:!t.active)));
+    (!trF.st||(trF.st==='on'?t.active:!t.active))&&
+    (kind!=='in'||inboundSlipWh(t)===wh));
   const prods=[...new Map((DB.trans||[]).filter(t=>t&&t.kind===kind).map(t=>[t.pid,t.name])).entries()];
   const title=kind==='in'?'Nhập kho':'Xuất kho';
   const addLabel=kind==='in'?'Tạo phiếu nhập':'Tạo phiếu xuất';
   const emptyMsg=kind==='in'?'Chưa có phiếu nhập nào khớp bộ lọc.':'Chưa có phiếu xuất nào khớp bộ lọc.';
+  const inTabs=kind==='in'?`<div class="stk-tabs" role="tablist" data-in-tabs="1">
+    <button type="button" class="stk-tab ${wh==='hcm'?'active':''}" data-in-wh="hcm" role="tab" aria-selected="${wh==='hcm'}">Kho HCM</button>
+    <button type="button" class="stk-tab ${wh==='bd'?'active':''}" data-in-wh="bd" role="tab" aria-selected="${wh==='bd'}">Kho Bình Định</button>
+  </div>`:'';
   return `<div class="page-head"><div class="page-title">${title}</div>
     <div class="head-actions">
       <button class="btn btn-ghost" id="trTpl" type="button">⬇ Mẫu Excel</button>
@@ -12817,6 +12829,7 @@ function pageTrans(){
       <input type="file" id="trFile" accept=".xlsx,.xls,.csv" hidden>
       <button class="btn btn-primary" id="trAdd">${I.plus} ${addLabel}</button>
     </div></div>
+  ${inTabs}
   <div class="filters">
     <select class="sel" id="trProd"><option value="">Tất cả sản phẩm</option>
       ${prods.map(([id,n])=>`<option value="${id}" ${trF.pid==id?'selected':''}>${esc(strip(n))}</option>`).join('')}</select>
@@ -12886,8 +12899,41 @@ function stockRowForTrans(t, create){
   DB.stock.push(row);
   return row;
 }
+function applyInboundStockBd(t, sign){
+  if(!t) return;
+  const key=stockNameKey(t.name);
+  if(!key) return;
+  const list=stockBdEnsure();
+  let s=null;
+  for(let i=0;i<list.length;i++){
+    const row=list[i];
+    if(!row||stockNameKey(row.name)!==key) continue;
+    if(t.cat&&row.cat===t.cat){ s=row; break; }
+    if(!s) s=row;
+  }
+  if(!s){
+    if(sign===-1) return;
+    const stt=list.reduce((m,row)=>Math.max(m, Number(row&&row.stt)||0),0)+1;
+    const lock=0;
+    const used=new Set();
+    list.forEach(row=>{ if(row&&row.id!=null) used.add(String(row.id)); });
+    (DB.stock||[]).forEach(row=>{ if(row&&row.id!=null) used.add(String(row.id)); });
+    let id=9800000;
+    while(used.has(String(id))) id++;
+    s={id,cat:t.cat||'',name:t.name,qty:0,min:0,unit:stockSheetPack(stt, lock, 0, 0, 0),stt,lock,hive:0,binh:0,viet:0};
+    list.push(s);
+  }
+  const qty=Number(t.qty)||0;
+  s.qty=(Number(s.qty)||0)+sign*qty;
+  if(s.qty<0) s.qty=0;
+  t.stockApplied=1;
+}
 function applyStock(t, sign){
   if(!t) return;
+  if(t.kind==='in' && t.warehouse==='bd'){
+    applyInboundStockBd(t, sign);
+    return;
+  }
   let s=null;
   if(sign===-1){
     s=stockRowLinked(t);
@@ -12916,6 +12962,7 @@ function syncMissingInboundStock(){
   for(let i=0;i<DB.trans.length;i++){
     const t=DB.trans[i];
     if(!t||t.kind!=='in'||!t.active) continue;
+    if(t.warehouse==='bd') continue;
     if(!stockNameKey(t.name)) continue;
     if(t.stockApplied||stockRowLinked(t)) continue;
     const existing=stockFindByName(t.name, t.cat);
@@ -12928,6 +12975,10 @@ function syncMissingInboundStock(){
   return n;
 }
 function bindTrans(){
+  $('#main').querySelectorAll('[data-in-wh]').forEach(b=>b.onclick=()=>{
+    const next=b.getAttribute('data-in-wh')==='bd'?'bd':'hcm';
+    if(inWh!==next){ inWh=next; renderPage(); }
+  });
   const kindEl=$('#trKind'); if(kindEl) kindEl.onchange=e=>{trF.kind=e.target.value;renderPage();};
   $('#trProd').onchange=e=>{trF.pid=e.target.value;renderPage();};
   $('#trSt').onchange=e=>{trF.st=e.target.value;renderPage();};
@@ -13158,6 +13209,7 @@ function transModal(t){
           code:(kind==='in'?'NK-':'XK-')+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
         Object.assign(obj,{kind,cat:c,pid,name:p.name,qty,series,unit,cocq,price:pr,party:party||(kind==='in'?'Không chọn':'Khách lẻ'),
           partyPhone:obj.partyPhone||'',ref:$('#tRef').value,note:$('#tNote').value});
+        if(!edit && kind==='in') obj.warehouse=inWh==='bd'?'bd':'hcm';
         if(cocqTouched){
           if(cocqNext) obj.cocqFile=cocqNext;
           else delete obj.cocqFile;
