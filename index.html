@@ -8138,6 +8138,30 @@ function ensureOrderKpiNovFromOct(){
   DB.settings.orderKpiNovFromOct='2026-11-match-oct';
   return 1;
 }
+/** KPI Nguyễn Xuân Thanh Thanh: 950 triệu cho tháng 9, 10, 11/2026. Tháng khác giữ nguyên. */
+function ensureOrderKpiThanh950(){
+  if(!DB.settings) DB.settings={};
+  if(DB.settings.orderKpiThanh950==='2026-09-10-11') return 0;
+  ensureOrderKpiSeedOnce();
+  ensureOrderKpiNovFromOct();
+  const amt=950000000;
+  const yms=['2026-09','2026-10','2026-11'];
+  orderKpiSetMonth('Nguyễn Xuân Thanh Thanh', yms[0], amt);
+  yms.slice(1).forEach(ym=>orderKpiSetMonth('Nguyễn Xuân Thanh Thanh', ym, amt));
+  if(!DB.settings.orderKpi||typeof DB.settings.orderKpi!=='object'||Array.isArray(DB.settings.orderKpi)) DB.settings.orderKpi={};
+  ['nguyễn xuân thanh thanh','xuân thanh'].forEach(key=>{
+    const prev=DB.settings.orderKpi[key];
+    if(prev==null) return;
+    const rec=typeof prev==='number'?{def:prev, months:{}}:(prev&&typeof prev==='object'?prev:null);
+    if(!rec) return;
+    const months=(rec.months&&typeof rec.months==='object'&&!Array.isArray(rec.months))?{...rec.months}:{};
+    yms.forEach(ym=>{ months[ym]=amt; });
+    DB.settings.orderKpi[key]={def:+rec.def||0, months};
+  });
+  delete DB.settings.orderKpi['anh thanh'];
+  DB.settings.orderKpiThanh950='2026-09-10-11';
+  return 1;
+}
 function mergeAnhThanhOrders(){
   let n=0;
   (DB.quotes||[]).forEach(q=>{
@@ -8518,7 +8542,7 @@ function orderKpiChart(orders){
 function orderKpiEditor(){
   if(!orderKpiEditOpen) return '';
   const people=orderKpiEditorPeople();
-  const canEdit=!!(ME&&ME.role==='admin');
+  const canEdit=isAdmin();
   const ym=orderKpiEditYm();
   const years=[...new Set([...(DB.quotes||[]).map(q=>{const p=quoteDateParts(q);return p?p.y:'';}).filter(Boolean), ym.y, String(orderVnNow().y)])].sort((a,b)=>b-a);
   const inKeys=new Set(people.map(p=>p.key));
@@ -8558,7 +8582,7 @@ function orderKpiEditor(){
 }
 function quoteListSection(){
   mergeAnhThanhOrders();
-  if(ensureOrderKpiSeedOnce()||ensureOrderKpiNovFromOct()){ try{ saveDB(); }catch(e){} }
+  if((ensureOrderKpiSeedOnce()|ensureOrderKpiNovFromOct()|ensureOrderKpiThanh950())){ try{ saveDB(); }catch(e){} }
   const years=[...new Set(DB.quotes.map(q=>{
     const p=quoteDateParts(q); return p?p.y:(q.date||'').slice(0,4);
   }).filter(y=>/^\d{4}$/.test(y)))].sort((a,b)=>b-a);
@@ -9665,7 +9689,7 @@ function bindQuoteList(){
   };
   const kpiSave=$('#kpiSave');
   if(kpiSave) kpiSave.onclick=()=>{
-    if(!(ME&&ME.role==='admin')){ toast('Chỉ Admin được chỉnh KPI','bad'); return; }
+    if(!isAdmin()){ toast('Chỉ Admin được chỉnh KPI','bad'); return; }
     const ym=orderKpiEditYm();
     const inputs=[...$('#main').querySelectorAll('[data-kpiname]')];
     if(!inputs.length){ toast('Chưa có nhân viên để lưu KPI','bad'); return; }
@@ -9694,7 +9718,7 @@ function bindQuoteList(){
   };
   const kpiAddBtn=$('#kpiAddBtn');
   if(kpiAddBtn) kpiAddBtn.onclick=()=>{
-    if(!(ME&&ME.role==='admin')){ toast('Chỉ Admin được thêm NV KPI','bad'); return; }
+    if(!isAdmin()){ toast('Chỉ Admin được thêm NV KPI','bad'); return; }
     const sel=$('#kpiAddSel');
     let name=sel?String(sel.value||'').trim():'';
     if(!name){ toast('Chọn nhân viên để thêm','bad'); return; }
@@ -9712,7 +9736,7 @@ function bindQuoteList(){
     b.onclick=e=>{
       e.preventDefault();
       e.stopPropagation();
-      if(!(ME&&ME.role==='admin')){ toast('Chỉ Admin được xóa NV KPI','bad'); return; }
+      if(!isAdmin()){ toast('Chỉ Admin được xóa NV KPI','bad'); return; }
       const name=b.getAttribute('data-kpidel')||'';
       const key=b.getAttribute('data-kpikey')||'';
       if(!name&&!key) return;
