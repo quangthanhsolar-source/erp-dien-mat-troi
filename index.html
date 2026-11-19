@@ -16536,12 +16536,13 @@ async function savePdfDoc(doc, fname){
 function pdfTextLineEdges(root){
   const lines=[];
   if(!root) return lines;
+  const doc=root.ownerDocument||document;
   const rr=root.getBoundingClientRect();
-  const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker=doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let n;
   while((n=walker.nextNode())){
     if(!String(n.textContent||'').trim()) continue;
-    const range=document.createRange();
+    const range=doc.createRange();
     try{ range.selectNodeContents(n); }catch(e){ continue; }
     const rects=range.getClientRects();
     for(let i=0;i<rects.length;i++){
@@ -17681,14 +17682,14 @@ function hdPdfFontUrl(file){
   try{ return new URL('fonts/'+file, document.baseURI).href; }
   catch(e){ return 'fonts/'+file; }
 }
-/** Tinos đầy đủ (có dấu cách + tiếng Việt) nằm cùng site — không phụ thuộc Google Fonts. */
+/** Tinos subset (TTF, đủ tiếng Việt) — cùng file nhúng vào jsPDF, không phụ thuộc canvas Android. */
 function hdPdfFontFaceCss(){
-  const src=file=>'url("'+hdPdfFontUrl(file)+'") format("woff2")';
+  const src=file=>'url("'+hdPdfFontUrl(file)+'") format("truetype")';
   return [
-    '@font-face{font-family:"Tinos";font-style:normal;font-weight:400;font-display:block;src:'+src('tinos-400.woff2')+';}',
-    '@font-face{font-family:"Tinos";font-style:italic;font-weight:400;font-display:block;src:'+src('tinos-400i.woff2')+';}',
-    '@font-face{font-family:"Tinos";font-style:normal;font-weight:700;font-display:block;src:'+src('tinos-700.woff2')+';}',
-    '@font-face{font-family:"Tinos";font-style:italic;font-weight:700;font-display:block;src:'+src('tinos-700i.woff2')+';}'
+    '@font-face{font-family:"Tinos";font-style:normal;font-weight:400;font-display:block;src:'+src('tinos-vi-400.ttf')+';}',
+    '@font-face{font-family:"Tinos";font-style:italic;font-weight:400;font-display:block;src:'+src('tinos-vi-400i.ttf')+';}',
+    '@font-face{font-family:"Tinos";font-style:normal;font-weight:700;font-display:block;src:'+src('tinos-vi-700.ttf')+';}',
+    '@font-face{font-family:"Tinos";font-style:italic;font-weight:700;font-display:block;src:'+src('tinos-vi-700i.ttf')+';}'
   ].join('');
 }
 async function hdPdfEnsureFont(doc){
@@ -17710,11 +17711,17 @@ function hdPdfFontPaintsSpaces(doc){
     const c=doc.createElement('canvas');
     const ctx=c.getContext('2d');
     if(!ctx) return false;
+    if(doc.fonts&&doc.fonts.check){
+      if(!doc.fonts.check('400 16px Tinos')) return false;
+      if(!doc.fonts.check('700 16px Tinos')) return false;
+      if(!doc.fonts.check('italic 400 16px Tinos')) return false;
+    }
     ctx.font='400 72px Tinos';
     const space=ctx.measureText(' ').width;
     const pair=ctx.measureText('A B').width;
     const tight=ctx.measureText('AB').width;
-    return space>=8 && pair>=tight+8;
+    const viet=ctx.measureText('đếộ').width;
+    return space>=8 && pair>=tight+8 && viet>space;
   }catch(e){ return false; }
 }
 /** null = không đo được; true = dấu cách còn khoảng; false = chữ bị dính. */
@@ -17790,12 +17797,12 @@ function hdPdfLockCss(){
     'body{width:'+HD_PDF_PX+'px!important;max-width:'+HD_PDF_PX+'px!important;margin:0 auto!important;padding:0!important;background:#fff!important;',
       'font-family:'+HD_PDF_FONT+'!important;font-size:13.6pt!important;line-height:1.5!important;color:#111!important;',
       '-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}',
-    'body,body *{font-family:'+HD_PDF_FONT+'!important;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important;letter-spacing:0!important;font-kerning:none!important;font-variant-ligatures:none!important}',
+    'body,body *{font-family:'+HD_PDF_FONT+'!important;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}',
     'span[data-hd-sp]{display:inline-block!important;width:0.25em!important;min-width:0.25em!important;overflow:hidden!important;vertical-align:baseline!important}',
     'img,.hd-logo{max-width:42mm!important;height:auto!important}',
     '.p,.sec,.article,li,ul{font-size:13.6pt!important;line-height:1.5!important}',
-    '.p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:0!important}',
-    '.p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important;letter-spacing:0!important}',
+    '.p{text-align:justify!important;text-align-last:left!important;word-spacing:normal!important}',
+    '.p-left{text-align:left!important;text-align-last:left!important;word-spacing:normal!important}',
     '.p,.article,li,ul{page-break-inside:avoid!important;break-inside:avoid!important}',
     '.article,.sec{page-break-after:avoid!important;break-after:avoid!important}',
     /* 3 khối khóa size */
@@ -17892,6 +17899,325 @@ async function captureHdCanvas(root){
     }
   });
   return {canvas, scale:HD_PDF_SCALE, target:root};
+}
+/** Tinos nhúng jsPDF — chữ thật, không chụp canvas (Android làm vỡ dấu). */
+const HD_PDF_JS_FONT_FILES=[
+  ['tinos-vi-400.ttf','normal'],
+  ['tinos-vi-700.ttf','bold'],
+  ['tinos-vi-400i.ttf','italic'],
+  ['tinos-vi-700i.ttf','bolditalic']
+];
+let HD_PDF_JS_FONT_B64=null;
+function hdPdfBytesToBase64(buf){
+  const bytes=new Uint8Array(buf);
+  let bin='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    bin+=String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+  }
+  return btoa(bin);
+}
+async function hdPdfLoadJsFontB64(){
+  if(HD_PDF_JS_FONT_B64) return HD_PDF_JS_FONT_B64;
+  const out={};
+  await Promise.all(HD_PDF_JS_FONT_FILES.map(async([file])=>{
+    const res=await fetch(hdPdfFontUrl(file));
+    if(!res.ok) throw new Error('Không tải được font hợp đồng');
+    out[file]=hdPdfBytesToBase64(await res.arrayBuffer());
+  }));
+  HD_PDF_JS_FONT_B64=out;
+  return out;
+}
+function hdPdfAttachJsFonts(pdfDoc){
+  HD_PDF_JS_FONT_FILES.forEach(([file, style])=>{
+    pdfDoc.addFileToVFS(file, HD_PDF_JS_FONT_B64[file]);
+    pdfDoc.addFont(file, 'Tinos', style);
+  });
+  pdfDoc.setFont('Tinos','normal');
+}
+function hdPdfPdfText(s){
+  return String(s||'').replace(/[^\u0000-\u024F\u0300-\u036F\u1E00-\u1EFF\u2000-\u206F\u20AB\u2116\u2122\u2190-\u2193\u2212\u25CF]/g,'');
+}
+function hdPdfStyleOf(el){
+  const view=el.ownerDocument&&el.ownerDocument.defaultView;
+  const cs=(view&&view.getComputedStyle(el))||{};
+  const weight=cs.fontWeight||'400';
+  const wn=parseInt(weight,10);
+  const bold=weight==='bold'||weight==='bolder'||wn>=600;
+  const italic=cs.fontStyle==='italic'||cs.fontStyle==='oblique';
+  const style=bold&&italic?'bolditalic':bold?'bold':italic?'italic':'normal';
+  const sizePx=parseFloat(cs.fontSize)||18;
+  let rgb=[17,17,17], alpha=1;
+  const m=String(cs.color||'').match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/);
+  if(m){
+    rgb=[+m[1], +m[2], +m[3]];
+    if(m[4]!=null) alpha=+m[4];
+  }
+  return {style, sizePx, rgb, alpha, display:cs.display||'', visibility:cs.visibility||''};
+}
+function hdPdfAscent(doc, word){
+  const c=hdPdfAscent.canvas||(hdPdfAscent.canvas=doc.createElement('canvas'));
+  const ctx=c.getContext('2d');
+  if(!ctx) return word.sizePx*0.8;
+  const weight=(word.style==='bold'||word.style==='bolditalic')?'700':'400';
+  const italic=(word.style==='italic'||word.style==='bolditalic')?'italic':'normal';
+  ctx.font=italic+' '+weight+' '+word.sizePx+'px Tinos';
+  const metrics=ctx.measureText(word.text);
+  if(metrics&&metrics.actualBoundingBoxAscent>0) return metrics.actualBoundingBoxAscent;
+  return word.sizePx*0.8;
+}
+function hdPdfPushWord(words, text, rect, st){
+  if(!text||!String(text).trim()||!rect) return;
+  if(rect.width<0.15||rect.height<0.15) return;
+  words.push({
+    text:String(text),
+    x:rect.x, top:rect.y, w:rect.w, h:rect.h,
+    style:st.style, sizePx:st.sizePx, rgb:st.rgb
+  });
+}
+function hdPdfPushCharLines(doc, node, a, b, st, rr, words){
+  const range=doc.createRange();
+  let i=a;
+  while(i<b){
+    range.setStart(node, i);
+    range.setEnd(node, i+1);
+    const r0=range.getBoundingClientRect();
+    if(!r0||(r0.width<0.05&&r0.height<0.05)){ i++; continue; }
+    const top=r0.top;
+    let j=i+1, left=r0.left, right=r0.right, bottom=r0.bottom;
+    while(j<b){
+      range.setStart(node, j);
+      range.setEnd(node, j+1);
+      const rj=range.getBoundingClientRect();
+      if(!rj||Math.abs(rj.top-top)>2.2) break;
+      left=Math.min(left, rj.left);
+      right=Math.max(right, rj.right);
+      bottom=Math.max(bottom, rj.bottom);
+      j++;
+    }
+    const text=node.nodeValue.slice(i, j);
+    hdPdfPushWord(words, text, {
+      x:left-rr.left, y:top-rr.top, w:Math.max(0.2, right-left), h:Math.max(0.2, bottom-top)
+    }, st);
+    i=j;
+  }
+}
+function hdPdfCollectWords(root){
+  const doc=root.ownerDocument;
+  const rr=root.getBoundingClientRect();
+  const words=[];
+  const walker=doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while((node=walker.nextNode())){
+    const raw=node.nodeValue;
+    if(!raw||!String(raw).trim()) continue;
+    const el=node.parentElement;
+    if(!el) continue;
+    if(el.closest&&el.closest('[data-hd-sp]')) continue;
+    const tag=el.tagName||'';
+    if(tag==='SCRIPT'||tag==='STYLE') continue;
+    const st=hdPdfStyleOf(el);
+    if(st.display==='none'||st.visibility==='hidden'||st.alpha<=0.01) continue;
+    const re=/\S+/g;
+    let m;
+    while((m=re.exec(raw))){
+      const start=m.index, end=start+m[0].length;
+      const range=doc.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, end);
+      const rects=range.getClientRects();
+      if(!rects||rects.length!==1){
+        hdPdfPushCharLines(doc, node, start, end, st, rr, words);
+        continue;
+      }
+      const r=rects[0];
+      hdPdfPushWord(words, m[0], {
+        x:r.left-rr.left, y:r.top-rr.top, w:r.width, h:r.height
+      }, st);
+    }
+  }
+  return words;
+}
+function hdPdfCollectBullets(root){
+  const doc=root.ownerDocument;
+  const rr=root.getBoundingClientRect();
+  const out=[];
+  root.querySelectorAll('li').forEach(li=>{
+    const st=hdPdfStyleOf(li);
+    if(st.display==='none'||st.visibility==='hidden') return;
+    const walker=doc.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+    let n, textNode=null;
+    while((n=walker.nextNode())){
+      if(String(n.nodeValue||'').trim()){ textNode=n; break; }
+    }
+    if(!textNode||!textNode.nodeValue) return;
+    const range=doc.createRange();
+    const len=textNode.nodeValue.length;
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, Math.min(1, len));
+    const r=range.getBoundingClientRect();
+    if(!r||r.height<0.5) return;
+    const size=st.sizePx||16;
+    out.push({
+      text:'•',
+      x:(r.left-rr.left)-size*0.92,
+      top:r.top-rr.top,
+      w:size*0.45,
+      h:r.height,
+      style:'normal',
+      sizePx:size,
+      rgb:st.rgb,
+      bullet:true
+    });
+  });
+  return out;
+}
+function hdPdfCollectDecor(root){
+  const rr=root.getBoundingClientRect();
+  const boxes=[], lines=[], images=[];
+  root.querySelectorAll('.party').forEach(el=>{
+    const r=el.getBoundingClientRect();
+    if(r.width<2||r.height<2) return;
+    boxes.push({x:r.left-rr.left, y:r.top-rr.top, w:r.width, h:r.height});
+  });
+  root.querySelectorAll('.val').forEach(el=>{
+    const r=el.getBoundingClientRect();
+    if(r.width<2) return;
+    lines.push({x:r.left-rr.left, y:r.bottom-rr.top-0.4, w:r.width});
+  });
+  root.querySelectorAll('img').forEach(el=>{
+    const r=el.getBoundingClientRect();
+    if(r.width<2||r.height<2) return;
+    const src=el.currentSrc||el.src||'';
+    if(!src) return;
+    images.push({x:r.left-rr.left, y:r.top-rr.top, w:r.width, h:r.height, src});
+  });
+  return {boxes, lines, images};
+}
+function hdPdfGroupLines(words){
+  const sorted=words.slice().sort((a,b)=>(a.top-b.top)||(a.x-b.x));
+  const lines=[];
+  sorted.forEach(w=>{
+    const h=Math.max(w.h||0, (w.sizePx||16)*0.7);
+    const cy=w.top+h*0.5;
+    let line=null;
+    for(let i=lines.length-1;i>=0&&lines.length-i<=8;i--){
+      const L=lines[i];
+      const limit=Math.max(w.sizePx||16, L.size||16)*0.62;
+      if(Math.abs(cy-L.cy)<limit){ line=L; break; }
+    }
+    if(!line){
+      line={words:[], cy, size:w.sizePx||16, anchor:w.bullet?null:w};
+      lines.push(line);
+    }
+    line.words.push(w);
+    if(!w.bullet){
+      const ah=(line.anchor&&line.anchor.h)||0;
+      if(!line.anchor||(w.h||0)>ah) line.anchor=w;
+      line.cy=line.anchor.top+Math.max(line.anchor.h||0, line.anchor.sizePx*0.7)*0.5;
+      line.size=Math.max(line.size, w.sizePx||0);
+    }
+  });
+  return lines;
+}
+function hdPdfPageIndex(y, starts){
+  const n=Math.max(1, starts.length-1);
+  for(let p=0;p<n;p++){
+    if(y<starts[p+1]-0.01||p===n-1) return p;
+  }
+  return n-1;
+}
+/** Hợp đồng PDF bằng chữ Unicode (Tinos). Không dùng html2canvas — Android vẽ sai dấu và mất khoảng trắng. */
+async function buildHdPdfDocument(root){
+  if(!root) throw new Error('Không có nội dung hợp đồng');
+  await hdPdfLoadJsFontB64();
+  if(!window.jspdf||!window.jspdf.jsPDF) throw new Error('Thư viện PDF chưa sẵn sàng');
+  const {jsPDF}=window.jspdf;
+  const pageW=210, pageH=297, marginY=12, contentW=HD_PDF_MM;
+  const marginX=(pageW-contentW)/2;
+  const rr=root.getBoundingClientRect();
+  const cssW=Math.max(1, rr.width||HD_PDF_PX);
+  const cssH=Math.max(root.scrollHeight||0, root.offsetHeight||0, (root.ownerDocument&&root.ownerDocument.documentElement.scrollHeight)||0, 1);
+  const mmPerPx=contentW/cssW;
+  const pageHpx=(pageH-marginY*2)/mmPerPx;
+  const starts=pdfSmartPageStarts(root, cssH, pageHpx);
+  const pdf=new jsPDF({orientation:'portrait', unit:'mm', format:'a4', compress:true});
+  hdPdfAttachJsFonts(pdf);
+  const pageCount=Math.max(1, starts.length-1);
+  for(let p=1;p<pageCount;p++) pdf.addPage();
+  const yMm=(cssY, page)=>marginY+(cssY-starts[page])*mmPerPx;
+  const xMm=cssX=>marginX+cssX*mmPerPx;
+  const decor=hdPdfCollectDecor(root);
+  decor.boxes.forEach(b=>{
+    for(let p=0;p<pageCount;p++){
+      const top=starts[p], bot=starts[p+1];
+      const y0=Math.max(b.y, top), y1=Math.min(b.y+b.h, bot);
+      if(y1-y0<0.4) continue;
+      pdf.setPage(p+1);
+      pdf.setDrawColor(51,51,51);
+      pdf.setLineWidth(0.25);
+      pdf.setLineDashPattern([],0);
+      pdf.rect(xMm(b.x), yMm(y0, p), b.w*mmPerPx, (y1-y0)*mmPerPx);
+    }
+  });
+  decor.lines.forEach(ln=>{
+    const p=hdPdfPageIndex(ln.y, starts);
+    pdf.setPage(p+1);
+    pdf.setDrawColor(140,140,140);
+    pdf.setLineWidth(0.18);
+    pdf.setLineDashPattern([0.32, 0.42], 0);
+    const y=yMm(ln.y, p);
+    pdf.line(xMm(ln.x), y, xMm(ln.x+ln.w), y);
+    pdf.setLineDashPattern([], 0);
+  });
+  decor.images.forEach(im=>{
+    const p=hdPdfPageIndex(im.y, starts);
+    pdf.setPage(p+1);
+    try{
+      const fmt=/jpe?g/i.test(im.src.slice(0,40))?'JPEG':'PNG';
+      pdf.addImage(im.src, fmt, xMm(im.x), yMm(im.y, p), im.w*mmPerPx, im.h*mmPerPx);
+    }catch(e){ console.warn('hd image', e); }
+  });
+  const doc=root.ownerDocument;
+  const words=hdPdfCollectWords(root).concat(hdPdfCollectBullets(root));
+  hdPdfGroupLines(words).forEach(line=>{
+    let anchor=null;
+    line.words.forEach(w=>{
+      if(w.bullet) return;
+      w._ascent=hdPdfAscent(doc, w);
+      if(!anchor||w._ascent>anchor._ascent) anchor=w;
+    });
+    anchor=anchor||line.words[0];
+    if(!anchor) return;
+    if(anchor._ascent==null) anchor._ascent=hdPdfAscent(doc, anchor);
+    const baselineCss=anchor.top+anchor._ascent;
+    const pageAnchor=anchor.top+Math.min((anchor.h||anchor.sizePx)*0.35, 6);
+    const p=hdPdfPageIndex(pageAnchor, starts);
+    const baseline=yMm(baselineCss, p);
+    pdf.setPage(p+1);
+    line.words.forEach(w=>{
+      const text=hdPdfPdfText(w.text);
+      if(!text) return;
+      pdf.setFont('Tinos', w.style||'normal');
+      pdf.setFontSize(w.sizePx*72/96);
+      pdf.setTextColor(w.rgb[0], w.rgb[1], w.rgb[2]);
+      const x=xMm(w.x);
+      const target=Math.max(0, w.w)*mmPerPx;
+      let scale=1;
+      let natural=0;
+      try{ natural=pdf.getTextWidth(text); }catch(e){ natural=0; }
+      if(natural>0.15&&target>0.15){
+        const ratio=target/natural;
+        if(ratio>0.84&&ratio<1.18) scale=ratio;
+      }
+      try{
+        pdf.text(text, x, baseline, {horizontalScale:scale});
+      }catch(e){ console.warn('hd glyph', e); }
+    });
+  });
+  pdf.setPage(1);
+  console.log('HD PDF text pages', pageCount, 'words', words.length, 'css', Math.round(cssW)+'x'+Math.round(cssH));
+  return pdf;
 }
 function contractSeqCode(cusName){
   const y=new Date().getFullYear();
@@ -18888,41 +19214,12 @@ const doPrint=async()=>{
     let cleanupHd=null;
     const unlockZoom=pdfHtmlZoomLock();
     try{
-      // Iframe khổ cố định — điện thoại và máy tính cùng form/font/lề
+      // Iframe khổ cố định để đo dòng; PDF ghi bằng font Tinos nhúng (không html2canvas).
+      const fontReady=hdPdfLoadJsFontB64();
       const mounted=await mountHdPdfCaptureHost(hdHtml);
       cleanupHd=mounted.cleanup;
-      const measureRoot=mounted.root;
-      let cap=await captureHdCanvas(measureRoot);
-      if(!cap||!cap.canvas||canvasLooksBlank(cap.canvas)){
-        throw new Error('Không chụp được nội dung hợp đồng');
-      }
-      const canvas=cap.canvas;
-      if(canvasLooksBlank(canvas)) throw new Error('PDF hợp đồng bị trắng — thử lại');
-      const {jsPDF}=window.jspdf;
-      const pageW=210, pageH=297, marginY=12, contentW=HD_PDF_MM, marginX=(pageW-contentW)/2;
-      const pdfDoc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-      const imgW=canvas.width, imgH=canvas.height;
-      const mmPerPx=contentW/imgW;
-      const pageHpx=(pageH-marginY*2)/mmPerPx;
-      const pageStarts=pdfSmartPageStarts(measureRoot, imgH, pageHpx);
-      console.log('HD PDF pages', pageStarts.length-1, 'w', imgW, pageStarts.map(v=>Math.round(v)));
-      for(let p=0;p<pageStarts.length-1;p++){
-        if(p) pdfDoc.addPage();
-        const srcY=pageStarts[p];
-        const srcH=Math.max(1, pageStarts[p+1]-srcY);
-        const pageCv=document.createElement('canvas');
-        pageCv.width=imgW; pageCv.height=Math.max(1,Math.ceil(srcH));
-        const ctx=pageCv.getContext('2d');
-        ctx.fillStyle='#fff'; ctx.fillRect(0,0,pageCv.width,pageCv.height);
-        ctx.drawImage(canvas,0,srcY,imgW,srcH,0,0,imgW,srcH);
-        const natH=srcH*mmPerPx;
-        const maxDrawH=pageH-marginY*2;
-        const fit=natH>maxDrawH+0.05?maxDrawH/natH:1;
-        const drawW=contentW*fit, drawH=natH*fit;
-        const drawX=marginX+(contentW-drawW)/2;
-        const data=pageCv.toDataURL('image/jpeg',0.94);
-        pdfDoc.addImage(data,'JPEG',drawX,marginY,drawW,drawH);
-      }
+      await fontReady;
+      const pdfDoc=await buildHdPdfDocument(mounted.root);
       await savePdfDoc(pdfDoc, fname);
       toast('✅ Đã tải Hợp Đồng PDF','ok');
     }catch(err){
