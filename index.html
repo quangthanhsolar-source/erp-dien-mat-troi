@@ -13212,6 +13212,7 @@ function bindStock(){
 
 /* ---------------- NHẬP / XUẤT KHO ---------------- */
 let trF={kind:'',pid:'',st:''};
+let outSlipCus={show:false,name:'',phone:'',addr:''};
 /* Tab kho của trang Nhập kho. Không dùng stkWh — Tồn kho và Nhập kho không đổi tab của nhau. */
 let inWh='hcm';
 function findStockProduct(code, name){
@@ -13529,6 +13530,17 @@ function pageTrans(){
   const partyHead='Nhà CC';
   const outBh=kind==='out';
   const emptyMsg=kind==='in'?'Chưa có phiếu nhập nào khớp bộ lọc.':'Chưa có phiếu xuất nào khớp bộ lọc.';
+  const cusCard=kind!=='out'?'':(outSlipCus.show?`<div class="card card-pad qt-cus-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">
+      <div class="card-title" style="margin:0">Thông tin khách hàng</div>
+      <button type="button" class="qt-rm-disc" id="xkRmCus" style="height:32px;background:var(--surface-2);color:var(--ink-2)">Bỏ mục này</button>
+    </div>
+    <div class="qt-cus-grid">
+      <div class="field"><input class="inp" id="xkCusName" placeholder="Họ và tên" value="${esc(outSlipCus.name||'')}"></div>
+      <div class="field"><input class="inp" id="xkCusPhone" placeholder="SĐT" value="${esc(outSlipCus.phone||'')}"></div>
+      <div class="field qt-cus-span"><input class="inp" id="xkCusAddr" placeholder="Địa chỉ" value="${esc(outSlipCus.addr||'')}"></div>
+    </div>
+  </div>`:`<button type="button" class="qt-add-disc" id="xkAddCus">+ Thêm thông tin khách hàng</button>`);
   const inTabs=kind==='in'?`<div class="stk-tabs" role="tablist" data-in-tabs="1">
     <button type="button" class="stk-tab ${wh==='hcm'?'active':''}" data-in-wh="hcm" role="tab" aria-selected="${wh==='hcm'}">Kho HCM</button>
     <button type="button" class="stk-tab ${wh==='bd'?'active':''}" data-in-wh="bd" role="tab" aria-selected="${wh==='bd'}">Kho Bình Định</button>
@@ -13541,6 +13553,7 @@ function pageTrans(){
       <button class="btn btn-primary" id="trAdd">${I.plus} ${addLabel}</button>
     </div></div>
   ${inTabs}
+  ${cusCard}
   <div class="filters">
     <select class="sel" id="trProd"><option value="">Tất cả sản phẩm</option>
       ${prods.map(([id,n])=>`<option value="${id}" ${trF.pid==id?'selected':''}>${esc(strip(n))}</option>`).join('')}</select>
@@ -13551,12 +13564,12 @@ function pageTrans(){
     <colgroup><col class="in-c-date"><col class="in-c-name"><col class="in-c-series"><col class="in-c-unit"><col class="in-c-qty"><col class="in-c-party">${outBh?'<col class="in-c-bh">':''}<col class="in-c-cocq"></colgroup>
     <thead><tr><th>Ngày tháng năm</th><th>Sản phẩm</th><th>${outBh?'Số series':'Số Series'}</th><th class="in-tight in-mid">Đơn vị</th><th class="num in-tight in-mid">Số lượng</th><th class="in-tight in-mid">${partyHead}</th>${outBh?'<th class="in-tight in-mid">Bảo hành</th>':''}<th class="in-mid">COCQ</th></tr></thead>
     <tbody>${rows.length?rows.map(t=>`<tr>
-      <td class="mono">${esc(inboundDateText(t.date))}</td>
+      <td class="mono">${esc(inboundDateText(t.date))}${outBh?`<div style="margin-top:6px"><button type="button" class="cocq-btn" data-xk-pdf="${esc(String(t.id))}">Phiếu PDF</button></div>`:''}</td>
       <td class="in-name"><div>${esc(strip(t.name))}</div><div style="color:var(--muted);font-size:12.5px">${CAT[t.cat]||''}</div></td>
       <td class="mono in-series">${t.series?esc(t.series):'<span style="color:var(--muted)">—</span>'}</td>
       <td class="in-tight in-mid">${esc(inboundUnitText(t))}</td>
       <td class="num mono in-tight in-mid" style="font-weight:700">${t.qty}</td>
-      <td class="in-tight in-mid"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${t.partyPhone}</div>`:''}</td>
+      <td class="in-tight in-mid"><div>${esc(t.party)}</div>${t.partyPhone?`<div class="mono" style="color:var(--muted);font-size:12.5px">${esc(t.partyPhone)}</div>`:''}${t.partyAddr?`<div style="color:var(--muted);font-size:12.5px">${esc(t.partyAddr)}</div>`:''}</td>
       ${outBh?`<td class="in-tight in-mid">${esc(warrantyBlankText(warrantyCatalogYears(t)))}</td>`:''}
       ${cocqCellHtml(t)}
     </tr>`).join(''):`<tr><td colspan="${outBh?8:7}" class="empty">${emptyMsg}</td></tr>`}</tbody>
@@ -13695,6 +13708,18 @@ function bindTrans(){
   $('#trProd').onchange=e=>{trF.pid=e.target.value;renderPage();};
   $('#trSt').onchange=e=>{trF.st=e.target.value;renderPage();};
   $('#trAdd').onclick=()=>transModal(null);
+  const xkAdd=$('#xkAddCus');
+  if(xkAdd) xkAdd.onclick=()=>{ outSlipCus.show=true; renderPage(); };
+  const xkRm=$('#xkRmCus');
+  if(xkRm) xkRm.onclick=()=>{ outSlipCus.show=false; renderPage(); };
+  const xkName=$('#xkCusName'), xkPhone=$('#xkCusPhone'), xkAddr=$('#xkCusAddr');
+  if(xkName) xkName.oninput=()=>{ outSlipCus.name=xkName.value; };
+  if(xkPhone) xkPhone.oninput=()=>{ outSlipCus.phone=xkPhone.value; };
+  if(xkAddr) xkAddr.oninput=()=>{ outSlipCus.addr=xkAddr.value; };
+  $('#main').querySelectorAll('[data-xk-pdf]').forEach(b=>b.onclick=()=>{
+    const t=DB.trans.find(x=>x&&String(x.id)===String(b.dataset.xkPdf));
+    if(t) openOutboundSlipPdf(t);
+  });
   const tpl=$('#trTpl'); if(tpl) tpl.onclick=()=>downloadTransExcelTemplate();
   const file=$('#trFile');
   const imp=$('#trImport');
@@ -13789,6 +13814,248 @@ function outboundStockChoices(cat, slip){
   });
   return [...byName.values()];
 }
+function readOutSlipCus(){
+  const nameEl=document.getElementById('xkCusName');
+  if(nameEl){
+    outSlipCus.name=nameEl.value;
+    const phoneEl=document.getElementById('xkCusPhone');
+    const addrEl=document.getElementById('xkCusAddr');
+    if(phoneEl) outSlipCus.phone=phoneEl.value;
+    if(addrEl) outSlipCus.addr=addrEl.value;
+  }
+  return outSlipCus;
+}
+function outboundSlipShowsCus(t){
+  if(!t) return false;
+  if(t.showCus===false) return false;
+  if(t.showCus===true) return true;
+  const name=String(t.party||'').trim();
+  return !!((name&&name!=='Khách lẻ')||String(t.partyPhone||'').trim()||String(t.partyAddr||'').trim());
+}
+function outboundSlipCus(t){
+  if(!outboundSlipShowsCus(t)) return {name:'',phone:'',addr:''};
+  const name=String(t.party||'').trim();
+  return {
+    name:name==='Khách lẻ'?'':name,
+    phone:String(t.partyPhone||'').trim(),
+    addr:String(t.partyAddr||'').trim()
+  };
+}
+function outboundWarrantyMonths(t){
+  const years=warrantyTermYears(t);
+  if(!(years>0)) return '';
+  const months=Math.round(years*12);
+  return months>0?String(months):'';
+}
+function buildOutboundSlipHtml(t){
+  const E=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const cus=outboundSlipCus(t);
+  const dateTxt=inboundDateText(t&&t.date);
+  const dateLabel=dateTxt==='—'?'':dateTxt;
+  const maker=String((t&&t.maker)||'').trim();
+  const serial=outboundSeriesText(t&&t.series);
+  const note=String(t&&t.note||'').trim();
+  const months=outboundWarrantyMonths(t);
+  const product=strip(t&&t.name||'');
+  const qty=t&&t.qty!=null?String(t.qty):'';
+  const css=`<style>
+@page{size:A4 portrait;margin:8mm 10mm}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+html,body{background:#fff;-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}
+body{font-family:Arial,Helvetica,sans-serif;font-size:8.5pt;color:#111;width:190mm;margin:0 auto;line-height:1.35}
+.hdr{width:190mm;margin:0 0 2mm;padding:0;color:#111}
+.hdr-brand{display:flex;align-items:center;justify-content:space-between;gap:2.5mm;margin-bottom:1mm}
+.hdr-logo{display:flex;align-items:center;flex:0 0 auto}
+.hdr-logo img{width:42mm;height:auto;max-height:12mm;object-fit:contain;display:block}
+.hdr-cname{flex:1;text-align:center;font-weight:700;font-size:9.5pt;letter-spacing:.015em;text-transform:uppercase;line-height:1.15;padding:0 1mm}
+.hdr-mst{flex:0 0 auto;font-size:7.5pt;font-weight:500;white-space:nowrap;padding-left:1mm}
+.hdr-line{height:.45mm;background:#f37021;width:100%;margin:0 0 1.2mm}
+.hdr-info{display:flex;justify-content:space-between;align-items:flex-start;gap:6mm;font-size:6.8pt;line-height:1.4}
+.hdr-addr{flex:1;text-align:left}
+.hdr-contact{flex:0 0 auto;text-align:right;white-space:nowrap;line-height:1.45}
+.xk-title{text-align:center;font-size:16pt;font-weight:700;color:#f37021;letter-spacing:.04em;margin:3mm 0 0;text-transform:uppercase}
+.xk-sub{text-align:center;font-size:9pt;margin:1mm 0 3mm}
+.xk-meta{font-size:9pt;font-weight:700;margin:0 0 2.5mm;line-height:1.45}
+.xk-banner{background:#f37021;color:#fff;font-weight:700;text-align:center;font-size:10pt;letter-spacing:.03em;padding:1.5mm 2mm;text-transform:uppercase}
+.xk-cus{width:190mm;border:1px solid #222;border-collapse:collapse;margin:0 0 3.5mm}
+.xk-cus td{border:1px solid #222;padding:1.3mm 2mm;font-size:9pt;vertical-align:middle}
+.xk-cus .lbl{width:38mm;font-weight:700}
+.xk-grid{width:190mm;border-collapse:collapse;table-layout:fixed;margin:0 0 3.5mm}
+.xk-grid th,.xk-grid td{border:.6pt solid #666;padding:1.4mm 1.3mm;vertical-align:middle;font-size:8pt}
+.xk-grid th{background:#f37021;color:#fff;font-weight:700;text-align:center;line-height:1.25}
+.xk-grid td.c{text-align:center}
+.xk-grid .name{font-weight:700}
+.xk-grid .serial{white-space:normal;word-break:break-word;line-height:1.35}
+.xk-note{width:190mm;border:1px solid #222;margin:0 0 4mm}
+.xk-note .body{padding:2mm 2.4mm 2.2mm;font-size:7.6pt;line-height:1.38}
+.xk-note .body p{margin:0 0 .6mm}
+.xk-sign{width:190mm;border-collapse:collapse;margin-top:2mm}
+.xk-sign td{width:33.33%;text-align:center;vertical-align:top;font-size:9pt;font-weight:700;padding:0 2mm}
+.xk-sign .hint{display:block;font-weight:400;font-size:8pt;margin-top:.6mm}
+.xk-block{page-break-inside:avoid;break-inside:avoid}
+</style>`;
+  return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Phiếu xuất kho</title>${css}</head><body>
+<div class="xk-block hdr">
+  <div class="hdr-brand">
+    <div class="hdr-logo"><img src="${LOGO_QT}" alt="Quang Thanh" width="174" height="61"></div>
+    <div class="hdr-cname">CÔNG TY CỔ PHẦN ĐIỆN MẶT TRỜI QUANG THANH</div>
+    <div class="hdr-mst">MST: 0318769358</div>
+  </div>
+  <div class="hdr-line"></div>
+  <div class="hdr-info">
+    <div class="hdr-addr">
+      <div><b>Trụ sở TP.HCM:</b> 1099/3 Tỉnh Lộ 43, Khu Phố 2, Phường Tam Bình, Thành Phố Hồ Chí Minh, Việt Nam</div>
+      <div><b>Trụ sở Bình Định:</b> 233 Ngô Gia Tự, P. Bình Định, Tỉnh Gia Lai.</div>
+      <div><b>Kho hàng:</b> 86 Nguyễn Thị Thích, P. Tam Bình, TP.HCM.</div>
+    </div>
+    <div class="hdr-contact">
+      <div><b>Hotline:</b> 090.969.1706 – 03456.13161</div>
+      <div>quangthanhsolar@gmail.com</div>
+      <div>www.quangthanhsolar.com</div>
+    </div>
+  </div>
+</div>
+<div class="xk-block">
+  <div class="xk-title">PHIẾU XUẤT KHO</div>
+  <div class="xk-sub">Kiêm phiếu bảo hành và biên bản giao nhận</div>
+  <div class="xk-meta">Người lập phiếu: ${E(maker)}<br>Ngày/Tháng/Năm: ${E(dateLabel)}</div>
+</div>
+<table class="xk-block xk-cus">
+  <tr><td colspan="2" class="xk-banner" style="border:none">THÔNG TIN KHÁCH HÀNG</td></tr>
+  <tr><td class="lbl">Tên khách hàng:</td><td>${E(cus.name)}</td></tr>
+  <tr><td class="lbl">Địa chỉ:</td><td>${E(cus.addr)}</td></tr>
+  <tr><td class="lbl">SDT:</td><td>${E(cus.phone)}</td></tr>
+</table>
+<table class="xk-block xk-grid">
+  <colgroup>
+    <col style="width:12mm"><col style="width:58mm"><col style="width:52mm">
+    <col style="width:14mm"><col style="width:24mm"><col style="width:30mm">
+  </colgroup>
+  <thead><tr>
+    <th>STT</th><th>Tên sản phẩm</th><th>Số máy / Serial</th><th>SL</th><th>Bảo hành<br>(tháng)</th><th>Ghi chú</th>
+  </tr></thead>
+  <tbody><tr>
+    <td class="c">1</td>
+    <td class="name">${E(product)}</td>
+    <td class="serial">${E(serial)}</td>
+    <td class="c">${E(qty)}</td>
+    <td class="c">${E(months)}</td>
+    <td>${E(note)}</td>
+  </tr></tbody>
+</table>
+<div class="xk-block xk-note">
+  <div class="xk-banner">XÁC NHẬN NHẬN HÀNG VÀ LƯU Ý KHI NHẬN</div>
+  <div class="body">
+    <p><b>Ghi Chú :</b> Tình Trạng hàng mới 100%</p>
+    <p>- Thời hạn bảo hành tính từ ngày xuất kho hàng hóa cho Bên A theo điều kiện bảo hành của nhà sản xuất.</p>
+    <p><b>1. Điều kiện bảo hành:</b></p>
+    <p>- Sản phẩm còn trong thời gian bảo hành.</p>
+    <p>- Tem niêm phong còn nguyên vẹn, không rách rời hay chắp vá.</p>
+    <p>- Sản phẩm hư hỏng về kỹ thuật do lỗi của nhà sản xuất và phải trong tình trạng nguyên vẹn, chưa bị tháo ráp, sửa chữa.</p>
+    <p><b>2. Không bảo hành trong các trường hợp:</b></p>
+    <p>- Sản phẩm hết hạn bảo hành, phiếu bảo hành bị sửa chữa, không đúng số serial sản phẩm. Tem bảo hành không còn nguyên vẹn.</p>
+    <p>- Hư hỏng do vận chuyển, sử dụng sai quy cách, tự ý sửa chữa.</p>
+    <p>- Bên mua không tuân thủ theo hướng dẫn kỹ thuật trong việc lắp đặt, vận hành và bảo quản thiết bị sai quy cách thông số kỹ thuật được dán bên hông máy.</p>
+    <p>- Bên mua tự ý tháo ráp hoặc thay đổi cấu trúc bên trong của thiết bị.</p>
+    <p>- Bên mua để hóa chất, côn trùng xâm nhập vào thiết bị, hoặc sự cố hỏa hoạn, bão, lũ lụt, thiên tai, sét đánh xảy ra...</p>
+  </div>
+</div>
+<table class="xk-block xk-sign"><tr>
+  <td>Thủ kho<span class="hint">(ký, ghi rõ họ tên)</span></td>
+  <td>Người giao / ĐVVC<span class="hint">(ký, ghi rõ họ tên)</span></td>
+  <td>Người nhận<span class="hint">(ký, ghi rõ họ tên)</span></td>
+</tr></table>
+</body></html>`;
+}
+async function openOutboundSlipPdf(t){
+  if(!t) return;
+  const html=buildOutboundSlipHtml(t);
+  let ov=document.getElementById('pdfOverlay'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='pdfOverlay';
+  layoutQtPreview(ov);
+  const bar=document.createElement('div');
+  bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0';
+  const mk=(label,bg,col)=>{const b=document.createElement('button');b.type='button';b.textContent=label;
+    b.style.cssText=`height:40px;padding:0 18px;border-radius:999px;background:${bg};color:${col};font-weight:700;font-size:13px;border:none;cursor:pointer`;return b;};
+  const bP=mk('Tải PDF','#d4f85c','#111');
+  const bPrint=mk('In','#fff','#111');
+  const bX=mk('Đóng','#111','#fff');
+  bar.append(bP,bPrint,bX);
+  const fr=document.createElement('iframe');
+  layoutQtPreviewFrame(fr);
+  fr.setAttribute('sandbox','allow-modals allow-same-origin');
+  document.documentElement.classList.add('qt-preview-open');
+  ov.append(bar,fr);
+  document.body.appendChild(ov);
+  pushUiLayer('pdf');
+  const writeFrame=f=>{
+    try{f.contentDocument.open();f.contentDocument.write(html);f.contentDocument.close();}
+    catch(e){f.srcdoc=html;}
+  };
+  writeFrame(fr);
+  bX.onclick=()=>dropUiLayer('pdf');
+  bPrint.onclick=()=>{
+    try{fr.contentWindow.focus();fr.contentWindow.print();}
+    catch(e){toast('Không in được — nhấn Ctrl+P','bad');}
+  };
+  bP.onclick=async()=>{
+    if(!(await ensurePdfLibs())){ toast('Không tải được thư viện PDF — kiểm tra mạng rồi thử lại','bad'); return; }
+    const who=outboundSlipCus(t).name||strip(t.name)||t.code||'PhieuXuatKho';
+    const safe=String(who).replace(/[^\w\u00C0-\u024F\u1E00-\u1EFF]+/g,'_')||'PhieuXuatKho';
+    const fname=await askPdfFileName('PhieuXuatKho_'+safe+'.pdf');
+    if(!fname) return;
+    const prev=bP.textContent;
+    bP.disabled=true; bP.textContent='Đang tạo PDF…';
+    const unlock=pdfHtmlZoomLock();
+    let host=null;
+    try{
+      const mounted=await mountPdfCaptureHost(html, {});
+      host=mounted.host;
+      const root=mounted.body||host;
+      const imgs=[...host.querySelectorAll('img')];
+      await Promise.all(imgs.map(im=>im.complete?Promise.resolve():new Promise(r=>{im.onload=im.onerror=r;})));
+      await new Promise(r=>setTimeout(r,80));
+      const w=PDF_CONTENT_PX;
+      root.style.width=w+'px';
+      root.style.maxWidth=w+'px';
+      const h=Math.max(1, root.scrollHeight||0, root.offsetHeight||0);
+      const canvas=await html2canvas(root,{
+        scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff', logging:false,
+        scrollX:0, scrollY:0, windowWidth:w, windowHeight:h, width:w, height:h, x:0, y:0
+      });
+      if(!canvas||!canvas.width) throw new Error('Không chụp được phiếu');
+      const {jsPDF}=window.jspdf;
+      const pageW=210, pageH=297, marginY=8, contentW=190;
+      const marginX=(pageW-contentW)/2;
+      const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+      const mmPerPx=contentW/canvas.width;
+      const pageHpx=(pageH-marginY*2)/mmPerPx;
+      let y=0, page=0;
+      while(y<canvas.height-2){
+        const sliceH=Math.min(pageHpx, canvas.height-y);
+        if(page) doc.addPage();
+        const slice=document.createElement('canvas');
+        slice.width=canvas.width; slice.height=Math.max(1, Math.round(sliceH));
+        const ctx=slice.getContext('2d');
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,slice.width,slice.height);
+        ctx.drawImage(canvas,0,y,canvas.width,sliceH,0,0,canvas.width,sliceH);
+        const drawH=sliceH*mmPerPx;
+        doc.addImage(slice.toDataURL('image/jpeg',0.98),'JPEG',marginX,marginY,contentW,drawH);
+        y+=sliceH; page++;
+        if(page>8) break;
+      }
+      await savePdfDoc(doc, fname);
+      toast('Đã tải phiếu xuất kho','ok');
+    }catch(err){
+      console.error(err);
+      toast('Lỗi tạo phiếu PDF: '+(err&&err.message||err),'bad');
+    }finally{
+      unlock();
+      if(host&&host.parentNode) host.parentNode.removeChild(host);
+      bP.disabled=false; bP.textContent=prev;
+    }
+  };
+}
 function transModalOut(t){
   const edit=!!t;
   const draw=()=>{
@@ -13802,33 +14069,50 @@ function transModalOut(t){
       <div class="field"><label>Số Series</label><input class="inp" id="tSeries" placeholder="Số series, cách nhau bằng dấu phẩy" value="${esc(t&&t.series||'')}"></div>
       <div class="field"><label>Đơn vị</label><input class="inp" id="tUnit" placeholder="Tấm, Bộ..." value="${esc(t&&t.unit||'')}"></div>
       <div class="field"><label>Số lượng</label><input class="inp mono" id="tQty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(t?t.qty:1,{decimal:false}))}"></div>
-      <div class="field"><label>Khách hàng</label><input class="inp" id="tParty" placeholder="Tên khách hàng" value="${esc(t?t.party:'')}"></div>
+      <div class="field"><label>Khách hàng trên phiếu</label><div id="tCusSum" style="font-size:13px;line-height:1.45;color:var(--ink-2)"></div></div>
       <div class="field"><label>Ghi chú</label><textarea class="inp" id="tNote">${esc(t?t.note:'')}</textarea></div>
       <div class="total-box">Tổng tiền: <span class="t-blue mono" id="tTotal">0 đ</span></div>`,
-      'Xác nhận xuất kho',()=>{
+      'Xuất kho và xem phiếu',()=>{
         const pid=+$('#tProd').value;
         const s=DB.stock.find(x=>x.id===pid);
         const qty=Math.max(0, Math.round(parseAmountInput($('#tQty').value,{decimal:false})));
         const pr=edit&&t&&t.price!=null?t.price:0;
-        const party=$('#tParty')?($('#tParty').value||'').trim():'';
         const series=outboundSeriesText($('#tSeries')&&$('#tSeries').value);
         const unit=(($('#tUnit')&&$('#tUnit').value)||'').trim();
         if(!s){toast('Chọn sản phẩm','bad');return false;}
         if(qty<1){toast('Số lượng phải từ 1 trở lên','bad');return false;}
         const have=(s.qty||0)+(edit&&t.kind==='out'?t.qty:0);
         if(have<qty){toast(`Tồn kho chỉ còn ${s.qty||0} – không đủ để xuất`,'bad');return false;}
+        const cus=readOutSlipCus();
+        const show=!!cus.show;
+        const cusName=show?String(cus.name||'').trim():'';
         if(edit)applyStock(t,-1);
         const now=new Date(),p2=n=>String(n).padStart(2,'0');
         const obj=edit?t:{id:++DB.seq.t,date:now.toISOString().slice(0,16),active:true,
           code:'XK-'+`${now.getFullYear()}${p2(now.getMonth()+1)}${p2(now.getDate())}-`+String(DB.seq.t).padStart(3,'0')};
         Object.assign(obj,{kind:'out',cat:s.cat,pid:s.id,name:s.name,qty,series,unit,
-          cocq:edit?(t.cocq||''):'',price:pr,party:party||'Khách lẻ',
-          partyPhone:obj.partyPhone||'',ref:edit?(t.ref||''):'',note:$('#tNote').value});
+          cocq:edit?(t.cocq||''):'',price:pr,party:cusName||'Khách lẻ',
+          partyPhone:show?String(cus.phone||'').trim():'',
+          partyAddr:show?String(cus.addr||'').trim():'',
+          showCus:show,
+          ref:edit?(t.ref||''):'',note:$('#tNote').value,
+          maker:(ME&&ME.name)||obj.maker||''});
         if(!edit)DB.trans.unshift(obj);
         applyStock(obj,1);
         toast('Đã xuất kho '+qty+' '+strip(s.name),'ok');
-        saveDB();renderPage();return true;},
+        saveDB();renderPage();
+        setTimeout(()=>openOutboundSlipPdf(obj), 40);
+        return true;},
       {okClass:'btn-primary',cancel:'Đóng'});
+    const sumEl=$('#tCusSum');
+    if(sumEl){
+      const cus=readOutSlipCus();
+      if(!cus.show) sumEl.textContent='Đang tắt trên trang Xuất kho — phiếu để trống họ tên, SĐT và địa chỉ.';
+      else{
+        const bits=[cus.name,cus.phone,cus.addr].map(s=>String(s||'').trim()).filter(Boolean);
+        sumEl.textContent=bits.length?bits.join(' · '):'Đã bật — chưa nhập họ tên, SĐT, địa chỉ.';
+      }
+    }
     const fill=()=>{
       const c=$('#tCat').value;
       const list=outboundStockChoices(c, edit?t:null);
