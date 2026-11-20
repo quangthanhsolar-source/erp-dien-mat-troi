@@ -4992,12 +4992,176 @@ function stopLiveSync(){
   }catch(e){}
 }
 
+// Bản sao CRM + Doanh số trên Google Sheet. URL điền sau khi Apps Script được triển khai.
+const SHEET_BACKUP_URL='';
+const SHEET_BACKUP_TOKEN='qts-erp-sheet-v1';
+const SHEET_SNAP_KEY='qts_sheet_snap_v1';
+let _sheetTimer=null;
+let _sheetBusy=false;
+let _sheetAgain=false;
+let _sheetFailAt=0;
+function sheetNowLabel(){
+  try{
+    return new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
+  }catch(e){ return new Date().toISOString(); }
+}
+function sheetFileNames(list){
+  if(!Array.isArray(list)||!list.length) return '';
+  return list.map(f=>f&&f.name?String(f.name).trim():'').filter(Boolean).join(', ');
+}
+function sheetCrmValues(r){
+  const region=crmRegionOf(r)==='mien_tay'?'data Miền Tây':'data HCM';
+  const date=crmDateLabel(r.date);
+  return [
+    String(r.id),
+    region,
+    r.owner||'',
+    date==='—'?'':date,
+    r.source||'',
+    r.name||'',
+    r.phone||'',
+    r.address||'',
+    crmDemandShown(r.demand),
+    r.status||'',
+    r.note||'',
+    sheetFileNames(r.surveyFiles),
+    sheetFileNames(r.quoteFiles)
+  ];
+}
+function sheetOrderValues(q){
+  const date=orderDateText(q);
+  const hh=orderCommission(q);
+  return [
+    String(q.code||''),
+    q.nv||'',
+    date==='—'?'':date,
+    q.source||'',
+    orderCatLabel(q.cat)||q.catLabel||'',
+    String(q.coHoi||q.cus||'').replace(/\r\n/g,'\n').replace(/\r/g,'\n'),
+    q.phone||'',
+    q.addr||'',
+    Math.round(+q.total||0),
+    Math.round(+(q.deposit!=null?q.deposit:0)),
+    Math.round(+(q.paid!=null?q.paid:0)),
+    Math.round(+(q.debt!=null?q.debt:0)),
+    q.payStatus||'',
+    hh!=null?Math.round(hh):'',
+    q.note||''
+  ];
+}
+function sheetLoadSnap(){
+  try{
+    const o=JSON.parse(localStorage.getItem(SHEET_SNAP_KEY)||'{}');
+    return {crm:(o&&o.crm)||{}, orders:(o&&o.orders)||{}};
+  }catch(e){ return {crm:{},orders:{}}; }
+}
+function sheetSaveSnap(snap){
+  try{ localStorage.setItem(SHEET_SNAP_KEY, JSON.stringify(snap)); }catch(e){}
+}
+function sheetBackupDiff(){
+  const prev=sheetLoadSnap();
+  const next={crm:{},orders:{}};
+  const crmUpserts=[];
+  const crmDeletes=[];
+  const orderUpserts=[];
+  const orderDeletes=[];
+  const log=[];
+  const now=sheetNowLabel();
+  (DB.crm||[]).forEach(r=>{
+    if(!r||r.id==null) return;
+    const id=String(r.id);
+    const values=sheetCrmValues(r);
+    const h=syncHash(values);
+    next.crm[id]=h;
+    if(prev.crm[id]===h) return;
+    crmUpserts.push({id, values:values.concat([now])});
+    log.push([now,'Khách hàng CRM', prev.crm[id]?'Cập nhật':'Thêm', id, [r.name||'', r.phone||''].filter(Boolean).join(' · ')]);
+  });
+  Object.keys(prev.crm).forEach(id=>{
+    if(next.crm[id]) return;
+    crmDeletes.push(id);
+    log.push([now,'Khách hàng CRM','Xóa', id, '']);
+  });
+  (DB.quotes||[]).forEach(q=>{
+    if(!q||!String(q.code||'').trim()) return;
+    const code=String(q.code).trim();
+    const values=sheetOrderValues(q);
+    const h=syncHash(values);
+    next.orders[code]=h;
+    if(prev.orders[code]===h) return;
+    orderUpserts.push({code, values:values.concat([now])});
+    log.push([now,'Doanh số', prev.orders[code]?'Cập nhật':'Thêm', code, String(q.cus||q.coHoi||'').split('\n')[0]]);
+  });
+  Object.keys(prev.orders).forEach(code=>{
+    if(next.orders[code]) return;
+    orderDeletes.push(code);
+    log.push([now,'Doanh số','Xóa', code, '']);
+  });
+  return {
+    changed:!!(crmUpserts.length||crmDeletes.length||orderUpserts.length||orderDeletes.length),
+    next,
+    body:{
+      token:SHEET_BACKUP_TOKEN,
+      crm:{
+        name:'Khách hàng CRM',
+        headers:['Mã','Khu vực','Người phụ trách','Ngày','Nguồn','Tên','SĐT','Địa chỉ','Nhu cầu tiền điện','Trạng thái','Ghi chú','File khảo sát','File báo giá','Cập nhật lúc'],
+        upserts:crmUpserts,
+        deletes:crmDeletes
+      },
+      orders:{
+        name:'Doanh số',
+        headers:['Mã đơn','Phụ trách','Ngày','Nguồn','Danh mục','Thông tin khách hàng','SĐT','Địa chỉ','Tổng tiền','Đặt cọc','Đã thanh toán','Công nợ','Trạng thái','Hoa hồng','Ghi chú','Cập nhật lúc'],
+        upserts:orderUpserts,
+        deletes:orderDeletes
+      },
+      log:{
+        name:'Nhật ký',
+        headers:['Thời điểm','Thư mục','Hành động','Mã','Nội dung'],
+        rows:log
+      }
+    }
+  };
+}
+function toastSheetFail(){
+  const now=Date.now();
+  if(now-_sheetFailAt<20000) return;
+  _sheetFailAt=now;
+  toast('Đã lưu trên phần mềm. Chưa ghi được sang Google Sheet — máy sẽ thử lại. Đừng tắt trang.','bad',8000);
+}
+function scheduleSheetBackup(){
+  if(!SHEET_BACKUP_URL) return;
+  if(_sheetTimer) clearTimeout(_sheetTimer);
+  _sheetTimer=setTimeout(()=>{ _sheetTimer=null; flushSheetBackup(); }, 40);
+}
+async function flushSheetBackup(){
+  if(!SHEET_BACKUP_URL) return;
+  if(_sheetBusy){ _sheetAgain=true; return; }
+  _sheetBusy=true;
+  try{
+    do{
+      _sheetAgain=false;
+      const diff=sheetBackupDiff();
+      if(!diff.changed) break;
+      const body=JSON.stringify(diff.body);
+      await fetch(SHEET_BACKUP_URL,{method:'POST',mode:'no-cors',body,keepalive:body.length<60000});
+      sheetSaveSnap(diff.next);
+    }while(_sheetAgain);
+  }catch(e){
+    console.warn('sheet backup', e);
+    toastSheetFail();
+  }finally{
+    _sheetBusy=false;
+    if(_sheetAgain) scheduleSheetBackup();
+  }
+}
+
 const _saveDB=saveDB;
 saveDB=function(){
   _saveDB();
   markDBDirty();
   _dbRev++;
   _saveNotify=true;
+  scheduleSheetBackup();
   if(SB_READY&&SB_USER) schedulePushDB(true);
   else if(SB_READY&&!SB_USER){
     // Đang "Chỉ local" — cảnh báo một lần mỗi phiên thao tác
@@ -5013,10 +5177,12 @@ document.addEventListener('visibilitychange',()=>{
     if(SB_READY&&SB_USER) pushKdAvailNow();
   }else if(document.visibilityState==='visible'){
     softCloudSync('visible');
+    scheduleSheetBackup();
   }
 });
 window.addEventListener('pagehide',()=>{
   persistQtDraft();
+  try{ flushSheetBackup(); }catch(e){}
   if(isDBDirty()&&_syncBase&&SB_READY&&SB_USER) schedulePushDB(true);
   if(SB_READY&&SB_USER) pushKdAvailNow();
 });
@@ -5024,7 +5190,7 @@ window.addEventListener('beforeunload',()=>{
   persistQtDraft();
   if(isDBDirty()&&_syncBase&&SB_READY&&SB_USER) schedulePushDB(true);
 });
-window.addEventListener('online',()=>{ softCloudSync('online'); });
+window.addEventListener('online',()=>{ softCloudSync('online'); scheduleSheetBackup(); });
 
 async function sbEnsureProfile(user, meta){
   if(!sb||!user)return;
@@ -5152,6 +5318,7 @@ async function enterApp(u, opt){
       applyPimgToDB();
       renderPage();
       try{ renderSidebar(); }catch(e){}
+      scheduleSheetBackup();
     }else{
     const ok=await pullDBFromSupabase();
     const restored=mergeSeedCatalog();
@@ -5206,6 +5373,7 @@ async function enterApp(u, opt){
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
     renderPage();
     try{ renderSidebar(); }catch(e){}
+    scheduleSheetBackup();
     }
   }else{
     _kdAvailHydrated=true;
@@ -5226,6 +5394,7 @@ async function enterApp(u, opt){
     if(ordAdded>0||ordPruned>0) _saveDB();
     if(ordAdded>0) toast('Đã nhập '+ordAdded+' đơn hàng từ Excel','ok');
     if(restored>0||ordAdded>0||ordPruned>0||exVatN>0||seedPriceN>0||assetN>0||stockN>0||userN>0||testKdN>0||mienTayN>0||inboundN>0) renderPage();
+    scheduleSheetBackup();
   }
 }
 
