@@ -104,6 +104,14 @@ img{max-width:100%;height:auto}
   display:grid;place-items:center;flex:none;
 }
 .topbar-btn svg{width:18px;height:18px;color:var(--ink-2)}
+.sync-pill{display:none;flex:none;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;line-height:1.3}
+.sync-pill.on{display:inline-block}
+.sync-pill.wait{color:#9a3412;background:#ffedd5}
+.sync-pill.ok{color:#166534;background:#dcfce7}
+.sync-pill.bad{color:#991b1b;background:#fee2e2}
+@media(max-width:767.98px){
+  .sync-pill{margin-left:auto;position:relative;z-index:2}
+}
 /* Mobile header: hamburger trái, logo căn giữa toàn bộ thanh. Ẩn tên trang. Pill "+ Tạo báo giá" chỉ ẩn ở đây. */
 @media(max-width:767.98px){
   .topbar #topFab{display:none !important}
@@ -1137,6 +1145,7 @@ html.qt-preview-open,html.qt-preview-open body{overflow:hidden}
     </button>
     <div class="brandmark"><img src="assets/brand/quang-thanh-logo.png?v=1" alt="Quang Thanh Solar"></div>
     <div style="flex:1"><div class="topbar-title" id="topbarTitle">Dashboard</div></div>
+    <div id="syncPill" class="sync-pill" aria-live="polite"></div>
     <button class="btn btn-green" id="topFab" data-go="quote-new" style="height:38px;font-size:12.5px;padding:0 14px">&plus; Tạo báo giá</button>
   </header>
   <main class="main" id="main"></main>
@@ -4435,6 +4444,35 @@ function dropSyncBaseKeys(keys){
   });
   persistSyncBase();
 }
+function stampSyncRow(bucket, key, row){
+  if(!_syncBase||key==null||key==='') return;
+  if(!_syncBase[bucket]||typeof _syncBase[bucket]!=='object') _syncBase[bucket]={};
+  _syncBase[bucket][String(key)]=syncHash(row);
+}
+function forgetSyncRow(bucket, key){
+  if(!_syncBase||!_syncBase[bucket]||typeof _syncBase[bucket]!=='object'||key==null) return;
+  delete _syncBase[bucket][String(key)];
+}
+/** Chỉ đánh dấu những dòng vừa ghi thành công. Không lấy cả bản local rồi coi như Supabase đã có. */
+function notePushedSync(sent){
+  if(!_syncBase||!sent) return;
+  (sent.products||[]).forEach(p=>{ if(p&&p.id!=null) stampSyncRow('products', p.id, p); });
+  (sent.customers||[]).forEach(c=>{ if(c&&c.id!=null) stampSyncRow('customers', c.id, c); });
+  (sent.suppliers||[]).forEach(s=>{ if(s&&s.id!=null) stampSyncRow('suppliers', s.id, s); });
+  (sent.quotes||[]).forEach(q=>{ if(q&&q.code) stampSyncRow('quotes', q.code, q); });
+  (sent.stock||[]).forEach(s=>{ if(s&&s.id!=null) stampSyncRow('stock', s.id, s); });
+  (sent.trans||[]).forEach(t=>{ if(t&&t.id!=null) stampSyncRow('trans', t.id, t); });
+  (sent.users||[]).forEach(u=>{ if(u&&u.id!=null) stampSyncRow('users', u.id, u); });
+  (sent.crm||[]).forEach(r=>{ if(r&&r.id!=null) stampSyncRow('crm', r.id, r); });
+  (sent.forget||[]).forEach(pair=>{ if(pair) forgetSyncRow(pair[0], pair[1]); });
+  if(sent.settings){
+    _syncBase.settings=syncHash(DB.settings||{});
+    _syncBase.workPlans=syncHash(wpPlansPayload());
+    _syncBase.assets=syncHash(assetSheetPayload());
+    _syncBase.attendance=syncHash(attFingerprint(DB.attendance));
+  }
+  persistSyncBase();
+}
 function takeSyncSnapshot(){
   const products={};
   SB_PRODUCT_KEYS.forEach(k=>{ products[k]=(DB[k]||[]).slice(); });
@@ -4652,23 +4690,28 @@ async function pushDBToSupabase(){
     backupDBLocalSnapshot();
     const now=new Date().toISOString();
     const productRows=[];
+    const productSent=[];
     SB_PRODUCT_KEYS.forEach(k=>{
       const cat=SB_PRODUCT_CAT[k];
       (DB[k]||[]).forEach(p=>{
         if(!p||p.id==null) return;
         if(!syncRowChanged('products', p.id, p)) return;
         productRows.push(sbProductToRow(p,cat));
+        productSent.push(p);
       });
     });
-    const customerRows=(DB.customers||[]).filter(c=>c&&c.id!=null&&syncRowChanged('customers', c.id, c)).map(c=>{
+    const customerSent=(DB.customers||[]).filter(c=>c&&c.id!=null&&syncRowChanged('customers', c.id, c));
+    const customerRows=customerSent.map(c=>{
       const attrs={...c};delete attrs.id;delete attrs.name;delete attrs.phone;delete attrs.address;delete attrs.note;
       return{id:Number(c.id),name:c.name||'',phone:c.phone||null,address:c.address||null,note:c.note||null,attrs,updated_at:now};
     });
-    const supplierRows=(DB.suppliers||[]).filter(s=>s&&s.id!=null&&syncRowChanged('suppliers', s.id, s)).map(s=>{
+    const supplierSent=(DB.suppliers||[]).filter(s=>s&&s.id!=null&&syncRowChanged('suppliers', s.id, s));
+    const supplierRows=supplierSent.map(s=>{
       const attrs={...s};delete attrs.id;delete attrs.name;delete attrs.phone;delete attrs.email;delete attrs.address;delete attrs.note;
       return{id:Number(s.id),name:s.name||'',phone:s.phone||null,email:s.email||null,address:s.address||null,note:s.note||null,attrs,updated_at:now};
     });
-    const quoteRows=(DB.quotes||[]).filter(q=>q&&q.code&&syncRowChanged('quotes', q.code, q)).map(q=>{
+    const quoteSent=(DB.quotes||[]).filter(q=>q&&q.code&&syncRowChanged('quotes', q.code, q));
+    const quoteRows=quoteSent.map(q=>{
       const data={...q};
       delete data.code;delete data.cus;delete data.phone;delete data.addr;delete data.total;delete data.status;delete data.nv;delete data.date;
       return{
@@ -4684,12 +4727,14 @@ async function pushDBToSupabase(){
         updated_at:now
       };
     });
-    const stockRows=(DB.stock||[]).filter(s=>s&&s.id!=null&&syncRowChanged('stock', s.id, s)).map(s=>{
+    const stockSent=(DB.stock||[]).filter(s=>s&&s.id!=null&&syncRowChanged('stock', s.id, s));
+    const stockRows=stockSent.map(s=>{
       let unit=s.unit==null?null:s.unit;
       if(s.stt!=null && s.lock!=null && String(s.unit||'').indexOf('#tk|')===0) unit=stockSheetPack(s.stt, s.lock, s.hive, s.binh, s.viet);
       return {id:Number(s.id),category:s.cat||'',name:s.name||null,qty:Number(s.qty)||0,min_qty:Number(s.min)||0,unit:unit||null,updated_at:now};
     });
-    const transRows=(DB.trans||[]).filter(t=>t&&t.id!=null&&syncRowChanged('trans', t.id, t)).map(t=>{
+    const transSent=(DB.trans||[]).filter(t=>t&&t.id!=null&&syncRowChanged('trans', t.id, t));
+    const transRows=transSent.map(t=>{
       const data={...t};
       delete data.id;delete data.code;delete data.kind;delete data.cat;delete data.pid;delete data.name;
       delete data.qty;delete data.price;delete data.party;delete data.partyPhone;delete data.ref;delete data.note;delete data.active;delete data.date;
@@ -4713,6 +4758,8 @@ async function pushDBToSupabase(){
       };
     });
     const userRows=appUserUpsertRows(now);
+    const userSentIds=new Set(userRows.map(u=>String(u.id)));
+    const userSent=(DB.users||[]).filter(u=>u&&u.id!=null&&userSentIds.has(String(u.id)));
 
     // AN TOÀN: upsert trước → chỉ prune thừa sau khi ghi OK (không clear bảng trước)
     const crmChanged=(DB.crm||[]).filter(r=>r&&r.id!=null&&(!crmRowAcked(r)||syncRowChanged('crm', r.id, r)));
@@ -4797,6 +4844,7 @@ async function pushDBToSupabase(){
       })()
     ]);
 
+    let settingsWritten=false;
     const settingsChanged=!!(_syncBase&&_syncBase.settings!==syncHash(DB.settings||{}));
     const wpPlansChanged=!!(_syncBase&&_syncBase.workPlans!==syncHash(wpPlansPayload()));
     const assetsChanged=!!(_syncBase&&_syncBase.assets!==syncHash(assetSheetPayload()));
@@ -4869,6 +4917,7 @@ async function pushDBToSupabase(){
       updated_at:now
     });
     if(setErr)throw setErr;
+    settingsWritten=true;
     }
     const seq=DB.seq||{q:0,t:0,u:0,p:0};
     const {error:seqErr}=await sb.from('erp_seq').upsert({
@@ -4877,7 +4926,22 @@ async function pushDBToSupabase(){
     if(seqErr)throw seqErr;
     // Có sửa mới trong lúc đang đẩy — đừng đánh dấu bản mới là đã lên cloud.
     if(_dbRev!==pushRev) return 'again';
-    captureSyncBase();
+    const forget=[];
+    crmGone.forEach(id=>forget.push(['crm', id]));
+    supTombs.forEach(id=>forget.push(['suppliers', id]));
+    quoteTombs.forEach(code=>forget.push(['quotes', code]));
+    notePushedSync({
+      products:productSent,
+      customers:customerSent,
+      suppliers:supplierSent,
+      quotes:quoteSent,
+      stock:stockSent,
+      trans:transSent,
+      users:userSent,
+      crm:crmChanged,
+      forget,
+      settings:settingsWritten
+    });
     return true;
   }catch(e){
     console.warn('pushDB',e);
@@ -4938,9 +5002,40 @@ async function fetchErpSyncStamp(){
   }catch(e){ return ''; }
 }
 
+let _syncPillTimer=null;
+function paintSyncPill(state){
+  const el=document.getElementById('syncPill');
+  if(!el) return;
+  if(_syncPillTimer){ clearTimeout(_syncPillTimer); _syncPillTimer=null; }
+  if(state==='wait'){
+    el.className='sync-pill on wait';
+    el.textContent='Đang gửi…';
+  }else if(state==='bad'){
+    el.className='sync-pill on bad';
+    el.textContent='Chưa lưu máy chủ';
+  }else if(state==='ok'){
+    el.className='sync-pill on ok';
+    el.textContent='Đã lưu máy chủ';
+    _syncPillTimer=setTimeout(()=>{ el.className='sync-pill'; el.textContent=''; }, 2200);
+  }else{
+    el.className='sync-pill';
+    el.textContent='';
+  }
+}
+function notifyPeersSaved(){
+  try{
+    const ch=window._erpSeqChannel;
+    if(ch&&typeof ch.send==='function'){
+      ch.send({type:'broadcast', event:'saved', payload:{t:Date.now()}});
+    }
+  }catch(e){}
+}
 function schedulePushDB(immediate){
   if(!SB_READY||!SB_USER) return;
-  if(!_syncBase) return;
+  if(!_syncBase){
+    softCloudSync('need-base');
+    return;
+  }
   if(_sbPushTimer){ clearTimeout(_sbPushTimer); _sbPushTimer=null; }
   // Lưu là đẩy ngay. Lần đang chạy dở thì xếp đúng một lần kế tiếp, không chờ thêm.
   if(immediate===false){
@@ -4957,6 +5052,7 @@ function enqueuePushDB(){
   const run=async()=>{
     _sbPushRunning=true;
     let ok=false;
+    paintSyncPill('wait');
     try{
       do{
         _sbPushAgain=false;
@@ -4983,11 +5079,14 @@ function enqueuePushDB(){
       }while(_sbPushAgain);
       if(ok){
         _saveFailToastedAt=0;
+        paintSyncPill('ok');
+        try{ notifyPeersSaved(); }catch(e){}
         if(_saveNotify){
           _saveNotify=false;
           toast('Đã lưu lên máy chủ','ok');
         }
       }else if(_saveNotify||isDBDirty()){
+        paintSyncPill('bad');
         toastSaveFailed(_lastPushErr);
       }
       return ok;
@@ -5009,23 +5108,41 @@ async function flushPushDB(){
 }
 
 /** Kéo cloud khi máy khác vừa lưu — không đè nếu máy này còn thay đổi chưa đẩy */
+let _softSyncAgain=false;
+let _unackedPushAt=0;
 async function softCloudSync(reason){
   if(_sbPushRunning){
     _pullAfterPush=true;
     return false;
   }
-  if(_softSyncBusy||!SB_READY||!SB_USER||!ME) return false;
+  if(_softSyncBusy){
+    _softSyncAgain=true;
+    return false;
+  }
+  if(!SB_READY||!SB_USER||!ME) return false;
   _softSyncBusy=true;
   try{
-    if((isDBDirty()&&_syncBase)||countUnackedCrm()>0){
-      if(countUnackedCrm()>0) markDBDirty();
+    const dirty=isDBDirty();
+    const unacked=countUnackedCrm();
+    if((dirty&&_syncBase)||unacked>0){
+      if(!dirty&&unacked>0){
+        const now=Date.now();
+        if(now-_unackedPushAt<8000) return true;
+        _unackedPushAt=now;
+      }
+      if(unacked>0) markDBDirty();
       return !!(await flushPushDB());
+    }
+    if(dirty&&!_syncBase){
+      await pullDBFromSupabase();
+      if(_syncBase&&isDBDirty()) return !!(await flushPushDB());
+      return false;
     }
     const stamp=await fetchErpSyncStamp();
     if(stamp && stamp===_localSyncStamp) return true;
     const ok=await pullDBFromSupabase();
     if(ok){
-      _localSyncStamp=stamp||await fetchErpSyncStamp();
+      _localSyncStamp=await fetchErpSyncStamp()||stamp;
       const r=routeFromUrl();
       // Giữ form báo giá đang soạn; các trang khác refresh ngay
       if(r && r!=='quote-new') renderPage();
@@ -5038,6 +5155,10 @@ async function softCloudSync(reason){
     return false;
   }finally{
     _softSyncBusy=false;
+    if(_softSyncAgain){
+      _softSyncAgain=false;
+      setTimeout(()=>{ softCloudSync('queued'); }, 0);
+    }
   }
 }
 function startLiveSync(){
@@ -5046,13 +5167,16 @@ function startLiveSync(){
   if(_liveSyncTimer) clearInterval(_liveSyncTimer);
   _liveSyncTimer=setInterval(()=>{
     if(document.visibilityState==='visible') softCloudSync('poll');
-  }, 12000);
-  // Realtime (nếu bật trên project) — bổ sung cho poll
+  }, 2000);
+  // Realtime erp_seq + broadcast: máy khác cập nhật ngay, poll 2 giây là lưới dự phòng.
   try{
     if(sb&&!window._erpSeqChannel){
-      window._erpSeqChannel=sb.channel('erp-seq-live')
+      window._erpSeqChannel=sb.channel('erp-seq-live',{config:{broadcast:{self:false}}})
         .on('postgres_changes',{event:'*',schema:'public',table:'erp_seq'},()=>{
           if(document.visibilityState==='visible') softCloudSync('realtime');
+        })
+        .on('broadcast',{event:'saved'},()=>{
+          if(document.visibilityState==='visible') softCloudSync('broadcast');
         })
         .subscribe();
     }
