@@ -3789,6 +3789,65 @@ function collectDBPayload(){
   return data;
 }
 let _crmRetainIds=[];
+let _crmServerAckBatch={};
+const CRM_ACK_KEY='qts_crm_server_ack_v1';
+function loadCrmAck(){
+  try{
+    const o=JSON.parse(localStorage.getItem(CRM_ACK_KEY)||'{}');
+    return o&&typeof o==='object'?o:{};
+  }catch(e){ return {}; }
+}
+function saveCrmAck(map){
+  try{ localStorage.setItem(CRM_ACK_KEY, JSON.stringify(map||{})); }catch(e){}
+}
+function crmRowAckHash(r){
+  if(!r||r.id==null) return '';
+  return syncHash({
+    id:Number(r.id),
+    name:r.name||'',
+    phone:r.phone||'',
+    address:r.address||'',
+    demand:r.demand||'',
+    owner:r.owner||'',
+    date:r.date||'',
+    source:r.source||'',
+    status:r.status||''
+  });
+}
+function crmRowAcked(r){
+  if(!r||r.id==null) return false;
+  return loadCrmAck()[String(r.id)]===crmRowAckHash(r);
+}
+function countUnackedCrm(){
+  return (DB.crm||[]).filter(r=>r&&r.id!=null&&!crmRowAcked(r)).length;
+}
+function ackCrmRows(rows){
+  const ack=loadCrmAck();
+  (rows||[]).forEach(r=>{
+    if(!r||r.id==null) return;
+    const now=crmRowAckHash(r);
+    const sent=r._ackHash||now;
+    if(sent===now) ack[String(r.id)]=now;
+    delete r._ackHash;
+  });
+  saveCrmAck(ack);
+}
+function forgetCrmAck(ids){
+  const ack=loadCrmAck();
+  (ids||[]).forEach(id=>{ delete ack[String(id)]; });
+  saveCrmAck(ack);
+}
+function commitCrmServerAckBatch(){
+  const batch=_crmServerAckBatch||{};
+  _crmServerAckBatch={};
+  const ack=loadCrmAck();
+  Object.keys(batch).forEach(id=>{
+    const row=(DB.crm||[]).find(r=>String(r.id)===id);
+    if(!row) return;
+    if(crmRowAckHash(row)===batch[id]) ack[id]=batch[id];
+  });
+  saveCrmAck(ack);
+}
 let _quoteRetainCodes=[];
 function keepRowsMissingFromCloud(cloudRows, localRows, keyFn){
   const remote=Array.isArray(cloudRows)?cloudRows:[];
@@ -3851,6 +3910,7 @@ function applyDBPayload(data){
       const gone=new Set((DB.deletedCrmIds||[]).map(Number));
       const local=(DB.crm||[]).filter(r=>r&&r.id!=null&&!gone.has(Number(r.id)));
       const incoming=Array.isArray(data.crm)?data.crm:[];
+      _crmServerAckBatch={};
       // Cloud trả về rỗng trong khi máy đang có khách: không xóa danh sách local.
       if(!incoming.length && local.length){
         console.warn('CRM cloud rỗng — giữ', local.length, 'khách trên máy');
@@ -3860,6 +3920,7 @@ function applyDBPayload(data){
       const prevById=new Map(local.map(r=>[String(r.id),r]));
       DB.crm=incoming.filter(r=>r&&!gone.has(Number(r.id))).map(r=>{
         if(!r) return r;
+        _crmServerAckBatch[String(r.id)]=crmRowAckHash(r);
         const prev=prevById.get(String(r.id));
         const remoteFiles=(typeof crmSurveyList==='function')?crmSurveyList(r):[];
         const localFiles=prev&&typeof crmSurveyList==='function'?crmSurveyList(prev):[];
@@ -4480,6 +4541,7 @@ async function pullDBFromSupabase(){
     try{ crmApplySurveyMetaToDB(); }catch(e){}
     try{ crmApplyQuoteMetaToDB(); }catch(e){}
     try{ crmApplyRegionsToDB(); }catch(e){}
+    try{ commitCrmServerAckBatch(); }catch(e){}
     const idsBeforeSeed=new Set();
     SB_PRODUCT_KEYS.forEach(k=>(DB[k]||[]).forEach(p=>{ if(p&&p.id!=null) idsBeforeSeed.add(String(p.id)); }));
     const restored=mergeSeedCatalog();
@@ -4551,6 +4613,11 @@ async function pullDBFromSupabase(){
       pending.n+=_crmRetainIds.length;
       _crmRetainIds=[];
     }
+    (DB.crm||[]).forEach(r=>{
+      if(!r||r.id==null||crmRowAcked(r)) return;
+      pending.keys.crm.push(String(r.id));
+      pending.n++;
+    });
     if(_quoteRetainCodes.length){
       pending.keys.quotes.push(..._quoteRetainCodes);
       pending.n+=_quoteRetainCodes.length;
@@ -4648,8 +4715,10 @@ async function pushDBToSupabase(){
     const userRows=appUserUpsertRows(now);
 
     // AN TOÀN: upsert trước → chỉ prune thừa sau khi ghi OK (không clear bảng trước)
-    const crmChanged=(DB.crm||[]).filter(r=>r&&r.id!=null&&syncRowChanged('crm', r.id, r));
-    const crmRows=await Promise.all(crmChanged.map(async r=>({
+    const crmChanged=(DB.crm||[]).filter(r=>r&&r.id!=null&&(!crmRowAcked(r)||syncRowChanged('crm', r.id, r)));
+    const crmRows=await Promise.all(crmChanged.map(async r=>{
+      r._ackHash=crmRowAckHash(r);
+      return {
       id:Number(r.id),
       name:r.name||'',
       phone:r.phone||null,
@@ -4662,7 +4731,7 @@ async function pushDBToSupabase(){
       note:r.note||null,
       survey_imgs:await crmSurveyImgsPayload(r),
       updated_at:now
-    })));
+    }; }));
     const crmGone=[...new Set((DB.deletedCrmIds||[]).map(Number).filter(Boolean))];
     const supTombs=[...new Set((DB.deletedSupplierIds||[]).map(Number).filter(n=>n))];
     const quoteTombs=[...new Set((DB.deletedQuoteCodes||[]).map(c=>String(c||'').trim()).filter(Boolean))];
@@ -4676,6 +4745,7 @@ async function pushDBToSupabase(){
       (async()=>{
         try{
           await sbUpsertThenPrune('crm_leads',crmRows,'id',{noPrune:true});
+          ackCrmRows(crmChanged);
         }catch(crmSyncErr){
           const msg=String((crmSyncErr&&crmSyncErr.message)||crmSyncErr||'');
           if(!/note|survey_imgs|column/i.test(msg)) throw crmSyncErr;
@@ -4684,11 +4754,13 @@ async function pushDBToSupabase(){
             return rest;
           });
           await sbUpsertThenPrune('crm_leads',crmCore,'id',{noPrune:true});
+          ackCrmRows(crmChanged);
           console.warn('CRM sync: thiếu cột note/survey_imgs trên Supabase — đã đẩy phần còn lại. Chạy migration 20261024143000_crm_leads_note_survey_imgs.sql');
         }
         if(crmGone.length){
           const {error:crmDelErr}=await sb.from('crm_leads').delete().in('id',crmGone);
           if(crmDelErr) throw crmDelErr;
+          forgetCrmAck(crmGone);
           DB.deletedCrmIds=[];
           try{ _saveDB(); }catch(e){}
         }
@@ -4901,6 +4973,10 @@ function enqueuePushDB(){
         ok=attemptOk;
         if(!ok) break;
         if(!_sbPushAgain){
+          if(countUnackedCrm()>0){
+            ok=false;
+            break;
+          }
           clearDBDirty();
           _localSyncStamp=await fetchErpSyncStamp();
         }
@@ -4941,7 +5017,8 @@ async function softCloudSync(reason){
   if(_softSyncBusy||!SB_READY||!SB_USER||!ME) return false;
   _softSyncBusy=true;
   try{
-    if(isDBDirty()&&_syncBase){
+    if((isDBDirty()&&_syncBase)||countUnackedCrm()>0){
+      if(countUnackedCrm()>0) markDBDirty();
       return !!(await flushPushDB());
     }
     const stamp=await fetchErpSyncStamp();
@@ -5353,6 +5430,8 @@ async function enterApp(u, opt){
     }else if(ok==='brand-fixed'){
       needPush=true;
     }else if(ok==='restored'){
+      needPush=true;
+    }else if(countUnackedCrm()>0){
       needPush=true;
     }else{
       clearDBDirty();
@@ -10512,13 +10591,13 @@ function crmVnMonth(){
   return crmVnCalendar().m;
 }
 function crmSnapVnMonthFilter(){
+  // Không kéo về tháng hiện tại. Khách các tháng khác phải vẫn nằm trong danh sách.
   const cal=crmVnCalendar();
-  crmFilter.y=cal.y;
-  crmFilter.m=cal.m;
+  if(!crmFilter.y) crmFilter.y=cal.y;
   crmPage=1;
 }
 const _crmVn0=crmVnCalendar();
-let crmFilter={q:'',y:_crmVn0.y,m:_crmVn0.m,owner:'',source:'',status:''};
+let crmFilter={q:'',y:_crmVn0.y,m:'',owner:'',source:'',status:''};
 let crmRegionTab='hcm';
 let crmStatsOpen=true;
 let crmPage=1;
@@ -11673,6 +11752,7 @@ function pageCrm(){
   return `${kdFreeBoardHtml()}<div class="page-head"><div class="page-title">Khách hàng CRM</div>
     <button class="btn btn-primary" id="crmAdd">${I.plus} Thêm khách hàng</button></div>
   <div class="page-sub" style="margin:-8px 0 16px">Telesales xem tất cả khách. Nhân viên KD chỉ thấy khách «Trống» và khách do mình phụ trách. Tên, SĐT, địa chỉ và nhu cầu tiền điện nằm trong một cột.</div>
+  ${countUnackedCrm()?`<div class="page-sub" style="margin:-8px 0 16px;color:#b45309;font-weight:700">Còn ${countUnackedCrm()} khách chưa ghi lên Supabase. Giữ trang này mở, máy đang gửi lại. Đừng tắt cho đến khi dòng này biến mất.</div>`:''}
   <div class="stk-tabs" role="tablist" data-crm-region-tabs="1">
     <button type="button" class="stk-tab ${crmRegionTab==='mien_tay'?'':'active'}" data-crm-region="hcm" role="tab" aria-selected="${crmRegionTab!=='mien_tay'}">data HCM</button>
     <button type="button" class="stk-tab ${crmRegionTab==='mien_tay'?'active':''}" data-crm-region="mien_tay" role="tab" aria-selected="${crmRegionTab==='mien_tay'}">data Miền Tây</button>
