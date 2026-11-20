@@ -6101,7 +6101,8 @@ function applyAcCableToNgoaivi(){
 }
 function systemKwpQty(c){
   const k=c&&c.kwp!=null?+c.kwp:0;
-  return Math.round(k*100)/100;
+  if(!Number.isFinite(k)) return 0;
+  return Number(k.toFixed(2));
 }
 /** Biến tần / Inverter hòa lưới (on-grid) — đơn giá lắp đặt thấp hơn hybrid */
 function isGridTiedInverter(inv){
@@ -6262,7 +6263,8 @@ function applyOngNhuaFloor(rows){
 }
 function defaultMountQty(m,n,kwp){
   const k=kwp!=null?+kwp:0;
-  return Math.round(k*100)/100;
+  if(!Number.isFinite(k)) return 0;
+  return Number(k.toFixed(2));
 }
 function mountLine(n,kwp){
   const list=mountPickList();
@@ -6723,6 +6725,11 @@ function markQuoteQtyManual(r){
 function markQuotePriceManual(r){
   if(r) r.priceManual=true;
 }
+function isKwpMountRow(r){
+  if(!r||isPkAddRow(r)||isManualPkRow(r)) return false;
+  if(isQtPieceMountTab()&&isBatZRow(r)) return false;
+  return r.mountId!=null||/^(Bát Z|Rail nhôm|Khung sắt)$/i.test(String(r.name||'').trim());
+}
 function applyQuoteQtyFormulas(c){
   if(!c||!QT) return;
   const dcQty=c.n*5;
@@ -6730,6 +6737,9 @@ function applyQuoteQtyFormulas(c){
   const csQty=systemKwpQty(c);
   const laborPrice=quoteLaborInstallPrice(c);
   const lockInit=!_qtQtyLockInit;
+  const prevBasis=QT._mountKwpBasis;
+  const kwpChanged=prevBasis!=null&&quoteQtyNum(prevBasis)!==csQty;
+  QT._mountKwpBasis=csQty;
   const setQty=(r, qty)=>{
     if(!r) return;
     const next=quoteQtyNum(qty);
@@ -6738,6 +6748,11 @@ function applyQuoteQtyFormulas(c){
     if(r.qtyManual) return;
     r.qty=next;
   };
+  const forceQty=(r, qty)=>{
+    if(!r) return;
+    delete r.qtyManual;
+    r.qty=quoteQtyNum(qty);
+  };
   const setBy=(arr,re,fn)=>{
     if(!arr) return;
     arr.forEach(r=>{ if(r&&re.test(String(r.name||''))) fn(r); });
@@ -6745,11 +6760,9 @@ function applyQuoteQtyFormulas(c){
   setBy(QT.ngoaivi,/Dây cáp DC màu đỏ/i,r=>setQty(r,dcQty));
   setBy(QT.ngoaivi,/Dây cáp DC màu đen/i,r=>setQty(r,dcQty));
   (QT.phuKien||[]).forEach(r=>{
-    if(!r||isPkAddRow(r)||isManualPkRow(r)) return;
-    const mount=r.mountId!=null||/^(Bát Z|Rail nhôm|Khung sắt)$/i.test(String(r.name||'').trim());
-    if(!mount) return;
-    if(isQtPieceMountTab()&&isBatZRow(r)) return;
-    setQty(r, csQty);
+    if(!isKwpMountRow(r)) return;
+    if(kwpChanged) forceQty(r, csQty);
+    else setQty(r, csQty);
   });
   if(!isQtPieceMountTab()) setBy(QT.phuKien,/Kẹp nhôm biên và giữa/i,r=>{ if(!isManualPkRow(r)) setQty(r,kepQty); });
   setBy(QT.phuKien,/Kẹp cố định dây tấm pin/i,r=>{ if(!isManualPkRow(r)) setQty(r,kepQty); });
@@ -6802,7 +6815,9 @@ function syncQuoteDepInputs(){
     root.querySelectorAll(`[data-nv-q="${i}"]`).forEach(el=>{ el.value=r.qty; });
   });
   (QT.phuKien||[]).forEach((r,i)=>{
-    root.querySelectorAll(`[data-pk-q="${i}"]`).forEach(el=>{ el.value=r.qty; });
+    const dec=isKwpMountRow(r);
+    const shown=dec?formatKwpQty(r.qty):groupAmountInput(r.qty,{decimal:false});
+    root.querySelectorAll(`[data-pk-q="${i}"]`).forEach(el=>{ el.value=shown; });
   });
   (QT.nhanCong||[]).forEach((r,i)=>{
     root.querySelectorAll(`[data-nc-q="${i}"]`).forEach(el=>{ el.value=r.qty; });
@@ -6820,6 +6835,8 @@ function syncQuoteDepsFromPanelCount(n){
   QT._panelQty=n;
   const base=calc(); if(!base) return null;
   const kwp=n*base.pn.w/1000;
+  // Đổi số tấm pin thì Bát Z / Rail nhôm / Khung sắt nhảy lại theo kWp, kể cả khi vừa sửa tay
+  (QT.phuKien||[]).forEach(r=>{ if(isKwpMountRow(r)) delete r.qtyManual; });
   applyQuoteQtyFormulas({n,kwp,pn:base.pn,inv:base.inv});
   syncQuoteDepInputs();
   return{n,kwp};
@@ -6949,13 +6966,28 @@ function readQtyInput(raw){
   const n=Math.round(parseAmountInput(raw,{decimal:false}));
   return Number.isFinite(n)?n:0;
 }
+function readKwpQtyInput(raw){
+  const n=parseAmountInput(raw,{decimal:true});
+  if(!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n*100)/100);
+}
 function quoteQtyFromInput(inp){
   const n=readQtyInput(inp&&inp.value);
   return n>0?n:0;
 }
-function mirrorQtyInputs(selector, value, except){
-  const shown=groupAmountInput(value,{decimal:false});
+function formatKwpQty(n){
+  const x=+n;
+  if(!Number.isFinite(x)) return '0.00';
+  return x.toFixed(2);
+}
+function mirrorQtyInputs(selector, value, except, decimal){
+  const shown=decimal?formatKwpQty(value):groupAmountInput(value,{decimal:false});
   document.querySelectorAll(selector).forEach(el=>{ if(el!==except) el.value=shown; });
+}
+function pkQtyField(r, ri, style){
+  const dec=isKwpMountRow(r);
+  const shown=dec?formatKwpQty(r.qty):groupAmountInput(r.qty,{decimal:false});
+  return `<input class="qt-qty" type="text" inputmode="${dec?'decimal':'numeric'}" autocomplete="off" data-amt="${dec?'dec':'int'}" value="${esc(shown)}" data-pk-q="${ri}" style="${style}">`;
 }
 function paintQtMoney(){
   (QT.items||[]).forEach((it,i)=>{
@@ -7607,7 +7639,7 @@ function pageQuoteNew(){
         <th style="width:46px">STT</th>
         <th style="min-width:260px">Sản phẩm</th>
         <th style="width:110px">Hình ảnh</th>
-        <th style="width:60px">SL</th>
+        <th style="width:76px">SL</th>
         <th class="num" style="width:120px">Đơn giá</th>
         <th class="num" style="width:130px">Thành tiền</th>
       </tr></thead>
@@ -7661,7 +7693,7 @@ function pageQuoteNew(){
         <td class="mono" style="color:var(--muted);font-size:12px;padding:4px 8px">${visI+1}</td>
         <td style="font-size:12.5px;padding:4px 8px">${pkProductCell(r,ri,'desk')}</td>
         ${visI===0?`<td style="padding:3px 4px;text-align:center;vertical-align:middle" rowspan="${vis.length}">${sectionThumbHtml(it,'_PK')}</td>`:''}
-        <td style="padding:3px 4px;text-align:center"><input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-pk-q="${ri}" style="width:60px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff"></td>
+        <td style="padding:3px 4px;text-align:center">${pkQtyField(r, ri, 'width:72px;height:30px;font-size:13px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff')}</td>
         <td style="padding:3px 4px;text-align:right">${qtPkPriceInput(r, ri, 'width:110px;height:30px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 8px')}</td>
         <td class="num mono" style="font-weight:600;font-size:12.5px;padding:4px 8px" data-pk-line="${ri}">${vnd(r.qty*r.price)}</td>
       </tr>`).join('')}${qtManualPkFallback('desk')}`:it._nv?`
@@ -7760,9 +7792,9 @@ function buildQtList(){
         ${(qtMountAddAnchor()<0&&mountAddChoices().length)?`<div style="padding:4px 0 8px">${qtMountAddInline()}</div>`:''}
         ${(qtPkAddAnchor()<0&&pkAddChoices().length)?`<div style="padding:4px 0 8px">${qtPkAddInline()}</div>`:''}
         ${qtVisibleRows(QT.phuKien,'pk').map(({r,i:ri})=>`
-        <div style="display:grid;grid-template-columns:1fr 52px 90px 72px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)">
+        <div style="display:grid;grid-template-columns:1fr 68px 86px 72px;gap:5px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)">
           <div style="font-size:12px;font-weight:600;color:var(--ink-2)">${pkProductCell(r,ri,'mobi')}</div>
-          <input class="qt-qty" type="text" inputmode="numeric" autocomplete="off" data-amt="int" value="${esc(groupAmountInput(r.qty,{decimal:false}))}" data-pk-q="${ri}" style="width:50px;height:32px;font-size:12px;text-align:center">
+          ${pkQtyField(r, ri, 'width:64px;height:32px;font-size:12px;text-align:center;border:1px solid var(--line);border-radius:8px;background:#fff')}
           ${qtPkPriceInput(r, ri, 'width:88px;height:32px;font-size:12px;text-align:right;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 6px')}
           <div style="text-align:right;font-size:12px;font-weight:600;color:var(--ink)" data-pk-line="${ri}">${vnd(r.qty*r.price)}</div>
         </div>`).join('')}${qtManualPkFallback('mobi')}
@@ -8327,9 +8359,11 @@ function bindQuote(){
     $('#main').querySelectorAll('[data-pk-q]').forEach(inp=>inp.oninput=()=>{
       if(!QT.phuKien) return;
       const i=+inp.dataset.pkQ;
-      QT.phuKien[i].qty=Math.max(0, readQtyInput(inp.value));
+      const row0=QT.phuKien[i];
+      const dec=isKwpMountRow(row0);
+      QT.phuKien[i].qty=dec?readKwpQtyInput(inp.value):Math.max(0, readQtyInput(inp.value));
       markQuoteQtyManual(QT.phuKien[i]);
-      mirrorQtyInputs(`[data-pk-q="${i}"]`, QT.phuKien[i].qty, inp);
+      mirrorQtyInputs(`[data-pk-q="${i}"]`, QT.phuKien[i].qty, inp, dec);
       const row=QT.phuKien[i];
       if(row&&!isManualPkRow(row)&&/Kẹp nhôm biên và giữa/i.test(row.name||'')){
         QT.phuKien.forEach((r,j)=>{
